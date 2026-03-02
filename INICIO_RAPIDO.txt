@@ -1,0 +1,16 @@
+INÍCIO RÁPIDO - ZERO BASE
+
+1) Instalar dependências
+   npm install
+
+2) Rodar em desenvolvimento
+   npm run dev
+
+3) Abrir no navegador
+   http://localhost:5173
+
+Comandos úteis:
+- npm run build
+- npm run preview
+- npm run lint
+- npm run test

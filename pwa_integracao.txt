@@ -1,0 +1,36 @@
+// ============================================================
+// GUIA DE INTEGRAÇÃO - PWA + Notificações
+// ============================================================
+
+// 1. vite.config.ts
+// Use o arquivo de configuração com suporte a PWA.
+// Ele deve incluir manifest, ícones e cache offline.
+
+// 2. Ícones PWA (obrigatório)
+// Coloque em /public:
+//   public/pwa-192x192.png
+//   public/pwa-512x512.png
+//   public/apple-touch-icon.png
+
+// 3. App.tsx - adicionar NotificationSetup
+// import { NotificationSetup } from './components/NotificationSetup';
+// No JSX principal, renderize: <NotificationSetup />
+
+// 4. Timer - notificar fim do Pomodoro
+// import { useNotifications } from '../hooks/useNotifications';
+// const { notifyPomodoroEnd } = useNotifications();
+// Chame notifyPomodoroEnd() quando o timer chegar a zero.
+
+// 5. Conquistas - notificar desbloqueio
+// import { useNotifications } from '../hooks/useNotifications';
+// const { notifyAchievement } = useNotifications();
+// Chame notifyAchievement(achievement.title) ao desbloquear uma conquista.
+
+// 6. Meta diária não atingida
+// O agendamento pode ser feito no hook (ex.: verificação às 21h)
+// ou disparado manualmente com notifyGoalNotMet(total, goal).
+
+// 7. Testar em desenvolvimento
+// Acesse http://localhost:5173 no Chrome.
+// DevTools > Application > Service Workers: confirmar registro.
+// DevTools > Application > Manifest: validar nome, ícones e instalação.

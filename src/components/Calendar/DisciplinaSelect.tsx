@@ -1,0 +1,106 @@
+import React, { useState, useEffect } from 'react';
+
+interface DisciplinaSelectProps {
+  modalidade: string | null;
+  value: string | null;
+  onChange: (v: string) => void;
+  disciplinas: Array<{ id: string; label: string }>;
+}
+
+const DisciplinaSelect: React.FC<DisciplinaSelectProps> = ({ modalidade, value, onChange, disciplinas }) => {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setSearch('');
+    setOpen(false);
+      onChange('');
+  }, [modalidade]);
+
+  const filtered = disciplinas.filter(d =>
+    d.label.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="w-64 relative">
+      <button
+        type="button"
+        disabled={!modalidade}
+        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:ring-2 focus:ring-indigo-500/30 outline-none transition font-medium ${!modalidade ? 'opacity-60 cursor-not-allowed' : ''}`}
+        onClick={() => modalidade && setOpen(v => !v)}
+      >
+        <span className="text-lg">🔎</span>
+        <span>{value ? disciplinas.find(d => d.id === value)?.label : 'Buscar disciplina'}</span>
+        <span className="ml-auto text-xs text-slate-400">▼</span>
+      </button>
+      {open && modalidade && (
+        <div className="absolute z-50 left-0 mt-2 w-full rounded-xl shadow-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur-sm p-3 animate-fade-in">
+          <input
+            autoFocus
+            className="w-full mb-2 px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-sm border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="🔎 Buscar disciplina..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <div className="max-h-60 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="py-3 text-center text-slate-400">Nenhuma disciplina encontrada</div>
+            ) : (
+              filtered.map(d => {
+                // Ícones padronizados
+                const icons: Record<string, string> = {
+                  port: '🇧🇷',
+                  lit: '📖',
+                  red: '✍️',
+                  ing: '🇬🇧',
+                  esp: '🇪🇸',
+                  art: '🎨',
+                  edf: '🏃‍♂️',
+                  hist: '🏰',
+                  geo: '🌎',
+                  fil: '🧠',
+                  soc: '👥',
+                  fis: '🔬',
+                  qui: '⚗️',
+                  bio: '🧬',
+                  mat: '📐',
+                  raci: '🧩',
+                  info: '💻',
+                  admPub: '🏛️',
+                  atual: '📰',
+                  dirConst: '⚖️',
+                  dirAdm: '🏢',
+                  dirPen: '🚔',
+                  dirProcPen: '📜',
+                  dirCivil: '🏠',
+                  dirProcCivil: '📑',
+                  dirTrib: '💰',
+                  dirTrab: '🛠️',
+                  cont: '📊',
+                  contPub: '🏦',
+                  adm: '🗂️',
+                  gestPes: '👔',
+                  arquiv: '🗃️',
+                  outra: '📚',
+                };
+                return (
+                  <button
+                    key={d.id}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-200 transition hover:bg-indigo-500/10 hover:text-white focus:outline-none ${value === d.id ? 'bg-slate-700/60' : ''}`}
+                    onClick={() => { onChange(d.id); setOpen(false); setSearch(''); }}
+                    type="button"
+                  >
+                    <span className="text-lg">{icons[d.id] || '📚'}</span>
+                    <span>{d.label}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default DisciplinaSelect;

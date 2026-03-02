@@ -1,0 +1,4 @@
+import AchievementsPage from '../components/Achievements/AchievementsPage';
+
+// No seu Router
+<Route path="/conquistas" element={<AchievementsPage userData={userData} />} />

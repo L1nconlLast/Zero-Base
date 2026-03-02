@@ -1,0 +1,100 @@
+import type { Flashcard } from './flashcardsBank';
+
+export const EXTRA_FLASHCARDS_BANK: Flashcard[] = [
+  { id: 'f-enem-mat-02', subject: 'Matemática', track: 'enem', front: 'Como calcular juros simples?', back: 'J = C × i × t. Montante: M = C + J.', tags: ['enem', 'juros simples', 'matemática financeira'] },
+  { id: 'f-enem-mat-03', subject: 'Matemática', track: 'enem', front: 'Qual é a fórmula da função afim?', back: 'f(x) = ax + b, em que a é coeficiente angular e b é linear.', tags: ['enem', 'função afim', 'gráficos'] },
+  { id: 'f-enem-mat-04', subject: 'Matemática', track: 'enem', front: 'Como converter fração para porcentagem?', back: 'Divida numerador por denominador e multiplique por 100.', tags: ['enem', 'porcentagem', 'frações'] },
+
+  { id: 'f-enem-ling-02', subject: 'Linguagens', track: 'enem', front: 'O que é intertextualidade?', back: 'Relação explícita ou implícita entre textos, como citação, paródia e referência.', tags: ['enem', 'intertextualidade', 'interpretação'] },
+  { id: 'f-enem-ling-03', subject: 'Linguagens', track: 'enem', front: 'Qual habilidade central em questões de tirinha?', back: 'Inferir sentido de elementos verbais e não verbais no contexto.', tags: ['enem', 'tirinhas', 'interpretação'] },
+  { id: 'f-enem-ling-04', subject: 'Linguagens', track: 'enem', front: 'Diferença entre denotação e conotação?', back: 'Denotação: sentido literal. Conotação: sentido figurado/contextual.', tags: ['enem', 'semântica', 'figuras de linguagem'] },
+
+  { id: 'f-enem-hum-02', subject: 'Ciências Humanas', track: 'enem', front: 'O que é cidadania na Constituição?', back: 'Exercício de direitos civis, políticos e sociais, com participação na vida pública.', tags: ['enem', 'cidadania', 'constituição'] },
+  { id: 'f-enem-hum-03', subject: 'Ciências Humanas', track: 'enem', front: 'O que caracteriza globalização?', back: 'Integração econômica, política, cultural e tecnológica entre países.', tags: ['enem', 'globalização', 'geografia'] },
+  { id: 'f-enem-hum-04', subject: 'Ciências Humanas', track: 'enem', front: 'Qual foco das questões sobre Revolução Industrial?', back: 'Transformações produtivas, urbanização e novas relações de trabalho.', tags: ['enem', 'história', 'revolução industrial'] },
+
+  { id: 'f-enem-nat-02', subject: 'Ciências da Natureza', track: 'enem', front: 'Lei de Ohm em uma frase?', back: 'U = R × i, relacionando tensão, resistência e corrente elétrica.', tags: ['enem', 'física', 'eletrodinâmica'] },
+  { id: 'f-enem-nat-03', subject: 'Ciências da Natureza', track: 'enem', front: 'Qual a ideia central de pH?', back: 'Medida de acidez/basicidade de uma solução em escala logarítmica.', tags: ['enem', 'química', 'ácidos e bases'] },
+  { id: 'f-enem-nat-04', subject: 'Ciências da Natureza', track: 'enem', front: 'Função do DNA?', back: 'Armazenar informação genética e orientar síntese de proteínas.', tags: ['enem', 'biologia', 'genética'] },
+  { id: 'f-enem-qui-01', subject: 'Ciências da Natureza', track: 'enem', front: 'O que estudar primeiro em Estrutura Atômica?', back: 'Modelos atômicos, partículas subatômicas, número atômico (Z), número de massa (A), isótopos e distribuição eletrônica básica.', tags: ['enem', 'química', 'estudo da matéria', 'estrutura atômica'] },
+  { id: 'f-enem-qui-02', subject: 'Ciências da Natureza', track: 'enem', front: 'Como usar a Tabela Periódica em questões?', back: 'Identifique famílias, períodos, metais/ametametais e tendências: raio atômico, eletronegatividade e energia de ionização.', tags: ['enem', 'química', 'tabela periódica'] },
+  { id: 'f-enem-qui-03', subject: 'Ciências da Natureza', track: 'enem', front: 'Quais são as Funções Inorgânicas principais?', back: 'Ácidos, bases, sais e óxidos. Em prova, foque em nomenclatura, propriedades e reações características.', tags: ['enem', 'química', 'funções inorgânicas'] },
+  { id: 'f-enem-qui-04', subject: 'Ciências da Natureza', track: 'enem', front: 'Resumo de Estequiometria para acertar rápido?', back: 'Balancear equações, usar proporção molar e converter massa ↔ mol ↔ volume (CNTP).', tags: ['enem', 'química', 'estequiometria'] },
+  { id: 'f-enem-qui-05', subject: 'Ciências da Natureza', track: 'enem', front: 'Qual raciocínio base de Solubilidade?', back: 'Compreender coeficiente de solubilidade, soluções saturadas/insaturadas e influência da temperatura.', tags: ['enem', 'química', 'solubilidade'] },
+  { id: 'f-enem-qui-06', subject: 'Ciências da Natureza', track: 'enem', front: 'Ideia central de Termoquímica?', back: 'Analisar variação de entalpia (ΔH), processos endotérmicos/exotérmicos e Lei de Hess.', tags: ['enem', 'química', 'termoquímica'] },
+  { id: 'f-enem-qui-07', subject: 'Ciências da Natureza', track: 'enem', front: 'O que cai em Cinética Química?', back: 'Velocidade de reação e fatores que a alteram: temperatura, concentração, superfície de contato e catalisador.', tags: ['enem', 'química', 'cinética'] },
+  { id: 'f-enem-qui-08', subject: 'Ciências da Natureza', track: 'enem', front: 'Como interpretar Equilíbrio Químico?', back: 'Sistema dinâmico com velocidades iguais entre reação direta e inversa; atenção ao princípio de Le Chatelier.', tags: ['enem', 'química', 'equilíbrio químico'] },
+  { id: 'f-enem-qui-09', subject: 'Ciências da Natureza', track: 'enem', front: 'Diferença prática de Equilíbrio Iônico?', back: 'Trata de equilíbrio em soluções aquosas envolvendo íons: Ka, Kb, pH, hidrólise e tampões.', tags: ['enem', 'química', 'equilíbrio iônico'] },
+  { id: 'f-enem-qui-10', subject: 'Ciências da Natureza', track: 'enem', front: 'Qual foco em Eletroquímica?', back: 'Pilhas e eletrólise: oxidação/redução, fluxo de elétrons, cálculo de NOX e aplicação tecnológica.', tags: ['enem', 'química', 'eletroquímica'] },
+  { id: 'f-enem-qui-11', subject: 'Ciências da Natureza', track: 'enem', front: 'Química Orgânica: por onde começar?', back: 'Cadeias carbônicas, funções orgânicas e nomenclatura básica (hidrocarbonetos, álcoois, ácidos, cetonas etc.).', tags: ['enem', 'química', 'química orgânica'] },
+  { id: 'f-enem-qui-12', subject: 'Ciências da Natureza', track: 'enem', front: 'O que é Isomeria em linguagem de prova?', back: 'Compostos com mesma fórmula molecular e arranjos diferentes (plana e espacial), gerando propriedades distintas.', tags: ['enem', 'química', 'isomeria'] },
+  { id: 'f-enem-qui-13', subject: 'Ciências da Natureza', track: 'enem', front: 'Como revisar Reações Orgânicas?', back: 'Reconheça padrões de adição, substituição, eliminação e oxidação/redução em substratos orgânicos.', tags: ['enem', 'química', 'reações orgânicas'] },
+  { id: 'f-enem-qui-14', subject: 'Ciências da Natureza', track: 'enem', front: 'Química Ambiental: quais eixos mais cobrados?', back: 'Poluição, efeito estufa, chuva ácida, tratamento de água/esgoto, sustentabilidade e química verde.', tags: ['enem', 'química', 'química ambiental'] },
+
+  { id: 'f-enem-fis-01', subject: 'Ciências da Natureza', track: 'enem', front: 'Qual é a base de Cinemática no ENEM?', back: 'Interpretar gráficos de posição, velocidade e aceleração; usar equações do MRU/MRUV com unidade correta.', tags: ['enem', 'física', 'cinemática'] },
+  { id: 'f-enem-fis-02', subject: 'Ciências da Natureza', track: 'enem', front: 'O que revisar em Dinâmica?', back: 'Leis de Newton, forças de contato, atrito e análise de forças em diagrama de corpo livre.', tags: ['enem', 'física', 'dinâmica'] },
+  { id: 'f-enem-fis-03', subject: 'Ciências da Natureza', track: 'enem', front: 'Trabalho e Energia: qual ideia-chave?', back: 'Teorema da energia cinética, conservação da energia mecânica e potência.', tags: ['enem', 'física', 'trabalho e energia'] },
+  { id: 'f-enem-fis-04', subject: 'Ciências da Natureza', track: 'enem', front: 'Qual foco em Termologia?', back: 'Calor sensível/latente, mudanças de estado e trocas de calor em sistema isolado.', tags: ['enem', 'física', 'termologia'] },
+  { id: 'f-enem-fis-05', subject: 'Ciências da Natureza', track: 'enem', front: 'Ondulatória no ENEM: por onde começar?', back: 'Frequência, período, velocidade da onda e fenômenos como reflexão, refração e interferência.', tags: ['enem', 'física', 'ondulatória'] },
+  { id: 'f-enem-fis-06', subject: 'Ciências da Natureza', track: 'enem', front: 'Óptica: o que mais aparece?', back: 'Espelhos e lentes, formação de imagens e aplicações no cotidiano (óculos, câmeras, lupa).', tags: ['enem', 'física', 'óptica'] },
+
+  { id: 'f-enem-bio-01', subject: 'Ciências da Natureza', track: 'enem', front: 'Citologia: conceito central?', back: 'Estruturas celulares e funções de organelas; relação entre especialização celular e função.', tags: ['enem', 'biologia', 'citologia'] },
+  { id: 'f-enem-bio-02', subject: 'Ciências da Natureza', track: 'enem', front: 'Genética: base para questões?', back: 'Leis de Mendel, heredogramas, probabilidade genética e variabilidade.', tags: ['enem', 'biologia', 'genética'] },
+  { id: 'f-enem-bio-03', subject: 'Ciências da Natureza', track: 'enem', front: 'Ecologia: eixo mais cobrado?', back: 'Cadeias alimentares, ciclos biogeoquímicos, impactos ambientais e sustentabilidade.', tags: ['enem', 'biologia', 'ecologia'] },
+  { id: 'f-enem-bio-04', subject: 'Ciências da Natureza', track: 'enem', front: 'Evolução: qual leitura correta?', back: 'Seleção natural, adaptação, deriva genética e evidências evolutivas.', tags: ['enem', 'biologia', 'evolução'] },
+  { id: 'f-enem-bio-05', subject: 'Ciências da Natureza', track: 'enem', front: 'Fisiologia humana: como priorizar?', back: 'Integração entre sistemas (nervoso, endócrino, circulatório, respiratório e excretor).', tags: ['enem', 'biologia', 'fisiologia humana'] },
+  { id: 'f-enem-bio-06', subject: 'Ciências da Natureza', track: 'enem', front: 'Biotecnologia: o que costuma cair?', back: 'DNA recombinante, transgênicos, clonagem, vacinas e bioética.', tags: ['enem', 'biologia', 'biotecnologia'] },
+
+  { id: 'f-enem-red-02', subject: 'Redação', track: 'enem', front: 'O que é tese na redação ENEM?', back: 'Posicionamento claro do autor sobre o tema no texto dissertativo-argumentativo.', tags: ['enem', 'redação', 'tese'] },
+  { id: 'f-enem-red-03', subject: 'Redação', track: 'enem', front: 'Como melhorar repertório sociocultural?', back: 'Usar referências legítimas e pertinentes (dados, obras, fatos históricos) conectadas ao argumento.', tags: ['enem', 'redação', 'repertório'] },
+  { id: 'f-enem-red-04', subject: 'Redação', track: 'enem', front: 'Erro comum na competência 5?', back: 'Proposta de intervenção sem detalhamento de agente, ação, meio e finalidade.', tags: ['enem', 'redação', 'competência 5'] },
+
+  { id: 'f-enem-mat-05', subject: 'Matemática', track: 'enem', front: 'Qual o núcleo de Geometria Plana?', back: 'Áreas e perímetros de figuras, semelhança e relações métricas.', tags: ['enem', 'matemática', 'geometria plana'] },
+  { id: 'f-enem-mat-06', subject: 'Matemática', track: 'enem', front: 'Estatística no ENEM: abordagem?', back: 'Leitura de gráficos/tabelas, média, mediana, moda e desvio básico.', tags: ['enem', 'matemática', 'estatística'] },
+  { id: 'f-enem-mat-07', subject: 'Matemática', track: 'enem', front: 'Probabilidade: ideia rápida?', back: 'P(evento) = casos favoráveis / casos possíveis, com atenção à independência.', tags: ['enem', 'matemática', 'probabilidade'] },
+  { id: 'f-enem-mat-08', subject: 'Matemática', track: 'enem', front: 'Função quadrática: ponto-chave?', back: 'Concavidade, vértice e zeros da função para interpretar situações-problema.', tags: ['enem', 'matemática', 'função quadrática'] },
+
+  { id: 'f-enem-ling-05', subject: 'Linguagens', track: 'enem', front: 'Qual foco em gêneros textuais?', back: 'Reconhecer finalidade, público-alvo e marcas linguísticas de cada gênero.', tags: ['enem', 'linguagens', 'gêneros textuais'] },
+  { id: 'f-enem-ling-06', subject: 'Linguagens', track: 'enem', front: 'Variação linguística: como cai?', back: 'Identificar adequação de registros e preconceito linguístico em contextos sociais.', tags: ['enem', 'linguagens', 'variação linguística'] },
+  { id: 'f-enem-ling-07', subject: 'Linguagens', track: 'enem', front: 'Figuras de linguagem: estratégia?', back: 'Perceber efeitos de sentido (ironia, metáfora, antítese, hipérbole) no texto.', tags: ['enem', 'linguagens', 'figuras de linguagem'] },
+
+  { id: 'f-enem-hum-05', subject: 'Ciências Humanas', track: 'enem', front: 'O que priorizar em Geografia?', back: 'Cartografia, urbanização, demografia e geopolítica contemporânea.', tags: ['enem', 'humanas', 'geografia'] },
+  { id: 'f-enem-hum-06', subject: 'Ciências Humanas', track: 'enem', front: 'História: como organizar revisão?', back: 'Linha do tempo com contexto, causas, consequências e permanências.', tags: ['enem', 'humanas', 'história'] },
+  { id: 'f-enem-hum-07', subject: 'Ciências Humanas', track: 'enem', front: 'Sociologia: tema recorrente?', back: 'Cultura, cidadania, trabalho e desigualdade social em leitura crítica.', tags: ['enem', 'humanas', 'sociologia'] },
+  { id: 'f-enem-hum-08', subject: 'Ciências Humanas', track: 'enem', front: 'Filosofia: qual leitura de prova?', back: 'Relacionar conceitos filosóficos a problemas éticos e políticos atuais.', tags: ['enem', 'humanas', 'filosofia'] },
+
+  { id: 'f-enem-red-05', subject: 'Redação', track: 'enem', front: 'Como planejar introdução da redação?', back: 'Contextualização breve + recorte do tema + tese explícita.', tags: ['enem', 'redação', 'introdução'] },
+  { id: 'f-enem-red-06', subject: 'Redação', track: 'enem', front: 'O que não pode faltar no desenvolvimento?', back: 'Argumento + explicação + repertório válido + conexão com a tese.', tags: ['enem', 'redação', 'desenvolvimento'] },
+  { id: 'f-enem-red-07', subject: 'Redação', track: 'enem', front: 'Conclusão eficiente no ENEM?', back: 'Retomar tese e apresentar intervenção completa, detalhada e viável.', tags: ['enem', 'redação', 'conclusão'] },
+
+  { id: 'f-conc-port-02', subject: 'Português', track: 'concurso', front: 'O que é regência verbal?', back: 'Relação de dependência entre verbo e complementos com ou sem preposição.', tags: ['concurso', 'português', 'regência'] },
+  { id: 'f-conc-port-03', subject: 'Português', track: 'concurso', front: 'Quando ocorre crase obrigatória?', back: 'Na fusão de preposição a + artigo feminino a(s), em contexto que exige ambos.', tags: ['concurso', 'português', 'crase'] },
+  { id: 'f-conc-port-04', subject: 'Português', track: 'concurso', front: 'Qual estratégia para interpretação textual?', back: 'Identificar tese, conectores e relações de causa, oposição e conclusão.', tags: ['concurso', 'português', 'interpretação'] },
+
+  { id: 'f-conc-rl-02', subject: 'Raciocínio Lógico', track: 'concurso', front: 'Equivalência de “Se P então Q”?', back: 'É logicamente equivalente a “Não P ou Q”.', tags: ['concurso', 'lógica proposicional', 'equivalências'] },
+  { id: 'f-conc-rl-03', subject: 'Raciocínio Lógico', track: 'concurso', front: 'O que é negação de “P e Q”?', back: 'Pela lei de De Morgan: “não P ou não Q”.', tags: ['concurso', 'de morgan', 'negação'] },
+  { id: 'f-conc-rl-04', subject: 'Raciocínio Lógico', track: 'concurso', front: 'Como resolver questão de conjuntos?', back: 'Use diagrama de Venn e princípio da inclusão-exclusão.', tags: ['concurso', 'conjuntos', 'contagem'] },
+
+  { id: 'f-conc-const-02', subject: 'Direito Constitucional', track: 'concurso', front: 'Quem é o titular do poder constituinte originário?', back: 'O povo, de forma política e soberana.', tags: ['concurso', 'constitucional', 'poder constituinte'] },
+  { id: 'f-conc-const-03', subject: 'Direito Constitucional', track: 'concurso', front: 'Diferença entre direitos e garantias fundamentais?', back: 'Direitos são bens jurídicos protegidos; garantias são instrumentos para efetivá-los.', tags: ['concurso', 'constitucional', 'direitos fundamentais'] },
+  { id: 'f-conc-const-04', subject: 'Direito Constitucional', track: 'concurso', front: 'O que é controle difuso?', back: 'Controle de constitucionalidade no caso concreto por qualquer juiz ou tribunal.', tags: ['concurso', 'constitucional', 'controle de constitucionalidade'] },
+
+  { id: 'f-conc-admin-02', subject: 'Direito Administrativo', track: 'concurso', front: 'O que é ato administrativo vinculado?', back: 'Ato em que a lei define todos os requisitos, sem margem de escolha ao agente.', tags: ['concurso', 'administrativo', 'atos administrativos'] },
+  { id: 'f-conc-admin-03', subject: 'Direito Administrativo', track: 'concurso', front: 'Diferença entre anulação e revogação?', back: 'Anulação retira ato ilegal; revogação retira ato legal por conveniência/oportunidade.', tags: ['concurso', 'administrativo', 'anulação e revogação'] },
+  { id: 'f-conc-admin-04', subject: 'Direito Administrativo', track: 'concurso', front: 'O que é poder de polícia?', back: 'Atividade estatal que limita direitos individuais em benefício do interesse público.', tags: ['concurso', 'administrativo', 'poder de polícia'] },
+
+  { id: 'f-conc-info-02', subject: 'Informática', track: 'concurso', front: 'Diferença entre Internet e Intranet?', back: 'Internet é rede pública global; intranet é rede privada interna de organização.', tags: ['concurso', 'informática', 'redes'] },
+  { id: 'f-conc-info-03', subject: 'Informática', track: 'concurso', front: 'O que é phishing?', back: 'Golpe de engenharia social para roubo de dados por mensagens/sites falsos.', tags: ['concurso', 'informática', 'segurança da informação'] },
+  { id: 'f-conc-info-04', subject: 'Informática', track: 'concurso', front: 'Função do backup 3-2-1?', back: '3 cópias, 2 mídias diferentes, 1 cópia fora do local principal.', tags: ['concurso', 'informática', 'backup'] },
+
+  { id: 'f-conc-atual-02', subject: 'Atualidades', track: 'concurso', front: 'Como estudar atualidades para concurso?', back: 'Focar temas recorrentes com fontes oficiais e contexto histórico básico.', tags: ['concurso', 'atualidades', 'estratégia de estudo'] },
+  { id: 'f-conc-atual-03', subject: 'Atualidades', track: 'concurso', front: 'Tema recorrente em provas de atualidades?', back: 'Geopolítica, economia, meio ambiente, tecnologia e saúde pública.', tags: ['concurso', 'atualidades', 'geopolítica'] },
+  { id: 'f-conc-atual-04', subject: 'Atualidades', track: 'concurso', front: 'Como evitar erros em atualidades?', back: 'Cruzar fontes e verificar data/contexto da notícia antes de concluir.', tags: ['concurso', 'atualidades', 'checagem de informação'] },
+
+  { id: 'f-conc-port-05', subject: 'Português', track: 'concurso', front: 'Concordância verbal: regra de ouro?', back: 'Verbo concorda com o núcleo do sujeito, considerando casos especiais e sujeito posposto.', tags: ['concurso', 'português', 'concordância'] },
+  { id: 'f-conc-rl-05', subject: 'Raciocínio Lógico', track: 'concurso', front: 'Tabela-verdade: melhor estratégia?', back: 'Padronize valores e avalie conectivos por etapas para evitar erro de pressa.', tags: ['concurso', 'raciocínio lógico', 'tabela-verdade'] },
+  { id: 'f-conc-const-05', subject: 'Direito Constitucional', track: 'concurso', front: 'Cláusulas pétreas: o que são?', back: 'Núcleo constitucional que não pode ser abolido por emenda.', tags: ['concurso', 'constitucional', 'cláusulas pétreas'] },
+  { id: 'f-conc-admin-05', subject: 'Direito Administrativo', track: 'concurso', front: 'Quais atributos dos atos administrativos?', back: 'Presunção de legitimidade, imperatividade, autoexecutoriedade e tipicidade (quando cabível).', tags: ['concurso', 'administrativo', 'atributos do ato'] },
+  { id: 'f-conc-info-05', subject: 'Informática', track: 'concurso', front: 'Diferença entre malware, vírus e worm?', back: 'Malware é termo geral; vírus depende de hospedeiro; worm se replica pela rede.', tags: ['concurso', 'informática', 'malware'] },
+  { id: 'f-conc-atual-05', subject: 'Atualidades', track: 'concurso', front: 'Como revisar atualidades sem dispersar?', back: 'Defina eixos temáticos e produza resumos curtos com fatos-chave e impactos.', tags: ['concurso', 'atualidades', 'revisão estratégica'] },
+];

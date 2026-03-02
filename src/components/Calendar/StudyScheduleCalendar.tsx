@@ -1,0 +1,840 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import ModalidadeSelect from './ModalidadeSelect';
+import DisciplinaSelect from './DisciplinaSelect';
+import CommandPaletteDisciplineSelect from './CommandPaletteDisciplineSelect';
+import {
+  CalendarDays,
+  Plus,
+  Trash2,
+  CheckCircle,
+  Circle,
+  ChevronLeft,
+  ChevronRight,
+  BookOpen,
+  StickyNote,
+  Sparkles,
+  AlertCircle,
+  Star,
+  PauseCircle,
+  Repeat2,
+  Check,
+  X,
+  AlertOctagon,
+} from 'lucide-react';
+import type { MateriaTipo, ScheduleEntry } from '../../types';
+import { MATERIAS_CONFIG } from '../../types';
+import { useStudySchedule } from '../../hooks/useStudySchedule';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { saasPlanningService } from '../../services/saasPlanning.service';
+import {
+  adjustPlanWithAi,
+  createDefaultSmartProfile,
+  generateBasePlan,
+  type GeneratedPlanItem,
+  type AiAdjustmentOutput,
+  type SmartScheduleProfile,
+} from '../../utils/smartScheduleEngine.ts';
+
+const MONTH_NAMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+const WEEK_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const GRID_WEEK_DAYS = [
+  { key: 1, label: 'SEG' },
+  { key: 2, label: 'TER' },
+  { key: 3, label: 'QUA' },
+  { key: 4, label: 'QUI' },
+  { key: 5, label: 'SEX' },
+] as const;
+
+const toDateStr = (y: number, m: number, d: number) =>
+  `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+const getStudyTypeLabel = (studyType?: ScheduleEntry['studyType']): string => {
+  if (studyType === 'teoria_questoes') return 'Teoria + Questões';
+  if (studyType === 'questoes') return 'Questões';
+  if (studyType === 'revisao') return 'Revisão';
+  if (studyType === 'simulado') return 'Simulado';
+  return 'Estudo';
+};
+
+const getWeekStart = (date: Date): Date => {
+  const base = new Date(date);
+  base.setHours(12, 0, 0, 0);
+  const day = base.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  base.setDate(base.getDate() + diff);
+  return base;
+};
+
+const addDays = (date: Date, days: number): Date => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const getSubjectCellClass = (subject?: string): string => {
+  if (!subject) return 'bg-slate-100 dark:bg-slate-800 text-slate-500';
+  if (subject.includes('Matem')) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  if (subject.includes('Lingu')) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+  if (subject.includes('Human')) return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300';
+  if (subject.includes('Reda')) return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300';
+  return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300';
+};
+
+interface StudyScheduleCalendarProps {
+  userId?: string | null;
+}
+
+const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId }) => {
+    const today = new Date();
+    const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate());
+    const userScope = userId || 'default';
+    const profileStorageKey = `smartScheduleProfile_${userScope}`;
+    const autoGenerateKey = `smartScheduleAutoGenerate_${userScope}`;
+    // Estados para o calendário
+    const [viewYear, setViewYear] = useState<number>(today.getFullYear());
+    const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
+    const [selectedDate, setSelectedDate] = useState<string | null>(todayStr);
+    // Estados para selects
+    const [modalidade, setModalidade] = useState<'enem' | 'concurso' | null>(null);
+    const [disciplina, setDisciplina] = useState<string | null>(null);
+    // Estados para formulário
+    const [formNote, setFormNote] = useState<string>('');
+    const [weakTopicInput, setWeakTopicInput] = useState('Funções');
+    const [missedDaysInput, setMissedDaysInput] = useState(0);
+    const [hoursNowInput, setHoursNowInput] = useState(2);
+    const [aiSummary, setAiSummary] = useState<string[]>([]);
+    const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+    const [swapSubjectInput, setSwapSubjectInput] = useState('Matemática');
+    const [smartProfile, setSmartProfile] = useLocalStorage<SmartScheduleProfile>(
+      profileStorageKey,
+      createDefaultSmartProfile(),
+    );
+  const {
+    entries,
+    scheduledDates,
+    addEntry,
+    updateEntry,
+    removeEntry,
+    toggleDone,
+    applyAdaptiveSchedule,
+    getEntriesForDate,
+  } = useStudySchedule(userId);
+
+  const selectedEntry = entries.find((entry) => entry.id === selectedEntryId) || null;
+
+  // já declarado acima
+
+      const disciplinas: Record<'enem' | 'concurso', { id: string; label: string }[]> = {
+        enem: [
+          { id: 'port', label: 'Português' },
+          { id: 'lit', label: 'Literatura' },
+          { id: 'red', label: 'Redação' },
+          { id: 'ing', label: 'Inglês' },
+          { id: 'esp', label: 'Espanhol' },
+          { id: 'art', label: 'Artes' },
+          { id: 'edf', label: 'Educação Física' },
+          { id: 'hist', label: 'História' },
+          { id: 'geo', label: 'Geografia' },
+          { id: 'fil', label: 'Filosofia' },
+          { id: 'soc', label: 'Sociologia' },
+          { id: 'fis', label: 'Física' },
+          { id: 'qui', label: 'Química' },
+          { id: 'bio', label: 'Biologia' },
+          { id: 'mat', label: 'Matemática' },
+        ],
+        concurso: [
+          { id: 'port', label: 'Português' },
+          { id: 'raci', label: 'Raciocínio Lógico' },
+          { id: 'info', label: 'Informática' },
+          { id: 'admPub', label: 'Administração Pública' },
+          { id: 'atual', label: 'Atualidades' },
+          { id: 'dirConst', label: 'Direito Constitucional' },
+          { id: 'dirAdm', label: 'Direito Administrativo' },
+          { id: 'dirPen', label: 'Direito Penal' },
+          { id: 'dirProcPen', label: 'Direito Processual Penal' },
+          { id: 'dirCivil', label: 'Direito Civil' },
+          { id: 'dirProcCivil', label: 'Direito Processual Civil' },
+          { id: 'dirTrib', label: 'Direito Tributário' },
+          { id: 'dirTrab', label: 'Direito do Trabalho' },
+          { id: 'cont', label: 'Contabilidade' },
+          { id: 'contPub', label: 'Contabilidade Pública' },
+          { id: 'adm', label: 'Administração Geral' },
+          { id: 'gestPes', label: 'Gestão de Pessoas' },
+          { id: 'arquiv', label: 'Arquivologia' },
+        ],
+      };
+
+  // Calendar grid
+  const calendarDays = useMemo(() => {
+    const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const days: (number | null)[] = Array(firstDay).fill(null);
+    for (let d = 1; d <= daysInMonth; d++) days.push(d);
+    while (days.length % 7 !== 0) days.push(null);
+    return days;
+  }, [viewYear, viewMonth]);
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
+    else setViewMonth((m) => m - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
+    else setViewMonth((m) => m + 1);
+  };
+
+  const selectedEntries = selectedDate ? getEntriesForDate(selectedDate) : [];
+
+  const handleAdd = () => {
+    if (!selectedDate || !disciplina) return;
+    addEntry(selectedDate, disciplina, formNote, {
+      source: 'manual',
+      priority: 'normal',
+      status: 'pendente',
+    });
+    setFormNote('');
+  };
+
+  const handleGenerateBaseSchedule = () => {
+    const horizonDays = 30;
+    const generated = generateBasePlan(smartProfile, todayStr, horizonDays);
+
+    if (userId) {
+      void saasPlanningService
+        .upsertProfile(userId, smartProfile)
+        .then(() => saasPlanningService.upsertSubjectLevels(userId, smartProfile.subjectDifficulty))
+        .catch(() => {
+          // fallback local continua
+        });
+    }
+
+    const futureEntries = entries.filter((entry) => entry.date >= todayStr && !entry.done);
+    futureEntries.forEach((entry) => removeEntry(entry.id));
+
+    generated.forEach((item: GeneratedPlanItem) => {
+      addEntry(item.date, item.subject, undefined, {
+        topic: item.topic,
+        studyType: item.studyType,
+        priority: item.priority,
+        aiReason: item.aiReason,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        status: 'pendente',
+        source: 'motor',
+      });
+    });
+
+    setAiSummary([
+      `Cronograma base gerado para ${horizonDays} dias.`,
+      `Distribuição baseada em dificuldade, peso por matéria e dias disponíveis.`,
+    ]);
+  };
+
+  const handleAiAdjust = () => {
+    applyAdaptiveSchedule(smartProfile.hoursPerDay);
+
+    const adjusted: AiAdjustmentOutput = adjustPlanWithAi(entries.filter((entry) => entry.date >= todayStr), {
+      missedDaysLastWeek: missedDaysInput,
+      weakTopic: weakTopicInput,
+      availableHoursNow: hoursNowInput,
+    });
+
+    adjusted.adjusted.forEach((entry: ScheduleEntry) => {
+      updateEntry(entry.id, {
+        date: entry.date,
+        studyType: entry.studyType,
+        priority: entry.priority,
+        aiReason: entry.aiReason,
+        source: 'ia',
+      });
+    });
+
+    setAiSummary([
+      'Cronograma adaptado automaticamente para os próximos 7 dias (faltas, dificuldade e carga diária).',
+      ...adjusted.summary,
+    ]);
+  };
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateProfileFromCloud = async () => {
+      try {
+        const cloudProfile = await saasPlanningService.getProfile(userId);
+        if (cancelled || !cloudProfile) {
+          return;
+        }
+
+        setSmartProfile((current: SmartScheduleProfile) => {
+          if (current.examDate) {
+            return current;
+          }
+          return cloudProfile;
+        });
+      } catch {
+        // fallback local
+      }
+    };
+
+    void hydrateProfileFromCloud();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, setSmartProfile]);
+
+  const handleCompleteBlock = () => {
+    if (!selectedEntry) return;
+    toggleDone(selectedEntry.id);
+    updateEntry(selectedEntry.id, { status: 'concluido' });
+    setSelectedEntryId(null);
+  };
+
+  const handlePostponeBlock = () => {
+    if (!selectedEntry) return;
+    const date = new Date(`${selectedEntry.date}T12:00:00`);
+    date.setDate(date.getDate() + 1);
+    const postponedDate = toDateStr(date.getFullYear(), date.getMonth(), date.getDate());
+
+    updateEntry(selectedEntry.id, {
+      date: postponedDate,
+      status: 'adiado',
+      done: false,
+      aiReason: 'Bloco adiado manualmente para o próximo dia.',
+    });
+    setSelectedEntryId(null);
+  };
+
+  const handleSwapBlock = () => {
+    if (!selectedEntry || !swapSubjectInput.trim()) return;
+    updateEntry(selectedEntry.id, {
+      subject: swapSubjectInput.trim(),
+      status: 'pendente',
+      done: false,
+      aiReason: `Bloco trocado manualmente para ${swapSubjectInput.trim()}.`,
+    });
+    setSelectedEntryId(null);
+  };
+
+  const handleMarkAbsent = () => {
+    if (!selectedEntry) return;
+
+    updateEntry(selectedEntry.id, {
+      status: 'adiado',
+      done: false,
+      aiReason: 'Aluno registrou falta neste bloco.',
+    });
+
+    applyAdaptiveSchedule(smartProfile.hoursPerDay);
+    setAiSummary((previous) => [
+      'Detectei uma falta e reequilibrei automaticamente o cronograma.',
+      ...previous,
+    ].slice(0, 4));
+    setSelectedEntryId(null);
+  };
+
+  useEffect(() => {
+    if (entries.length > 0) {
+      return;
+    }
+
+    const shouldAutoGenerate = window.localStorage.getItem(autoGenerateKey) === 'true';
+    if (!shouldAutoGenerate) {
+      return;
+    }
+
+    handleGenerateBaseSchedule();
+    window.localStorage.removeItem(autoGenerateKey);
+  }, [entries.length, autoGenerateKey]);
+
+  useEffect(() => {
+    if (entries.length === 0) {
+      return;
+    }
+
+    const autoAdaptKey = `smartScheduleAutoAdapted_${userScope}_${todayStr}`;
+    const alreadyAdapted = window.localStorage.getItem(autoAdaptKey) === 'true';
+    if (alreadyAdapted) {
+      return;
+    }
+
+    applyAdaptiveSchedule(smartProfile.hoursPerDay);
+    window.localStorage.setItem(autoAdaptKey, 'true');
+    setAiSummary((previous) => [
+      'Cronograma ajustado automaticamente ao abrir (modo adaptativo ativo).',
+      ...previous,
+    ].slice(0, 4));
+  }, [entries.length, userScope, todayStr, applyAdaptiveSchedule, smartProfile.hoursPerDay]);
+
+  const selectedDateObj = selectedDate ? new Date(`${selectedDate}T12:00:00`) : new Date(`${todayStr}T12:00:00`);
+  const weekStart = getWeekStart(selectedDateObj);
+  const weekDates = GRID_WEEK_DAYS.map((day, index) => ({
+    ...day,
+    date: toDateStr(addDays(weekStart, index).getFullYear(), addDays(weekStart, index).getMonth(), addDays(weekStart, index).getDate()),
+  }));
+
+  const timeSlots = useMemo(() => {
+    const all = entries
+      .map((entry) => entry.startTime)
+      .filter((value): value is string => Boolean(value));
+    const unique = [...new Set(all)].sort((a, b) => a.localeCompare(b));
+    return unique.length > 0 ? unique.slice(0, 8) : ['08:00', '09:00', '10:00'];
+  }, [entries]);
+
+  const weekMap = useMemo(() => {
+    const map = new Map<string, ScheduleEntry>();
+    entries.forEach((entry) => {
+      if (!entry.startTime) return;
+      map.set(`${entry.date}|${entry.startTime}`, entry);
+    });
+    return map;
+  }, [entries]);
+
+  // Stats
+  const totalScheduled = entries.length;
+  const totalDone = entries.filter((e) => e.done).length;
+  const completionPct = totalScheduled > 0 ? Math.round((totalDone / totalScheduled) * 100) : 0;
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 flex items-center justify-center gap-2">
+          <CalendarDays className="w-6 h-6" /> Cronograma de Estudos
+        </h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          Selecione uma data, escolha a disciplina e organize sua rotina de estudos.
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 text-center shadow-sm">
+          <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">{totalScheduled}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Agendados</p>
+        </div>
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 text-center shadow-sm">
+          <p className="text-2xl font-extrabold text-emerald-600">{totalDone}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Concluídos</p>
+        </div>
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 text-center shadow-sm">
+          <p className="text-2xl font-extrabold" style={{ color: 'var(--color-primary)' }}>{completionPct}%</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Progresso</p>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500" /> Cronograma Inteligente
+          </h3>
+          <span className="text-xs text-slate-500 dark:text-slate-400">Perfil + Regras + Ajuste IA</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <input
+            type="date"
+            value={smartProfile.examDate}
+            onChange={(event) => setSmartProfile((prev: SmartScheduleProfile) => ({ ...prev, examDate: event.target.value }))}
+            className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+            title="Data da prova"
+          />
+          <input
+            type="number"
+            min={1}
+            max={10}
+            value={smartProfile.hoursPerDay}
+            onChange={(event) => setSmartProfile((prev: SmartScheduleProfile) => ({ ...prev, hoursPerDay: Number(event.target.value || 1) }))}
+            className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+            placeholder="Horas por dia"
+          />
+          <select
+            value={smartProfile.studyStyle}
+            onChange={(event) => setSmartProfile((prev: SmartScheduleProfile) => ({ ...prev, studyStyle: event.target.value as SmartScheduleProfile['studyStyle'] }))}
+            className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+          >
+            <option value="teoria_questoes">Teoria + Questões</option>
+            <option value="questoes">Só Questões</option>
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <input
+            value={weakTopicInput}
+            onChange={(event) => setWeakTopicInput(event.target.value)}
+            className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+            placeholder="Tópico com dificuldade (ex: Funções)"
+          />
+          <input
+            type="number"
+            min={0}
+            max={7}
+            value={missedDaysInput}
+            onChange={(event) => setMissedDaysInput(Number(event.target.value || 0))}
+            className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+            placeholder="Faltas nos últimos 7 dias"
+          />
+          <input
+            type="number"
+            min={1}
+            max={10}
+            value={hoursNowInput}
+            onChange={(event) => setHoursNowInput(Number(event.target.value || 1))}
+            className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+            placeholder="Horas disponíveis agora"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleGenerateBaseSchedule}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+            style={{ backgroundColor: 'var(--color-primary)' }}
+          >
+            Gerar cronograma base (30 dias)
+          </button>
+          <button
+            type="button"
+            onClick={handleAiAdjust}
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900"
+          >
+            🤖 Ajustar cronograma automaticamente
+          </button>
+        </div>
+
+        {aiSummary.length > 0 && (
+          <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-1.5">
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 inline-flex items-center gap-1">
+              <AlertCircle className="w-3.5 h-3.5" /> Resumo do ajuste
+            </p>
+            {aiSummary.map((line) => (
+              <p key={line} className="text-xs text-slate-700 dark:text-slate-200">• {line}</p>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm overflow-x-auto">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">Grade semanal</h3>
+        <div className="min-w-[700px]">
+          <div className="grid grid-cols-6 gap-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <div className="px-2 py-1">Horário</div>
+            {weekDates.map((day) => (
+              <div key={day.date} className="px-2 py-1 text-center">{day.label}</div>
+            ))}
+          </div>
+
+          <div className="space-y-1 mt-1">
+            {timeSlots.map((slot) => (
+              <div key={slot} className="grid grid-cols-6 gap-1">
+                <div className="px-2 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  {slot}
+                </div>
+
+                {weekDates.map((day) => {
+                  const key = `${day.date}|${slot}`;
+                  const block = weekMap.get(key);
+
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => block && setSelectedEntryId(block.id)}
+                      className={`min-h-[42px] px-2 py-1 rounded-lg text-[11px] font-semibold text-left ${block ? getSubjectCellClass(block.subject) : 'bg-slate-50 dark:bg-slate-800/60 text-slate-400'} ${block ? 'hover:opacity-90' : ''}`}
+                    >
+                      {block ? block.subject.replace('Simulado ', 'SIM ') : '—'}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Calendário */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+        {/* Nav */}
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <ChevronLeft className="w-5 h-5 text-slate-500" />
+          </button>
+          <h3 className="font-semibold text-slate-900 dark:text-slate-100">
+            {MONTH_NAMES[viewMonth]} {viewYear}
+          </h3>
+          <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <ChevronRight className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Weekday headers */}
+        <div className="grid grid-cols-7 mb-2">
+          {WEEK_SHORT.map((d) => (
+            <div key={d} className="text-center text-xs font-semibold text-slate-400 py-1">{d}</div>
+          ))}
+        </div>
+
+        {/* Days */}
+        <div className="grid grid-cols-7 gap-1">
+          {calendarDays.map((day, idx) => {
+            if (day === null) return <div key={`e-${idx}`} />;
+            const dateStr = toDateStr(viewYear, viewMonth, day);
+            const isToday = dateStr === todayStr;
+            const isSelected = dateStr === selectedDate;
+            const hasEntries = scheduledDates.has(dateStr);
+            const dayEntries = hasEntries ? getEntriesForDate(dateStr) : [];
+            const allDone = dayEntries.length > 0 && dayEntries.every((e) => e.done);
+            const hasDelayed = dayEntries.some((entry) => !entry.done && entry.date < todayStr);
+            const hasPriority = dayEntries.some((entry) => entry.priority === 'alta');
+
+            return (
+              <button
+                key={day}
+                onClick={() => setSelectedDate(dateStr)}
+                className={`
+                  relative flex flex-col items-center justify-center rounded-lg text-xs font-semibold transition aspect-square shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400
+                  ${isSelected ? 'ring-2 ring-offset-1 text-white bg-slate-700 dark:bg-slate-200 dark:text-slate-900 shadow-md' : ''}
+                  ${isToday && !isSelected ? 'ring-2 ring-blue-400 ring-offset-1' : ''}
+                  ${!isSelected && !isToday ? 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800' : ''}
+                  ${allDone && !isSelected ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : ''}
+                  ${hasDelayed && !isSelected ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300' : ''}
+                  ${hasEntries && !allDone && !isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''}
+                `}
+                style={isSelected ? { backgroundColor: 'var(--color-primary)' } : undefined}
+              >
+                {day}
+                {hasEntries && (
+                  <span className={`absolute bottom-0.5 w-1.5 h-1.5 rounded-full ${allDone ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                )}
+                {hasPriority && !isSelected && (
+                  <span
+                    className="absolute top-0.5 right-0.5"
+                    title="Esse estudo foi priorizado por dificuldade alta"
+                  >
+                    <Star className="w-3 h-3 text-amber-500" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Legenda */}
+        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500" /> Tem estudo</div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-emerald-500" /> Tudo concluído</div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-rose-500" /> Atrasado</div>
+          <div className="flex items-center gap-1.5"><Star className="w-3 h-3 text-amber-500" /> Prioridade IA</div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm ring-2 ring-blue-400 ring-offset-1" /> Hoje</div>
+        </div>
+      </div>
+
+      {/* Painel do dia selecionado */}
+      {selectedDate && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-sm flex items-center gap-2">
+              <BookOpen className="w-4 h-4" />
+              {new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
+            </h3>
+            <span className="text-xs text-slate-400">
+              {selectedEntries.length} {selectedEntries.length === 1 ? 'disciplina' : 'disciplinas'}
+            </span>
+          </div>
+
+          {/* Formulário para adicionar */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <ModalidadeSelect value={modalidade} onChange={v => { setModalidade(v as 'enem' | 'concurso' | null); setDisciplina(null); }} />
+            <DisciplinaSelect
+              modalidade={modalidade}
+              value={disciplina}
+              onChange={setDisciplina}
+              disciplinas={modalidade ? disciplinas[modalidade] : []}
+            />
+            <input
+              value={formNote}
+              onChange={(e) => setFormNote(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+              placeholder="Nota (opcional)..."
+              className="flex-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm outline-none border border-slate-200 dark:border-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+            />
+            <button
+              onClick={handleAdd}
+              className="px-4 py-2 rounded-lg text-white text-sm font-semibold flex items-center gap-1.5 transition-shadow shadow-md bg-slate-700 dark:bg-slate-200 dark:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400 hover:opacity-90"
+              disabled={!disciplina}
+            >
+              <Plus className="w-4 h-4" /> Adicionar
+            </button>
+          </div>
+
+          {/* Lista de entradas do dia */}
+          {selectedEntries.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">Nenhuma disciplina agendada para este dia.</p>
+          ) : (
+            <div className="space-y-2">
+              {selectedEntries.map((entry) => (
+                <ScheduleEntryCard
+                  key={entry.id}
+                  entry={entry}
+                  onToggle={() => toggleDone(entry.id)}
+                  onRemove={() => removeEntry(entry.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedEntry && (
+        <div className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-slate-900 dark:text-slate-100">Bloco de estudo</h4>
+              <button
+                type="button"
+                onClick={() => setSelectedEntryId(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm space-y-1">
+              <p><strong>Matéria:</strong> {selectedEntry.subject}</p>
+              <p><strong>Tópico:</strong> {selectedEntry.topic || 'Tópico livre'}</p>
+              <p><strong>Horário:</strong> {selectedEntry.startTime || '--:--'} - {selectedEntry.endTime || '--:--'}</p>
+              <p><strong>Tipo:</strong> {getStudyTypeLabel(selectedEntry.studyType)}</p>
+            </div>
+
+            <input
+              value={swapSubjectInput}
+              onChange={(event) => setSwapSubjectInput(event.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+              placeholder="Trocar para matéria..."
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={handleCompleteBlock}
+                className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white inline-flex items-center justify-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" /> Concluir
+              </button>
+              <button
+                type="button"
+                onClick={handlePostponeBlock}
+                className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500 text-white inline-flex items-center justify-center gap-1.5"
+              >
+                <PauseCircle className="w-3.5 h-3.5" /> Adiar
+              </button>
+              <button
+                type="button"
+                onClick={handleSwapBlock}
+                className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 inline-flex items-center justify-center gap-1.5"
+              >
+                <Repeat2 className="w-3.5 h-3.5" /> Trocar
+              </button>
+              <button
+                type="button"
+                onClick={handleMarkAbsent}
+                className="px-3 py-2 rounded-lg text-xs font-semibold bg-rose-600 text-white inline-flex items-center justify-center gap-1.5"
+              >
+                <AlertOctagon className="w-3.5 h-3.5" /> Faltou
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Card individual ──────────────────────────────────────────
+interface ScheduleEntryCardProps {
+  entry: ScheduleEntry;
+  onToggle: () => void;
+  onRemove: () => void;
+}
+
+const ScheduleEntryCard: React.FC<ScheduleEntryCardProps> = ({ entry, onToggle, onRemove }) => {
+  const cfg = MATERIAS_CONFIG[entry.subject as MateriaTipo] || {
+    icon: '📚',
+    color: 'text-gray-700',
+    bgColor: 'bg-gray-50',
+    borderColor: 'border-gray-200',
+  };
+
+  return (
+    <div
+      className={`flex items-center gap-3 p-3 rounded-xl border transition ${
+        entry.done
+          ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+          : `${cfg.bgColor} dark:bg-slate-800/70 ${cfg.borderColor} dark:border-slate-700`
+      }`}
+    >
+      {/* Toggle */}
+      <button onClick={onToggle} className="flex-shrink-0 transition">
+        {entry.done ? (
+          <CheckCircle className="w-5 h-5 text-emerald-500" />
+        ) : (
+          <Circle className="w-5 h-5 text-slate-400 hover:text-blue-500" />
+        )}
+      </button>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className={`text-sm font-semibold ${entry.done ? 'line-through text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}>
+            {cfg.icon} {entry.subject}
+          </p>
+          {entry.priority === 'alta' && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              <Star className="w-2.5 h-2.5" /> Prioridade IA
+            </span>
+          )}
+        </div>
+
+        {(entry.topic || entry.studyType) && (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+            {entry.topic ? `Tópico: ${entry.topic}` : 'Tópico livre'} • {getStudyTypeLabel(entry.studyType)}
+          </p>
+        )}
+
+        {entry.aiReason && (
+          <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-0.5">
+            {entry.aiReason}
+          </p>
+        )}
+
+        {entry.note && (
+          <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5 truncate">
+            <StickyNote className="w-3 h-3 flex-shrink-0" /> {entry.note}
+          </p>
+        )}
+      </div>
+
+      {/* Remove */}
+      <button
+        onClick={onRemove}
+        className="flex-shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
+export default StudyScheduleCalendar;
