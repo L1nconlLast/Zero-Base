@@ -1,7 +1,7 @@
 # Relatório Final — Auth Hardening (Supabase)
 
 Data: 26/02/2026
-Projeto: medicina-do-zero-v2
+Projeto: zero-base-v2
 Status: ✅ Concluído e validado
 
 ## 1) Objetivo

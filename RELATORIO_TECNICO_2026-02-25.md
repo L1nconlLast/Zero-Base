@@ -1,4 +1,4 @@
-# Relatório Técnico — Medicina do Zero v2
+# Relatório Técnico — Zero Base v2
 
 **Data:** 25/02/2026  
 **Escopo:** visão técnica do estado atual do projeto (código, arquitetura, qualidade, performance e riscos)

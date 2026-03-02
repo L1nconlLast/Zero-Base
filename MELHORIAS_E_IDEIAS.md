@@ -1,4 +1,4 @@
-# Melhorias e Ideias de Implementação — Medicina do Zero v2
+# Melhorias e Ideias de Implementação — Zero Base v2
 
 **Data:** 25/02/2026  
 **Foco:** pontos reais do código que precisam de atenção + ideias concretas de implementação
