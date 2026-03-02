@@ -1,8 +1,11 @@
 ﻿/**
- * ValidaÃ§Ãµes de Schema - Zero Base v2.1
- * ValidaÃ§Ã£o segura de dados importados/exportados
+ * Validações legadas de schema.
+ *
+ * Preferência atual: `src/utils/validation.ts` (Zod).
+ * Este arquivo é mantido por compatibilidade com formatos antigos.
  */
 
+import { MATERIAS } from '../constants';
 import { SessaoEstudo, MateriaTipo } from '../types';
 
 export interface ValidationResult<T> {
@@ -11,10 +14,10 @@ export interface ValidationResult<T> {
   error?: string;
 }
 
-//  Validar SessÃ£o Individual
+// Validar Sessão Individual
 export const validateSession = (data: unknown): ValidationResult<SessaoEstudo> => {
   if (!data || typeof data !== 'object') {
-    return { success: false, error: 'SessÃ£o deve ser um objeto' };
+    return { success: false, error: 'Sessão deve ser um objeto' };
   }
 
   const { id, duracaoMinutos, materia, data: sessionData, pontos } = data as {
@@ -27,28 +30,27 @@ export const validateSession = (data: unknown): ValidationResult<SessaoEstudo> =
 
   // Validar ID
   if (!id || typeof id !== 'string') {
-    return { success: false, error: 'ID invÃ¡lido' };
+    return { success: false, error: 'ID inválido' };
   }
 
-  // Validar duraÃ§Ã£o
+  // Validar duração
   if (typeof duracaoMinutos !== 'number' || duracaoMinutos <= 0) {
-    return { success: false, error: 'DuraÃ§Ã£o deve ser um nÃºmero positivo' };
+    return { success: false, error: 'Duração deve ser um número positivo' };
   }
 
-  // Validar matÃ©ria
-  const validSubjects = ['Anatomia', 'Fisiologia', 'Farmacologia', 'Patologia', 'BioquÃ­mica', 'Histologia', 'Outra'];
-  if (typeof materia !== 'string' || !validSubjects.includes(materia)) {
-    return { success: false, error: `MatÃ©ria invÃ¡lida: ${materia}` };
+  // Validar matéria
+  if (typeof materia !== 'string' || !MATERIAS.includes(materia as MateriaTipo)) {
+    return { success: false, error: `Matéria inválida: ${materia}` };
   }
 
   // Validar data
   if (!(sessionData instanceof Date || typeof sessionData === 'string')) {
-    return { success: false, error: 'Data invÃ¡lida' };
+    return { success: false, error: 'Data inválida' };
   }
 
   // Validar pontos
   if (typeof pontos !== 'number' || pontos < 0) {
-    return { success: false, error: 'Pontos devem ser um nÃºmero nÃ£o-negativo' };
+    return { success: false, error: 'Pontos devem ser um número não-negativo' };
   }
 
   return {
@@ -63,10 +65,10 @@ export const validateSession = (data: unknown): ValidationResult<SessaoEstudo> =
   };
 };
 
-//  Validar MÃºltiplas SessÃµes
+// Validar Múltiplas Sessões
 export const validateSessions = (data: unknown): ValidationResult<SessaoEstudo[]> => {
   if (!Array.isArray(data)) {
-    return { success: false, error: 'SessÃµes devem ser um array' };
+    return { success: false, error: 'Sessões devem ser um array' };
   }
 
   const validSessions: SessaoEstudo[] = [];
@@ -77,7 +79,7 @@ export const validateSessions = (data: unknown): ValidationResult<SessaoEstudo[]
     if (result.success && result.data) {
       validSessions.push(result.data);
     } else {
-      errors.push(`SessÃ£o ${index + 1}: ${result.error}`);
+      errors.push(`Sessão ${index + 1}: ${result.error}`);
     }
   });
 
@@ -88,7 +90,7 @@ export const validateSessions = (data: unknown): ValidationResult<SessaoEstudo[]
   return { success: true, data: validSessions };
 };
 
-//  Validar Dados de ImportaÃ§Ã£o Completos
+// Validar Dados de Importação Completos
 export interface ImportedData {
   sessions: SessaoEstudo[];
   userLevel: number;
@@ -98,7 +100,7 @@ export interface ImportedData {
 
 export const validateImportData = (data: unknown): ValidationResult<ImportedData> => {
   if (!data || typeof data !== 'object') {
-    return { success: false, error: 'Dados invÃ¡lidos' };
+    return { success: false, error: 'Dados inválidos' };
   }
 
   const { sessions, userLevel, xp } = data as {
@@ -108,24 +110,24 @@ export const validateImportData = (data: unknown): ValidationResult<ImportedData
     exportedAt?: unknown;
   };
 
-  // Validar sessÃµes
+  // Validar sessões
   if (!Array.isArray(sessions)) {
-    return { success: false, error: 'SessÃµes deve ser um array' };
+    return { success: false, error: 'Sessões deve ser um array' };
   }
 
   const sessionsValidation = validateSessions(sessions);
   if (!sessionsValidation.success) {
-    return { success: false, error: `Erro nas sessÃµes: ${sessionsValidation.error}` };
+    return { success: false, error: `Erro nas sessões: ${sessionsValidation.error}` };
   }
 
-  // Validar nÃ­vel
+  // Validar nível
   if (typeof userLevel !== 'number' || userLevel < 1) {
     return { success: false, error: 'Level deve ser um nÃºmero maior que 0' };
   }
 
   // Validar XP
   if (typeof xp !== 'number' || xp < 0) {
-    return { success: false, error: 'XP deve ser um nÃºmero nÃ£o-negativo' };
+    return { success: false, error: 'XP deve ser um número não-negativo' };
   }
 
   return {
@@ -141,18 +143,18 @@ export const validateImportData = (data: unknown): ValidationResult<ImportedData
   };
 };
 
-//  Validar Email
+// Validar Email
 export const validateEmail = (email: string): ValidationResult<string> => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   
   if (!emailRegex.test(email)) {
-    return { success: false, error: 'Email invÃ¡lido' };
+    return { success: false, error: 'Email inválido' };
   }
 
   return { success: true, data: email };
 };
 
-//  Validar Nome
+// Validar Nome
 export const validateName = (name: string): ValidationResult<string> => {
   if (!name || name.trim().length < 3) {
     return { success: false, error: 'Nome deve ter pelo menos 3 caracteres' };
