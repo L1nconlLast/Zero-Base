@@ -70,6 +70,7 @@ src/
 ## Organização do Repositório
 
 - Guia de organização: `docs/ORGANIZACAO_REPOSITORIO.md`
+- Resumo executivo: `docs/RESUMO_ZERO_BASE_V2.md`
 - Índice de arquivos: `INDEX_ARQUIVOS.html`
 - Estrutura detalhada: `ESTRUTURA_PROJETO.txt`
 
@@ -126,6 +127,7 @@ npm run dev -- --port 3000
 - `INICIO_RAPIDO.txt` - Comandos rápidos
 - `GUIA_INSTALACAO.html` - Guia visual
 - `docs/ORGANIZACAO_REPOSITORIO.md` - Mapa e convenções de organização
+- `docs/RESUMO_ZERO_BASE_V2.md` - Resumo executivo consolidado (Notion + repositório)
 
 ---
 
