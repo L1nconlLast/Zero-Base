@@ -84,6 +84,7 @@ describe('Gerenciamento de Dados', () => {
 
     cy.contains(/importados com sucesso|importado com sucesso/i).should('be.visible');
 
+    cy.navigateTo('Progresso');
     cy.navigateTo('Dashboard');
     cy.contains('600').should('be.visible');
   });
@@ -141,6 +142,7 @@ describe('Gerenciamento de Dados', () => {
     cy.contains('button', /sim, limpar tudo/i).click();
     cy.contains(/dados foram limpos/i).should('be.visible');
 
+    cy.navigateTo('Progresso');
     cy.navigateTo('Dashboard');
     cy.contains(/pontos totais/i).should('be.visible');
     cy.contains('0').should('be.visible');

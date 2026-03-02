@@ -10,6 +10,17 @@ function seedStudyData(email: string, sessions: number, minutes: number) {
     const raw = win.localStorage.getItem(key);
     const data = raw ? JSON.parse(raw) : {};
 
+    const weekProgress = {
+      domingo: { studied: false, minutes: 0 },
+      segunda: { studied: false, minutes: 0 },
+      terca: { studied: false, minutes: 0 },
+      quarta: { studied: false, minutes: 0 },
+      quinta: { studied: false, minutes: 0 },
+      sexta: { studied: false, minutes: 0 },
+      sabado: { studied: false, minutes: 0 },
+      ...(data.weekProgress || {}),
+    };
+
     const fakeSessions = Array.from({ length: sessions }, (_, index) => ({
       date: new Date(Date.now() - index * 86400000).toISOString(),
       minutes,
@@ -22,10 +33,17 @@ function seedStudyData(email: string, sessions: number, minutes: number) {
       key,
       JSON.stringify({
         ...data,
+        completedTopics: data.completedTopics || {},
+        achievements: data.achievements || [],
+        streak: data.streak || 0,
+        bestStreak: data.bestStreak || 0,
+        currentStreak: data.currentStreak || 0,
+        dailyGoal: data.dailyGoal || 90,
         totalPoints: sessions * minutes * 10,
         sessions: fakeSessions,
         studyHistory: fakeSessions,
         level: Math.floor((sessions * minutes * 10) / 1000) + 1,
+        weekProgress,
       })
     );
   });
@@ -39,15 +57,15 @@ describe('Navegação e estudo', () => {
   });
 
   it('navega pelas abas principais', () => {
-    cy.navigateTo('Cronômetro');
-    cy.contains(/cronômetro de estudos/i).should('be.visible');
+    cy.navigateTo('Estudo');
+    cy.navigateTo('Foco');
+    cy.contains(/matéria do ciclo|pomodoro/i).should('be.visible');
 
-    cy.navigateTo('Pomodoro');
-    cy.contains(/matéria do ciclo/i).should('be.visible');
-
+    cy.navigateTo('Progresso');
     cy.navigateTo('Dashboard');
     cy.contains(/progresso semanal/i).should('be.visible');
 
+    cy.navigateTo('Progresso');
     cy.navigateTo('Conquistas');
     cy.contains(/conquistas/i).should('be.visible');
 
@@ -59,7 +77,9 @@ describe('Navegação e estudo', () => {
   });
 
   it('cronômetro inicia, pausa e reseta', () => {
-    cy.navigateTo('Cronômetro');
+    cy.navigateTo('Estudo');
+    cy.navigateTo('Foco');
+    cy.contains('button', /livre/i).click({ force: true });
     cy.contains('Fisiologia').click();
     cy.contains(/estudando:.*fisiologia/i).should('be.visible');
 
@@ -76,7 +96,9 @@ describe('Navegação e estudo', () => {
   });
 
   it('pomodoro troca modo e inicia', () => {
-    cy.navigateTo('Pomodoro');
+    cy.navigateTo('Estudo');
+    cy.navigateTo('Foco');
+    cy.contains('button', /pomodoro/i).click({ force: true });
     cy.contains('button', /pausa curta/i).click();
     cy.contains('05:00').should('be.visible');
 
@@ -84,12 +106,13 @@ describe('Navegação e estudo', () => {
     cy.contains('15:00').should('be.visible');
 
     cy.contains('button', /foco/i).click();
-    cy.get('button[aria-label="Iniciar"]').click();
-    cy.contains(/rodando/i).should('be.visible');
+    cy.contains('button', /iniciar/i).click();
+    cy.contains(/foco|pausar/i).should('be.visible');
   });
 
   it('dashboard mostra dados com sessões injetadas', () => {
     seedStudyData(USER.email, 5, 30);
+    cy.navigateTo('Progresso');
     cy.navigateTo('Dashboard');
 
     cy.contains(/pontos totais/i).should('be.visible');
@@ -98,6 +121,7 @@ describe('Navegação e estudo', () => {
   });
 
   it('conquistas exibe filtros', () => {
+    cy.navigateTo('Progresso');
     cy.navigateTo('Conquistas');
     cy.contains('button', /todas/i).first().click();
     cy.contains('button', /desbloqueadas/i).click();

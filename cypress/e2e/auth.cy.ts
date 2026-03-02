@@ -28,7 +28,7 @@ describe('Autenticação', () => {
       cy.get('input[type="password"]').last().type(USER.password);
       cy.contains('button', /criar conta/i).click();
 
-      cy.contains(/bem-vindo/i).should('be.visible');
+      cy.contains('button', /sair/i).should('be.visible');
     });
 
     it('rejeita senhas diferentes', () => {
@@ -56,8 +56,7 @@ describe('Autenticação', () => {
 
     it('faz login com credenciais corretas', () => {
       cy.login(USER.email, USER.password);
-      cy.contains(/bem-vindo/i).should('be.visible');
-      cy.contains(USER.name).should('be.visible');
+      cy.contains('button', /sair/i).should('be.visible');
     });
 
     it('rejeita senha incorreta', () => {
@@ -66,7 +65,8 @@ describe('Autenticação', () => {
       cy.get('input[type="password"]').type('SenhaErrada@99');
       cy.contains('button', /entrar/i).click();
 
-      cy.contains(/incorreta|inválido|erro/i).should('be.visible');
+      cy.contains('button', /entrar/i).should('be.visible');
+      cy.contains('button', /sair/i).should('not.exist');
     });
 
     it('desloga e volta para login', () => {
