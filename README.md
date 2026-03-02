@@ -67,6 +67,14 @@ src/
 
 ---
 
+## Organização do Repositório
+
+- Guia de organização: `docs/ORGANIZACAO_REPOSITORIO.md`
+- Índice de arquivos: `INDEX_ARQUIVOS.html`
+- Estrutura detalhada: `ESTRUTURA_PROJETO.txt`
+
+---
+
 ## Tecnologias
 
 - React + TypeScript
@@ -117,6 +125,7 @@ npm run dev -- --port 3000
 - `GUIA_COMPLETO.md` - Documentação detalhada
 - `INICIO_RAPIDO.txt` - Comandos rápidos
 - `GUIA_INSTALACAO.html` - Guia visual
+- `docs/ORGANIZACAO_REPOSITORIO.md` - Mapa e convenções de organização
 
 ---
 
