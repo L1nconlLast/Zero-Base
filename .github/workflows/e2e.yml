@@ -35,7 +35,18 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Run E2E
+      - name: Run E2E (Smoke on PR)
+        if: github.event_name == 'pull_request'
+        uses: cypress-io/github-action@v6
+        with:
+          start: npm run dev
+          wait-on: http://localhost:5173
+          wait-on-timeout: 30
+          browser: chrome
+          record: false
+          spec: cypress/e2e/smoke.cy.ts
+      - name: Run E2E (Full on Push)
+        if: github.event_name != 'pull_request'
         uses: cypress-io/github-action@v6
         with:
           start: npm run dev

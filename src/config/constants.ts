@@ -1,55 +1,51 @@
 ﻿/**
- * Constantes da AplicaÃ§Ã£o - Zero Base v2.1
+ * Constantes de compatibilidade.
+ *
+ * Fonte de verdade: `src/constants.ts`.
  */
 
+import { MATERIAS, STORAGE_KEYS, STUDY } from '../constants';
+
 export const APP_CONFIG = {
-  // Timing (Pomodoro)
   TIMING: {
-    POMODORO_FOCUS: 25 * 60,           // 25 minutos em segundos
-    POMODORO_SHORT_BREAK: 5 * 60,      // 5 minutos
-    POMODORO_LONG_BREAK: 15 * 60,      // 15 minutos
-    POMODORO_CYCLES_FOR_LONG: 4,       // Ciclos atÃ© pausa longa
+    POMODORO_FOCUS: STUDY.DEFAULT_POMODORO_MINUTES * 60,
+    POMODORO_SHORT_BREAK: STUDY.DEFAULT_BREAK_MINUTES * 60,
+    POMODORO_LONG_BREAK: 15 * 60,
+    POMODORO_CYCLES_FOR_LONG: 4,
   },
 
-  // Sistema de XP e NÃ­veis
   XP: {
-    PER_MINUTE: 10,                    // 10 XP por minuto de estudo
-    PER_LEVEL: 1000,                   // 1000 XP por nÃ­vel
+    PER_MINUTE: STUDY.POINTS_PER_MINUTE,
+    PER_LEVEL: 1000,
   },
 
-  // Metas e Limites
   GOALS: {
-    DAILY_GOAL_MINUTES: 180,           // 3 horas por dia
-    MIN_SESSION_MINUTES: 1,            // MÃ­nimo para registrar sessÃ£o
+    DAILY_GOAL_MINUTES: STUDY.DEFAULT_DAILY_GOAL_MINUTES,
+    MIN_SESSION_MINUTES: 1,
   },
 
-  // Chaves de Storage
   STORAGE_KEYS: {
-    SESSIONS: 'medicina-sessions',
-    LEVEL: 'medicina-level',
-    XP: 'medicina-xp',
-    THEME: 'medicina-theme',
-    DARK_MODE: 'medicina-dark-mode',
+    USER: STORAGE_KEYS.USER,
+    DATA_PREFIX: STORAGE_KEYS.DATA_PREFIX,
+    THEME: STORAGE_KEYS.THEME,
+    SESSION: STORAGE_KEYS.SESSION,
   },
 
-  // MatÃ©rias
   SUBJECTS: {
-    ANATOMIA: 'Anatomia',
-    FISIOLOGIA: 'Fisiologia',
-    FARMACOLOGIA: 'Farmacologia',
-    PATOLOGIA: 'Patologia',
-    BIOQUIMICA: 'BioquÃ­mica',
-    HISTOLOGIA: 'Histologia',
-    OUTRA: 'Outra',
+    ANATOMIA: MATERIAS[0],
+    FISIOLOGIA: MATERIAS[1],
+    FARMACOLOGIA: MATERIAS[2],
+    PATOLOGIA: MATERIAS[3],
+    BIOQUIMICA: MATERIAS[4],
+    HISTOLOGIA: MATERIAS[5],
+    OUTRA: MATERIAS[6],
   } as const,
 
-  // App Info
   APP: {
     NAME: 'Zero Base',
     VERSION: '2.1.0',
   },
 } as const;
 
-// Type-safe access
-export type Subject = typeof APP_CONFIG.SUBJECTS[keyof typeof APP_CONFIG.SUBJECTS];
+export type Subject = (typeof APP_CONFIG.SUBJECTS)[keyof typeof APP_CONFIG.SUBJECTS];
 

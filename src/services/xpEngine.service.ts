@@ -1,7 +1,6 @@
 import type { StudySession, UserData } from '../types';
 import { calculateLevel } from '../utils/helpers';
-
-const WEEK_DAYS = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'] as const;
+import { WEEK_DAYS } from '../constants';
 
 const toDayKey = (isoDate: string) => isoDate.slice(0, 10);
 
