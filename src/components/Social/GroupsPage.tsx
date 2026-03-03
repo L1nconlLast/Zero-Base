@@ -11,6 +11,8 @@ interface GroupsPageProps {
   userId?: string | null;
   userName?: string;
   userTotalPoints?: number;
+  weeklyGoalMinutes?: number;
+  weeklyStudiedMinutes?: number;
 }
 
 const toIsoDate = (date: Date) => {
@@ -62,7 +64,13 @@ const formatDatePtBr = (value: string) => {
   return date.toLocaleDateString('pt-BR');
 };
 
-const GroupsPage: React.FC<GroupsPageProps> = ({ userId, userName, userTotalPoints = 0 }) => {
+const GroupsPage: React.FC<GroupsPageProps> = ({
+  userId,
+  userName,
+  userTotalPoints = 0,
+  weeklyGoalMinutes = 900,
+  weeklyStudiedMinutes = 0,
+}) => {
   const [activePanel, setActivePanel] = useState<'chat' | 'desafios' | 'ranking'>('chat');
   const [groups, setGroups] = useState<StudyGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -490,6 +498,67 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ userId, userName, userTotalPoin
     }
   };
 
+  const handleCreateAutomaticWeeklyChallenge = async () => {
+    if (!userId || !selectedGroupId) {
+      toast.error('Selecione um grupo e faça login para criar meta semanal automática.');
+      return;
+    }
+
+    setCreatingChallenge(true);
+    try {
+      const { periodStart, periodEnd } = getWeekRange();
+      const safeGoal = Math.max(30, Number.isFinite(weeklyGoalMinutes) ? Math.round(weeklyGoalMinutes) : 900);
+
+      const created = await socialChallengesService.createChallenge({
+        groupId: selectedGroupId,
+        createdBy: userId,
+        name: `Meta semanal automática (${formatDatePtBr(periodStart)}-${formatDatePtBr(periodEnd)})`,
+        goalType: 'minutes',
+        goalValue: safeGoal,
+        startDate: periodStart,
+        endDate: periodEnd,
+      });
+
+      await socialChallengesService.joinChallenge(created.id, userId);
+
+      setChallenges((previous) => [created, ...previous]);
+      setSelectedChallengeId(created.id);
+      toast.success('Meta semanal automática criada!');
+      void fetchChallengeParticipants(created.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao criar meta semanal automática.');
+    } finally {
+      setCreatingChallenge(false);
+    }
+  };
+
+  const handleSyncWeeklyProgressAutomatically = async () => {
+    if (!userId || !selectedChallengeId || !selectedChallenge) {
+      toast.error('Selecione um desafio para sincronizar o progresso da semana.');
+      return;
+    }
+
+    setSavingChallengeProgress(true);
+    try {
+      const safeWeeklyProgress = Math.max(0, Number.isFinite(weeklyStudiedMinutes) ? Math.round(weeklyStudiedMinutes) : 0);
+
+      await socialChallengesService.upsertOwnProgress({
+        challengeId: selectedChallengeId,
+        userId,
+        progress: safeWeeklyProgress,
+        completed: safeWeeklyProgress >= selectedChallenge.goalValue,
+      });
+
+      setMyChallengeProgressInput(safeWeeklyProgress);
+      toast.success(`Progresso semanal sincronizado: ${safeWeeklyProgress} min`);
+      void fetchChallengeParticipants(selectedChallengeId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao sincronizar progresso semanal.');
+    } finally {
+      setSavingChallengeProgress(false);
+    }
+  };
+
   const handleSyncMyRanking = async () => {
     if (!userId) {
       toast.error('Faça login para atualizar ranking.');
@@ -763,6 +832,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ userId, userName, userTotalPoin
                 <>
                   <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
                     <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Novo desafio</h4>
+                    <div className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+                      Meta semanal configurada: <span className="font-semibold text-slate-900 dark:text-slate-100">{Math.max(0, Math.round(weeklyGoalMinutes))} min</span>
+                    </div>
                     <input
                       value={newChallengeName}
                       onChange={(event) => setNewChallengeName(event.target.value)}
@@ -800,6 +872,16 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ userId, userName, userTotalPoin
                       style={{ backgroundColor: 'var(--color-primary)' }}
                     >
                       {creatingChallenge ? 'Criando desafio...' : 'Criar desafio'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleCreateAutomaticWeeklyChallenge();
+                      }}
+                      disabled={creatingChallenge || !userId}
+                      className="px-3 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 disabled:opacity-50"
+                    >
+                      Criar meta semanal automática
                     </button>
                   </div>
 
@@ -884,6 +966,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ userId, userName, userTotalPoin
                           {userId && (
                             <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
                               <label className="text-xs text-slate-500 dark:text-slate-400">Seu progresso (minutos)</label>
+                              <div className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+                                Progresso detectado nesta semana: <span className="font-semibold text-slate-900 dark:text-slate-100">{Math.max(0, Math.round(weeklyStudiedMinutes))} min</span>
+                              </div>
                               <input
                                 type="number"
                                 min={0}
@@ -901,6 +986,16 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ userId, userName, userTotalPoin
                                 style={{ backgroundColor: 'var(--color-primary)' }}
                               >
                                 {savingChallengeProgress ? 'Salvando...' : 'Salvar progresso'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleSyncWeeklyProgressAutomatically();
+                                }}
+                                disabled={savingChallengeProgress || !selectedChallengeId}
+                                className="w-full px-3 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 disabled:opacity-50"
+                              >
+                                Usar progresso automático da semana
                               </button>
                             </div>
                           )}

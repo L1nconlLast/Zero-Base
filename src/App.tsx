@@ -531,6 +531,51 @@ function App() {
     return userData.weekProgress[day]?.minutes || 0;
   }, [userData.weekProgress]);
 
+  const effectiveSessions = React.useMemo(() => {
+    if (Array.isArray(userData.sessions) && userData.sessions.length > 0) {
+      return userData.sessions;
+    }
+
+    if (Array.isArray(userData.studyHistory) && userData.studyHistory.length > 0) {
+      return userData.studyHistory;
+    }
+
+    return [];
+  }, [userData.sessions, userData.studyHistory]);
+
+  const weeklyStudiedMinutes = React.useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(now.getDate() + diffToMonday);
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+
+    return effectiveSessions.reduce((sum, session) => {
+      const rawDate = session.timestamp || session.date;
+      if (!rawDate) {
+        return sum;
+      }
+
+      const sessionDate = new Date(rawDate);
+      if (Number.isNaN(sessionDate.getTime())) {
+        return sum;
+      }
+
+      if (sessionDate < start || sessionDate > end) {
+        return sum;
+      }
+
+      const duration = Number(session.minutes ?? session.duration ?? 0);
+      return sum + (Number.isFinite(duration) && duration > 0 ? duration : 0);
+    }, 0);
+  }, [effectiveSessions]);
+
   const effectiveTrackForDepartments: 'enem' | 'concursos' = React.useMemo(() => {
     if (preferredStudyTrack === 'hibrido') {
       return hybridEnemWeight >= 50 ? 'enem' : 'concursos';
@@ -1531,7 +1576,13 @@ function App() {
           {/* Página Grupos */}
           {activeTab === 'grupos' && (
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando grupos...</div>}>
-              <GroupsPage userId={supabaseUserId} userName={resolvedDisplayName} userTotalPoints={userData.totalPoints} />
+              <GroupsPage
+                userId={supabaseUserId}
+                userName={resolvedDisplayName}
+                userTotalPoints={userData.totalPoints}
+                weeklyGoalMinutes={weeklyGoalMinutes}
+                weeklyStudiedMinutes={weeklyStudiedMinutes}
+              />
             </Suspense>
           )}
 
