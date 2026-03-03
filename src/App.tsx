@@ -1531,7 +1531,7 @@ function App() {
           {/* Página Grupos */}
           {activeTab === 'grupos' && (
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando grupos...</div>}>
-              <GroupsPage userId={supabaseUserId} userName={resolvedDisplayName} />
+              <GroupsPage userId={supabaseUserId} userName={resolvedDisplayName} userTotalPoints={userData.totalPoints} />
             </Suspense>
           )}
 

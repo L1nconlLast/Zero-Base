@@ -44,6 +44,15 @@ export interface GroupChallenge {
   updatedAt: string;
 }
 
+export interface ChallengeParticipant {
+  id: string;
+  challengeId: string;
+  userId: string;
+  progress: number;
+  completed: boolean;
+  joinedAt: string;
+}
+
 export interface RankingRow {
   id: string;
   userId: string;
