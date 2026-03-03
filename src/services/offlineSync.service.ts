@@ -196,6 +196,10 @@ class OfflineSyncService {
     return [...this.conflictHistory];
   }
 
+  async getPendingQueueItems(): Promise<SyncQueueItem[]> {
+    return this.listPending();
+  }
+
   clearConflictHistory(): void {
     this.conflictHistory = [];
     if (!isBrowser) return;
@@ -350,6 +354,55 @@ class OfflineSyncService {
       };
       request.onerror = () => reject(request.error || new Error('Falha ao atualizar item com erro.'));
     }));
+  }
+
+  private async getQueueItemById(id: number): Promise<SyncQueueItem | null> {
+    return this.withStore<SyncQueueItem | null>(QUEUE_STORE, 'readonly', async (store) => new Promise<SyncQueueItem | null>((resolve, reject) => {
+      const request = store.get(id);
+      request.onsuccess = () => {
+        resolve((request.result as SyncQueueItem | undefined) || null);
+      };
+      request.onerror = () => reject(request.error || new Error('Falha ao buscar item da fila por ID.'));
+    }));
+  }
+
+  async discardQueueItem(id: number): Promise<void> {
+    await this.withStore<void>(QUEUE_STORE, 'readwrite', async (store) => new Promise<void>((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error || new Error('Falha ao descartar item da fila.'));
+    }));
+
+    await this.refreshPendingCount();
+  }
+
+  async reprocessQueueItem(id: number, userId?: string): Promise<void> {
+    const effectiveUserId = userId || this.currentUserId;
+    if (!effectiveUserId) {
+      throw new Error('Usuário não identificado para reprocessar item da fila.');
+    }
+
+    if (!isBrowser || !navigator.onLine) {
+      throw new Error('Sem conexão para reprocessar item da fila.');
+    }
+
+    const item = await this.getQueueItemById(id);
+    if (!item || item.synced_at) {
+      return;
+    }
+
+    try {
+      await this.processItem(item, effectiveUserId);
+      await this.markSynced(item.id);
+      this.setStatus({ lastError: null, lastSyncAt: toIso() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro desconhecido ao reprocessar item.';
+      await this.markFailed(item.id, message);
+      this.setStatus({ lastError: message });
+      throw error;
+    } finally {
+      await this.refreshPendingCount();
+    }
   }
 
   private async resolveConflict(item: SyncQueueItem, remoteUpdatedAt: string | null): Promise<'discard-local' | 'apply-local'> {
@@ -823,4 +876,4 @@ class OfflineSyncService {
 }
 
 export const offlineSyncService = new OfflineSyncService();
-export type { SyncStatus, SyncTable, SyncAction, SyncQueueItem };
+export type { SyncStatus, SyncTable, SyncAction, SyncQueueItem, ConflictHistoryItem };

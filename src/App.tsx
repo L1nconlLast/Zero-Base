@@ -84,6 +84,7 @@ const AcademyPage = lazy(() => import('./components/Academy/AcademyPage'));
 const SettingsPage = lazy(() => import('./pages/Settings'));
 const ConquistasPage = lazy(() => import('./pages/Conquistas'));
 const LocalStoragePage = lazy(() => import('./pages/localStorage'));
+const SyncCenter = lazy(() => import('./components/Settings/SyncCenter'));
 const StudyScheduleCalendar = lazy(() => import('./components/Calendar/StudyScheduleCalendar'));
 const QuizPage = lazy(() => import('./components/Questions/QuizPage'));
 const MockExam = lazy(() => import('./components/Questions/MockExam'));
@@ -1711,6 +1712,7 @@ function App() {
                   }}
                   onClear={handleClearData}
                 />
+                <SyncCenter userId={supabaseUserId} />
               </div>
             </Suspense>
           )}
