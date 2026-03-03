@@ -3,6 +3,7 @@ import { CheckCircle, XCircle, ChevronRight, RotateCcw, Filter, Zap, Trophy } fr
 import { QUESTIONS_BANK, type Question, type Difficulty, type QuestionTrack } from '../../data/questionsBank';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { questionsCloudService } from '../../services/questionsCloud.service';
+import { getDisplayDiscipline } from '../../utils/disciplineLabels';
 
 interface QuizPageProps {
   onEarnXP?: (xp: number) => void;
@@ -62,20 +63,6 @@ const CONCURSO_SUBJECT_ORDER = [
   'Informática',
   'Atualidades',
 ];
-
-const SUBJECT_ICON: Record<string, string> = {
-  Matemática: '📐',
-  Linguagens: '📝',
-  'Ciências Humanas': '🌍',
-  'Ciências da Natureza': '🧪',
-  Redação: '✍️',
-  Português: '📖',
-  'Raciocínio Lógico': '🧠',
-  'Direito Constitucional': '⚖️',
-  'Direito Administrativo': '🏛️',
-  Informática: '💻',
-  Atualidades: '📰',
-};
 
 const ENEM_SUBJECTS = new Set(ENEM_SUBJECT_ORDER);
 const CONCURSO_SUBJECTS = new Set(CONCURSO_SUBJECT_ORDER);
@@ -407,7 +394,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
             </label>
             <div className="flex flex-wrap gap-2">
               {['Todas', ...subjectsByTrack].map((s) => {
-                const icon = SUBJECT_ICON[s] || '📚';
+                const discipline = getDisplayDiscipline(s);
                 return (
                   <button
                     key={s}
@@ -420,7 +407,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
                         : getSubjectChipClass(s, selectedSubject === s)
                     }`}
                   >
-                    {s === 'Todas' ? 'Todas' : `${icon} ${s}`}
+                    {s === 'Todas' ? 'Todas' : `${discipline.icon} ${discipline.label}`}
                   </button>
                 );
               })}
@@ -578,7 +565,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
         {/* Meta info */}
         <div className="flex gap-2 flex-wrap">
           <span className="text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2.5 py-1 rounded-full border border-blue-100 dark:border-blue-800">
-            {(SUBJECT_ICON[currentQuestion.subject] || '📚')} {currentQuestion.subject}
+            {getDisplayDiscipline(currentQuestion.subject).icon} {getDisplayDiscipline(currentQuestion.subject).label}
           </span>
           <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${DIFFICULTY_COLOR[currentQuestion.difficulty]}`}>
             {DIFFICULTY_LABEL[currentQuestion.difficulty]}

@@ -21,6 +21,12 @@ interface GroupMemberRow {
   joined_at: string;
 }
 
+interface UserProfileRow {
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+
 interface GroupMessageRow {
   id: string;
   group_id: string;
@@ -49,10 +55,12 @@ const toStudyGroup = (row: GroupRow): StudyGroup => ({
   updatedAt: row.updated_at,
 });
 
-const toGroupMember = (row: GroupMemberRow): GroupMember => ({
+const toGroupMember = (row: GroupMemberRow, profile?: UserProfileRow): GroupMember => ({
   id: row.id,
   groupId: row.group_id,
   userId: row.user_id,
+  userName: profile?.name || null,
+  userEmail: profile?.email || null,
   role: row.role,
   joinedAt: row.joined_at,
 });
@@ -67,6 +75,8 @@ const toGroupMessage = (row: GroupMessageRow): GroupMessage => ({
 });
 
 class SocialGroupsService {
+  private readonly attachmentBucket = 'group-message-attachments';
+
   async listGroups(): Promise<StudyGroup[]> {
     const client = assertClient();
 
@@ -131,6 +141,43 @@ class SocialGroupsService {
     }
 
     return toGroupMember(data as GroupMemberRow);
+  }
+
+  async listMembers(groupId: string): Promise<GroupMember[]> {
+    const client = assertClient();
+
+    const { data, error } = await client
+      .from('group_members')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('joined_at', { ascending: true });
+
+    if (error) {
+      throw new Error(`Erro ao listar membros do grupo: ${error.message}`);
+    }
+
+    const rows = (data || []) as GroupMemberRow[];
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const userIds = Array.from(new Set(rows.map((row) => row.user_id)));
+    const profileById = new Map<string, UserProfileRow>();
+
+    try {
+      const { data: usersData } = await client
+        .from('users')
+        .select('id, name, email')
+        .in('id', userIds);
+
+      ((usersData || []) as UserProfileRow[]).forEach((user) => {
+        profileById.set(user.id, user);
+      });
+    } catch {
+      // fallback silencioso: continua sem nome/e-mail se a tabela/permissão não estiver disponível
+    }
+
+    return rows.map((row) => toGroupMember(row, profileById.get(row.user_id)));
   }
 
   async listMessages(groupId: string): Promise<GroupMessage[]> {
@@ -218,6 +265,36 @@ class SocialGroupsService {
     }
 
     return toGroupMessage(data as GroupMessageRow);
+  }
+
+  async uploadMessageAttachment(input: {
+    file: File;
+    groupId: string;
+    userId: string;
+  }): Promise<string> {
+    const client = assertClient();
+
+    const extension = (input.file.name.split('.').pop() || 'jpg').toLowerCase();
+    const sanitizedExtension = extension.replace(/[^a-z0-9]/g, '') || 'jpg';
+    const path = `${input.groupId}/${input.userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${sanitizedExtension}`;
+
+    const { error: uploadError } = await client.storage
+      .from(this.attachmentBucket)
+      .upload(path, input.file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(`Erro ao enviar anexo: ${uploadError.message}`);
+    }
+
+    const { data } = client.storage.from(this.attachmentBucket).getPublicUrl(path);
+    if (!data?.publicUrl) {
+      throw new Error('Erro ao obter URL pública do anexo.');
+    }
+
+    return data.publicUrl;
   }
 }
 

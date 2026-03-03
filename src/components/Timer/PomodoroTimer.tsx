@@ -1,13 +1,18 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Pause, RotateCcw, Coffee, Brain, Bell, Info } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { MATERIAS_CONFIG, MateriaTipo } from '../../types';
 import { STUDY_METHODS, getStudyMethodById } from '../../data/studyMethods';
+import { trackEvent } from '../../utils/analytics';
+import { getCycleDisciplineLabels, type StudyTrackLabel } from '../../utils/disciplineLabels';
 
 interface PomodoroTimerProps {
   onFinishSession: (minutes: number, subject: MateriaTipo, methodId?: string) => void;
   selectedMethodId?: string;
   onSelectMethod?: (methodId: string) => void;
+  quickStartSignal?: number;
+  preferredTrack?: StudyTrackLabel;
+  hybridEnemWeight?: number;
 }
 
 type TimerMode = 'focus' | 'shortBreak' | 'longBreak';
@@ -77,6 +82,9 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   onFinishSession,
   selectedMethodId = 'pomodoro',
   onSelectMethod,
+  quickStartSignal,
+  preferredTrack = 'enem',
+  hybridEnemWeight = 70,
 }) => {
   const [methodId, setMethodId] = useState(selectedMethodId);
   const [mode, setMode] = useState<TimerMode>('focus');
@@ -85,10 +93,51 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   const [subject, setSubject] = useState<MateriaTipo>('Anatomia');
   const [longBreakOverrideMinutes, setLongBreakOverrideMinutes] = useState<number | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const cycleDisciplineLabels = useMemo(
+    () => getCycleDisciplineLabels(preferredTrack, hybridEnemWeight),
+    [preferredTrack, hybridEnemWeight]
+  );
   const selectedMethod = getStudyMethodById(methodId);
   const effectiveLongBreakMinutes = longBreakOverrideMinutes ?? selectedMethod.longBreakMinutes;
   const [timeLeft, setTimeLeft] = useState(selectedMethod.focusMinutes * 60);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previousIsActiveRef = useRef(false);
+
+  const playTone = useCallback((frequency: number, duration: number, volume = 0.05) => {
+    if (typeof window === 'undefined') return;
+    const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, context.currentTime);
+    gainNode.gain.setValueAtTime(volume, context.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, context.currentTime + duration);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+
+    oscillator.start();
+    oscillator.stop(context.currentTime + duration);
+
+    setTimeout(() => {
+      context.close().catch(() => {});
+    }, Math.ceil(duration * 1000) + 50);
+  }, []);
+
+  const playStartSound = useCallback(() => {
+    playTone(720, 0.08, 0.04);
+    setTimeout(() => playTone(920, 0.12, 0.04), 90);
+  }, [playTone]);
+
+  const playWarningSound = useCallback(() => {
+    playTone(520, 0.1, 0.05);
+    setTimeout(() => playTone(520, 0.1, 0.05), 140);
+    setTimeout(() => playTone(520, 0.15, 0.06), 280);
+  }, [playTone]);
 
   useEffect(() => {
     const nextMethod = getStudyMethodById(selectedMethodId);
@@ -100,6 +149,24 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     setLongBreakOverrideMinutes(persistedOverride);
     setTimeLeft(nextMethod.focusMinutes * 60);
   }, [selectedMethodId]);
+
+  useEffect(() => {
+    if (!quickStartSignal) {
+      return;
+    }
+
+    const nextMethod = getStudyMethodById(methodId);
+    setMode('focus');
+    setTimeLeft(nextMethod.focusMinutes * 60);
+    setIsActive(true);
+
+    trackEvent('pomodoro_auto_started', {
+      methodId: nextMethod.id,
+      focusMinutes: nextMethod.focusMinutes,
+      subject,
+      source: 'department_focus_cta',
+    });
+  }, [quickStartSignal, methodId]);
 
   const getModeMinutes = useCallback((phase: TimerMode): number => {
     if (phase === 'focus') return selectedMethod.focusMinutes;
@@ -149,6 +216,20 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
       Notification.requestPermission();
     }
   }, []);
+
+  useEffect(() => {
+    if (isActive && !previousIsActiveRef.current) {
+      playStartSound();
+    }
+    previousIsActiveRef.current = isActive;
+  }, [isActive, playStartSound]);
+
+  useEffect(() => {
+    if (!isActive || timeLeft !== 5) {
+      return;
+    }
+    playWarningSound();
+  }, [isActive, timeLeft, playWarningSound]);
 
   const handleComplete = useCallback(() => {
     audioRef.current?.play().catch(() => {});
@@ -407,13 +488,14 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
             <div className="flex gap-1.5 sm:gap-2 flex-wrap justify-center">
               {(Object.keys(MATERIAS_CONFIG) as MateriaTipo[]).map((key) => {
                 const config = MATERIAS_CONFIG[key];
+                const discipline = cycleDisciplineLabels[key];
                 const isSelected = subject === key;
                 return (
                   <button
                     key={key}
                     onClick={() => !isActive && setSubject(key)}
                     disabled={isActive}
-                    title={key}
+                    title={discipline.label}
                     className={`
                       flex flex-col items-center p-2 sm:p-2.5 rounded-xl border-2 transition-all min-w-[56px] sm:min-w-[60px]
                       ${isSelected
@@ -423,16 +505,16 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
                       ${isActive ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'}
                     `}
                   >
-                    <span className="text-lg sm:text-xl mb-0.5 sm:mb-1">{config.icon}</span>
+                    <span className="text-lg sm:text-xl mb-0.5 sm:mb-1">{discipline.icon}</span>
                     <span className={`text-[9px] sm:text-[10px] font-medium ${isSelected ? config.color : 'text-gray-500'}`}>
-                      {key}
+                      {discipline.label}
                     </span>
                   </button>
                 );
               })}
             </div>
             <p className="text-center text-xs mt-3 text-gray-400">
-              Estudando: <strong className={MATERIAS_CONFIG[subject].color}>{MATERIAS_CONFIG[subject].icon} {subject}</strong>
+              Estudando: <strong className={MATERIAS_CONFIG[subject].color}>{cycleDisciplineLabels[subject].icon} {cycleDisciplineLabels[subject].label}</strong>
             </p>
           </div>
         )}

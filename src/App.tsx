@@ -41,6 +41,7 @@ import { profilePreferencesService } from './services/profilePreferences.service
 import { userProfileService } from './services/userProfile.service';
 import { xpEngineService } from './services/xpEngine.service';
 import { offlineSyncService } from './services/offlineSync.service';
+import { weeklyStreakService } from './services/weeklyStreak.service';
 import { STUDY_METHODS } from './data/studyMethods';
 import type { SmartScheduleProfile } from './utils/smartScheduleEngine';
 
@@ -48,6 +49,7 @@ import type { SmartScheduleProfile } from './utils/smartScheduleEngine';
 import { UserData, MateriaTipo } from './types';
 import { getDayOfWeek } from './utils/helpers';
 import { trackEvent } from './utils/analytics';
+import { buildWeeklyRetentionSnapshot } from './utils/weeklyRetention';
 
 const WEEK_DAYS = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'] as const;
 type StudyMode = 'pomodoro' | 'livre';
@@ -85,6 +87,7 @@ const SettingsPage = lazy(() => import('./pages/Settings'));
 const ConquistasPage = lazy(() => import('./pages/Conquistas'));
 const LocalStoragePage = lazy(() => import('./pages/localStorage'));
 const SyncCenter = lazy(() => import('./components/Settings/SyncCenter'));
+const RetentionAdminPanel = lazy(() => import('./components/Settings/RetentionAdminPanel').then((module) => ({ default: module.RetentionAdminPanel })));
 const StudyScheduleCalendar = lazy(() => import('./components/Calendar/StudyScheduleCalendar'));
 const QuizPage = lazy(() => import('./components/Questions/QuizPage'));
 const MockExam = lazy(() => import('./components/Questions/MockExam'));
@@ -96,7 +99,18 @@ const EmptyState = lazy(() => import('./components/UI/EmptyState'));
 
 function App() {
   // Authentication (Supabase Auth)
-  const { user, isLoggedIn, loading: authLoading, supabaseUserId: authSupabaseUserId, login, register, logout, resetPassword, loginWithOAuth } = useAuth();
+  const {
+    user,
+    isLoggedIn,
+    loading: authLoading,
+    supabaseUserId: authSupabaseUserId,
+    login,
+    register,
+    logout,
+    resetPassword,
+    loginWithOAuth,
+    enabledOAuthProviders,
+  } = useAuth();
   const [showRegister, setShowRegister] = useState(false);
   const userStorageScope = (user?.email || 'default').toLowerCase();
 
@@ -138,6 +152,7 @@ function App() {
   const [quizPrefilter, setQuizPrefilter] = useState<QuizPrefilter | null>(null);
   const [mockExamPrefilter, setMockExamPrefilter] = useState<MockExamPrefilter | null>(null);
   const [syncUiStatus, setSyncUiStatus] = useState(offlineSyncService.getStatus());
+  const [academyQuickStartSignal, setAcademyQuickStartSignal] = useState(0);
 
   const applyAchievementReward = React.useCallback(
     (achievementId: string, points: number) => {
@@ -342,8 +357,8 @@ function App() {
   const handleFinishStudySession = React.useCallback(
     (minutes: number, subject: MateriaTipo, methodId?: string) => {
       const points = minutes * 10;
-      const day = getDayOfWeek();
       const existingSessions = userData.sessions || userData.studyHistory || [];
+      const previousWeeklyRetention = buildWeeklyRetentionSnapshot(existingSessions);
       const isFirstSession = existingSessions.length === 0;
       const newSession = {
         date: new Date().toISOString(),
@@ -353,11 +368,59 @@ function App() {
         duration: minutes,
         methodId,
       };
+      const nextWeeklyRetention = buildWeeklyRetentionSnapshot([...existingSessions, newSession]);
 
       setUserData((prev) => xpEngineService.applyStudySessions(prev, [newSession]));
       toast.success(`Sessão finalizada. Você ganhou ${points} pontos.`, {
         duration: 4000
       });
+
+      trackEvent(
+        'study_session_completed',
+        {
+          minutes,
+          subject,
+          methodId: methodId || null,
+          points,
+          weeklyDaysCompleted: nextWeeklyRetention.studiedDays,
+          weeklyTarget: nextWeeklyRetention.targetDays,
+          weeklyMaintained: nextWeeklyRetention.isMaintained,
+        },
+        { userEmail: user?.email },
+      );
+
+      const progressedWeek = nextWeeklyRetention.studiedDays > previousWeeklyRetention.studiedDays;
+      if (progressedWeek) {
+        trackEvent(
+          'weekly_streak_progress',
+          {
+            weekStart: nextWeeklyRetention.weekStart,
+            daysCompleted: nextWeeklyRetention.studiedDays,
+            targetDays: nextWeeklyRetention.targetDays,
+          },
+          { userEmail: user?.email },
+        );
+
+        if (nextWeeklyRetention.studiedDays === 1) {
+          toast('🌱 Você começou sua semana de estudos (1/4).', { icon: '🌱' });
+        } else if (nextWeeklyRetention.studiedDays === 2) {
+          toast('💪 Ótimo ritmo! Você já está em 2/4 dias da missão semanal.', { icon: '💪' });
+        } else if (nextWeeklyRetention.studiedDays === 3) {
+          toast('🔥 Você está consistente! Falta 1 dia para manter a sequência semanal.', { icon: '🔥' });
+        }
+      }
+
+      if (!previousWeeklyRetention.isMaintained && nextWeeklyRetention.isMaintained) {
+        trackEvent(
+          'weekly_streak_completed',
+          {
+            weekStart: nextWeeklyRetention.weekStart,
+            daysCompleted: nextWeeklyRetention.studiedDays,
+          },
+          { userEmail: user?.email },
+        );
+        toast.success('🏆 Semana garantida! Você fechou 4/4 dias de estudo.', { duration: 5000 });
+      }
 
       if (isFirstSession) {
         trackEvent(
@@ -373,12 +436,15 @@ function App() {
       }
 
       if (isSupabaseConfigured && supabaseUserId) {
-        void sessionService.create(supabaseUserId, newSession).catch(() => {
-          toast.error('Falha ao salvar na nuvem. Seus dados continuam salvos localmente.');
-        });
+        void sessionService
+          .create(supabaseUserId, newSession)
+          .then(() => weeklyStreakService.recordStudyDay(supabaseUserId, newSession.date, 4))
+          .catch(() => {
+            toast.error('Falha ao salvar na nuvem. Seus dados continuam salvos localmente.');
+          });
       }
     },
-    [userData, setUserData, supabaseUserId]
+    [userData, setUserData, supabaseUserId, user?.email]
   );
 
   const handleImportData = React.useCallback((data: UserData) => {
@@ -432,7 +498,7 @@ function App() {
           .upsertProfile(supabaseUserId, smartProfile)
           .then(() => saasPlanningService.upsertSubjectLevels(supabaseUserId, smartProfile.subjectDifficulty))
           .catch(() => {
-            toast.error('Perfil SaaS salvo localmente. Falha ao sincronizar onboarding na nuvem.');
+            toast('Perfil SaaS salvo localmente. A sincronização com a nuvem será retomada automaticamente.');
           });
       }
     },
@@ -1076,12 +1142,14 @@ function App() {
           <RegisterForm
             onRegister={handleRegister}
             onSocialLogin={handleSocialLogin}
+            enabledSocialProviders={enabledOAuthProviders}
             onSwitchToLogin={() => setShowRegister(false)}
           />
         ) : (
           <LoginForm
             onLogin={handleLogin}
             onSocialLogin={handleSocialLogin}
+            enabledSocialProviders={enabledOAuthProviders}
             onResetPassword={resetPassword}
             onSwitchToRegister={() => setShowRegister(true)}
           />
@@ -1246,7 +1314,10 @@ function App() {
                 level={userData.level}
                 todayMinutes={todayMinutes}
                 completedContentIds={completedContentIds}
+                currentStreak={userData.currentStreak || 0}
+                sessions={userData.sessions || userData.studyHistory || []}
                 supabaseUserId={supabaseUserId}
+                preferredTrack={preferredStudyTrack}
                 onNavigate={(tab) => setActiveTab(tab)}
                 onOpenTopicQuestions={({ areaName, disciplineName, topicName, target }) => {
                   const normalizedArea = areaName.trim().toLowerCase();
@@ -1333,6 +1404,15 @@ function App() {
                 onCompleteContent={handleCompleteAcademyContent}
                 onRevertCompleteContent={handleRevertAcademyContent}
                 onSyncTotalXp={handleSyncAcademyTotalXp}
+                currentStreak={userData.currentStreak || 0}
+                onStartStudyNow={({ methodId }) => {
+                  if (methodId) {
+                    setSelectedMethodId(methodId);
+                  }
+                  setActiveTab('foco');
+                  setActiveStudyMode('pomodoro');
+                  setAcademyQuickStartSignal((prev) => prev + 1);
+                }}
                 onApplyMethod={(methodId) => {
                   setSelectedMethodId(methodId);
                   setActiveTab('foco');
@@ -1350,90 +1430,121 @@ function App() {
                 <p className="text-sm text-slate-600 dark:text-slate-400">Escolha o modo e comece a pontuar.</p>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-[0.12em] mb-3">
-                  🎯 Objetivo de Estudo
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <button
-                    onClick={() => setPreferredStudyTrack('enem')}
-                    className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition ${
-                      preferredStudyTrack === 'enem'
-                        ? 'text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                    }`}
-                    style={preferredStudyTrack === 'enem' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-[0.12em]">
+                      🎯 Objetivo de Estudo
+                    </p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                      Defina sua trilha principal e ajuste os pesos da rotina.
+                    </p>
+                  </div>
+                  <span
+                    className="text-xs font-semibold px-3 py-1 rounded-full border"
+                    style={{
+                      color: 'var(--color-primary)',
+                      borderColor: 'color-mix(in srgb, var(--color-primary) 30%, transparent)',
+                      backgroundColor: 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
+                    }}
                   >
-                    ENEM
-                  </button>
-                  <button
-                    onClick={() => setPreferredStudyTrack('concursos')}
-                    className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition ${
-                      preferredStudyTrack === 'concursos'
-                        ? 'text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                    }`}
-                    style={preferredStudyTrack === 'concursos' ? { backgroundColor: 'var(--color-primary)' } : undefined}
-                  >
-                    Concurso
-                  </button>
-                  <button
-                    onClick={() => setPreferredStudyTrack('hibrido')}
-                    className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition ${
-                      preferredStudyTrack === 'hibrido'
-                        ? 'text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                    }`}
-                    style={preferredStudyTrack === 'hibrido' ? { backgroundColor: 'var(--color-primary)' } : undefined}
-                  >
-                    Híbrido
-                  </button>
+                    Modo ativo: {preferredStudyTrack === 'enem' ? 'ENEM' : preferredStudyTrack === 'concursos' ? 'Concurso' : 'Híbrido'}
+                  </span>
                 </div>
 
-                {preferredStudyTrack === 'hibrido' && (
-                  <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-800/60">
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-1.5">
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      onClick={() => setPreferredStudyTrack('enem')}
+                      className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                        preferredStudyTrack === 'enem'
+                          ? 'text-white shadow-sm'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-white/80 dark:hover:bg-slate-700/70'
+                      }`}
+                      style={preferredStudyTrack === 'enem' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                    >
+                      ENEM
+                    </button>
+                    <button
+                      onClick={() => setPreferredStudyTrack('concursos')}
+                      className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                        preferredStudyTrack === 'concursos'
+                          ? 'text-white shadow-sm'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-white/80 dark:hover:bg-slate-700/70'
+                      }`}
+                      style={preferredStudyTrack === 'concursos' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                    >
+                      Concurso
+                    </button>
+                    <button
+                      onClick={() => setPreferredStudyTrack('hibrido')}
+                      className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                        preferredStudyTrack === 'hibrido'
+                          ? 'text-white shadow-sm'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-white/80 dark:hover:bg-slate-700/70'
+                      }`}
+                      style={preferredStudyTrack === 'hibrido' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                    >
+                      Híbrido
+                    </button>
+                  </div>
+                  <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5">
+                    <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 font-medium">
+                      {preferredStudyTrack === 'enem'
+                        ? '📘 ENEM: foco em competências e provas multidisciplinares.'
+                        : preferredStudyTrack === 'concursos'
+                          ? '🏛️ Concurso: treino orientado por edital, banca e objetividade.'
+                          : '🔀 Híbrido: equilíbrio dinâmico entre ENEM e Concurso.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {preferredStudyTrack === 'hibrido' && (
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-800/60">
+                      <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">
+                        ⚖️ Peso por objetivo
+                      </p>
+                      <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                        <span>ENEM: {hybridEnemWeight}%</span>
+                        <span>Concurso: {hybridConcursoWeight}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={10}
+                        max={90}
+                        step={5}
+                        value={hybridEnemWeight}
+                        onChange={(event) => setHybridEnemWeight(Number(event.target.value))}
+                        className="w-full accent-[var(--color-primary)]"
+                      />
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        Fórmula ativa: P = {(hybridEnemWeight / 100).toFixed(2)}E + {(hybridConcursoWeight / 100).toFixed(2)}C
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-800/60">
                     <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">
-                      ⚖️ Peso por objetivo
+                      🗓️ Meta semanal
                     </p>
                     <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                      <span>ENEM: {hybridEnemWeight}%</span>
-                      <span>Concurso: {hybridConcursoWeight}%</span>
+                      <span>{weeklyGoalMinutes} min/semana</span>
+                      <span>{(weeklyGoalMinutes / 60).toFixed(1)} h</span>
                     </div>
                     <input
                       type="range"
-                      min={10}
-                      max={90}
-                      step={5}
-                      value={hybridEnemWeight}
-                      onChange={(event) => setHybridEnemWeight(Number(event.target.value))}
-                      className="w-full"
+                      min={300}
+                      max={2400}
+                      step={30}
+                      value={weeklyGoalMinutes}
+                      onChange={(event) => setWeeklyGoalMinutes(Number(event.target.value))}
+                      className="w-full accent-[var(--color-primary)]"
                     />
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                      Fórmula ativa: P = {(hybridEnemWeight / 100).toFixed(2)}E + {(hybridConcursoWeight / 100).toFixed(2)}C
-                    </p>
                   </div>
-                )}
-
-                <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-800/60">
-                  <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">
-                    🗓️ Meta semanal
-                  </p>
-                  <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                    <span>{weeklyGoalMinutes} min/semana</span>
-                    <span>{(weeklyGoalMinutes / 60).toFixed(1)} h</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={300}
-                    max={2400}
-                    step={30}
-                    value={weeklyGoalMinutes}
-                    onChange={(event) => setWeeklyGoalMinutes(Number(event.target.value))}
-                    className="w-full"
-                  />
                 </div>
 
-                <div className="mt-3 text-xs">
+                <div className="mt-3 text-xs rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3">
                   {preferencesSyncStatus === 'syncing' && (
                     <p className="text-sky-600 dark:text-sky-300">☁️ Sincronizando preferências na nuvem...</p>
                   )}
@@ -1469,7 +1580,9 @@ function App() {
                   <h3 className="font-semibold text-slate-900 dark:text-slate-100">📚 Método completo para Concurso</h3>
                   <ul className="text-sm text-slate-700 dark:text-slate-300 space-y-1">
                     <li>• Estude pelo edital e banca (Cebraspe, FGV, FCC), evitando assuntos soltos.</li>
+                    <li>• Disciplinas-base: Português, Raciocínio Lógico, Direito Constitucional, Direito Administrativo, Informática e Atualidades.</li>
                     <li>• Método 4F: Foco no edital, Fazer questões da banca, Fichas de revisão, Flashcards.</li>
+                    <li>• Ciclo sugerido: Seg Português, Ter Constitucional+Administrativo, Qua Informática, Qui Raciocínio, Sex Atualidades+revisão, Sáb simulado de banca.</li>
                     <li>• Aprofunde parte técnica e resolução objetiva por estilo de cobrança.</li>
                     <li>• Regra de ouro: 80% questões, 15% teoria, 5% revisão ativa diária.</li>
                   </ul>
@@ -1479,7 +1592,9 @@ function App() {
                   <h3 className="font-semibold text-slate-900 dark:text-slate-100">🔀 Método híbrido ENEM + Concurso</h3>
                   <ul className="text-sm text-slate-700 dark:text-slate-300 space-y-1">
                     <li>• Foco principal e secundário com pesos dinâmicos ({hybridEnemWeight}% ENEM / {hybridConcursoWeight}% Concurso).</li>
-                    <li>• Ciclo misto recomendado: Matemática ENEM, Português técnico, Humanas ENEM, Raciocínio Lógico, Natureza, simulado misto, revisão inteligente.</li>
+                    <li>• Disciplinas ENEM: Matemática, Linguagens, Ciências Humanas, Ciências da Natureza e Redação.</li>
+                    <li>• Disciplinas Concurso: Português, Raciocínio Lógico, Direito Constitucional, Direito Administrativo, Informática e Atualidades.</li>
+                    <li>• Ciclo misto recomendado: Matemática ENEM, Português, Humanas, Constitucional/Administrativo, Natureza, Informática, Redação e simulado misto.</li>
                     <li>• O sistema redistribui treino por desempenho e nunca deixa uma trilha zerar.</li>
                     <li>• Estratégia: interpretação + técnica de banca com revisão espaçada contínua.</li>
                   </ul>
@@ -1501,6 +1616,9 @@ function App() {
                     onFinishSession={handleFinishStudySession}
                     selectedMethodId={selectedMethodId}
                     onSelectMethod={setSelectedMethodId}
+                    quickStartSignal={academyQuickStartSignal}
+                    preferredTrack={preferredStudyTrack}
+                    hybridEnemWeight={hybridEnemWeight}
                   />
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
                     <h3 className="font-semibold text-slate-100 mb-2 flex items-center gap-2">
@@ -1517,7 +1635,11 @@ function App() {
               ) : (
                 <div className="max-w-2xl mx-auto">
                   <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando timer...</div>}>
-                    <StudyTimer onFinishSession={handleFinishStudySession} />
+                    <StudyTimer
+                      onFinishSession={handleFinishStudySession}
+                      preferredTrack={preferredStudyTrack}
+                      hybridEnemWeight={hybridEnemWeight}
+                    />
                   </Suspense>
                 </div>
               )}
@@ -1713,6 +1835,7 @@ function App() {
                   onClear={handleClearData}
                 />
                 <SyncCenter userId={supabaseUserId} />
+                <RetentionAdminPanel />
               </div>
             </Suspense>
           )}

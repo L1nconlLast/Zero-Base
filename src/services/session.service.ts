@@ -32,7 +32,7 @@ const TABLE_NAME = 'study_sessions';
 
 const assertClient = () => {
   if (!isSupabaseConfigured || !supabase) {
-    throw new Error('Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.');
+    throw new Error('Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY (ou VITE_SUPABASE_ANON_KEY).');
   }
   return supabase;
 };

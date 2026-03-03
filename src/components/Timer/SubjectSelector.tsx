@@ -1,6 +1,7 @@
 import React from 'react';
 import { BookOpen } from 'lucide-react';
 import { MATERIAS_CONFIG, MateriaTipo } from '../../types';
+import { CYCLE_DISCIPLINE_LABELS } from '../../utils/disciplineLabels';
 
 interface SubjectSelectorProps {
   selected: MateriaTipo;
@@ -28,8 +29,8 @@ export function SubjectSelector({ selected, onChange, className = '' }: SubjectS
               }
             `}
           >
-            <span className="text-xl">{MATERIAS_CONFIG[materia].icon}</span>
-            <span className="text-sm font-semibold">{materia}</span>
+            <span className="text-xl">{CYCLE_DISCIPLINE_LABELS[materia].icon}</span>
+            <span className="text-sm font-semibold">{CYCLE_DISCIPLINE_LABELS[materia].label}</span>
           </button>
         ))}
       </div>
@@ -41,8 +42,8 @@ export function SubjectSelector({ selected, onChange, className = '' }: SubjectS
         ${MATERIAS_CONFIG[selected].borderColor}
       `}>
         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          <span className="text-lg mr-2">{MATERIAS_CONFIG[selected].icon}</span>
-          Estudando: <span className={`font-bold ${MATERIAS_CONFIG[selected].color}`}>{selected}</span>
+          <span className="text-lg mr-2">{CYCLE_DISCIPLINE_LABELS[selected].icon}</span>
+          Estudando: <span className={`font-bold ${MATERIAS_CONFIG[selected].color}`}>{CYCLE_DISCIPLINE_LABELS[selected].label}</span>
         </p>
       </div>
     </div>

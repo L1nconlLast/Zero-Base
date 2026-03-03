@@ -13,6 +13,7 @@ import {
 import { adaptiveCloudService } from '../../services/adaptiveCloud.service';
 import { isSupabaseConfigured } from '../../services/supabase.client';
 import toast from 'react-hot-toast';
+import { getDisplayDiscipline } from '../../utils/disciplineLabels';
 
 interface AdaptiveInsightsPageProps {
   userKey: string;
@@ -177,7 +178,7 @@ const AdaptiveInsightsPage: React.FC<AdaptiveInsightsPageProps> = ({
               className="w-full rounded-lg bg-slate-800 border border-slate-700 text-slate-100 px-3 py-2 text-sm"
             >
               {MATERIAS.map((value) => (
-                <option key={value} value={value}>{value}</option>
+                <option key={value} value={value}>{getDisplayDiscipline(value).label}</option>
               ))}
             </select>
           </label>
@@ -291,7 +292,7 @@ const AdaptiveInsightsPage: React.FC<AdaptiveInsightsPageProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {criticalWeaknesses.map((metric) => (
               <div key={metric.key} className="rounded-lg border border-slate-700 bg-slate-800/60 p-3">
-                <p className="text-sm font-semibold text-slate-100">{metric.subject} · {metric.topic}</p>
+                <p className="text-sm font-semibold text-slate-100">{getDisplayDiscipline(metric.subject).label} · {metric.topic}</p>
                 <p className="text-xs text-slate-400 mt-1">Prioridade: {metric.priorityScore}</p>
                 <p className="text-xs text-slate-400 mt-1">Erro: {metric.errorRate}% · Última revisão: {formatDate(metric.lastReviewedAt)}</p>
               </div>
@@ -314,7 +315,7 @@ const AdaptiveInsightsPage: React.FC<AdaptiveInsightsPageProps> = ({
           <div className="space-y-2">
             {smartTraining.map((item) => (
               <div key={item.id} className="rounded-lg border border-slate-700 bg-slate-800/60 p-3">
-                <p className="text-sm font-semibold text-slate-100">{item.subject} · {item.topic}</p>
+                <p className="text-sm font-semibold text-slate-100">{getDisplayDiscipline(item.subject).label} · {item.topic}</p>
                 <p className="text-xs text-slate-400 mt-1">
                   {item.questionCount} questões · Dificuldade sugerida: {difficultyOptions.find((option) => option.value === item.recommendedDifficulty)?.label}
                 </p>
@@ -335,7 +336,7 @@ const AdaptiveInsightsPage: React.FC<AdaptiveInsightsPageProps> = ({
               {snapshot.topicMetrics.map((metric) => (
                 <div key={metric.key} className="rounded-lg border border-slate-700 bg-slate-800/60 p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold text-slate-100 text-sm">{metric.subject} · {metric.topic}</p>
+                    <p className="font-semibold text-slate-100 text-sm">{getDisplayDiscipline(metric.subject).label} · {metric.topic}</p>
                     <span className={`text-xs px-2 py-1 rounded-full border ${metric.status === 'weak'
                       ? 'text-amber-300 border-amber-700/40 bg-amber-950/30'
                       : metric.status === 'developing'
@@ -365,7 +366,7 @@ const AdaptiveInsightsPage: React.FC<AdaptiveInsightsPageProps> = ({
               {snapshot.reviewPlan.slice(0, 16).map((reviewItem) => (
                 <div key={reviewItem.id} className="rounded-lg border border-slate-700 bg-slate-800/60 p-3">
                   <p className="text-sm font-semibold text-slate-100">
-                    {reviewItem.subject} · {reviewItem.topic}
+                    {getDisplayDiscipline(reviewItem.subject).label} · {reviewItem.topic}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">Etapa {reviewItem.reviewStage} · {formatDate(reviewItem.scheduledFor)}</p>
                   <p className="text-xs text-slate-300 mt-1">{reviewItem.reason}</p>
@@ -387,7 +388,7 @@ const AdaptiveInsightsPage: React.FC<AdaptiveInsightsPageProps> = ({
             {snapshot.attempts.slice(0, 10).map((attempt) => (
               <div key={attempt.id} className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-slate-100 font-medium">{attempt.subject} · {attempt.topic}</p>
+                  <p className="text-slate-100 font-medium">{getDisplayDiscipline(attempt.subject).label} · {attempt.topic}</p>
                   <p className="text-xs text-slate-400">{difficultyOptions.find((option) => option.value === attempt.difficulty)?.label} · {attempt.responseTimeSeconds}s · {formatDate(attempt.createdAt)}</p>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-full border ${attempt.correct

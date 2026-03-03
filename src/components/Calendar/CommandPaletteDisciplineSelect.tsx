@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 
 const DISCIPLINES = [
-  { value: 'anatomia', label: 'Anatomia', icon: '🦴' },
-  { value: 'fisiologia', label: 'Fisiologia', icon: '❤️' },
-  { value: 'farmacologia', label: 'Farmacologia', icon: '💊' },
-  { value: 'patologia', label: 'Patologia', icon: '🦠' },
-  { value: 'bioquimica', label: 'Bioquímica', icon: '🧪' },
-  { value: 'histologia', label: 'Histologia', icon: '🔬' },
-  { value: 'outra', label: 'Outra', icon: '❓' },
+  { value: 'anatomia', label: 'Matemática', icon: '📐' },
+  { value: 'fisiologia', label: 'Linguagens', icon: '📝' },
+  { value: 'farmacologia', label: 'Humanas', icon: '🌍' },
+  { value: 'patologia', label: 'Natureza', icon: '🔬' },
+  { value: 'bioquimica', label: 'Redação', icon: '✍️' },
+  { value: 'histologia', label: 'Atualidades', icon: '🗞️' },
+  { value: 'outra', label: 'Outras', icon: '📚' },
 ];
 
 interface CommandPaletteDisciplineSelectProps {

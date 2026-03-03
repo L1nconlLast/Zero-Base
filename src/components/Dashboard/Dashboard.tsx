@@ -3,6 +3,7 @@ import { UserData, MATERIAS_CONFIG, MateriaTipo } from '../../types';
 import { Trophy, TrendingUp, Target, Calendar, Flame, Hand, BookOpen, Zap, Brain, Clock3, Layers } from 'lucide-react';
 import { predictNextLevel } from '../../utils/levelPrediction';
 import { STUDY_METHODS } from '../../data/studyMethods';
+import { getDisplayDiscipline } from '../../utils/disciplineLabels';
 
 const DashboardWeeklyProgressChart = React.lazy(() => import('./DashboardWeeklyProgressChart'));
 
@@ -261,7 +262,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <Clock3 className="w-4 h-4" />
             </div>
             <p className="text-sm font-semibold text-slate-100">Foco Guiado</p>
-            <p className="text-xs text-slate-400 mt-1">{smartPlan.focusMinutes} min em {smartPlan.weakestSubject}</p>
+            <p className="text-xs text-slate-400 mt-1">{smartPlan.focusMinutes} min em {getDisplayDiscipline(smartPlan.weakestSubject).label}</p>
           </button>
 
           <button
@@ -285,7 +286,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <Brain className="w-4 h-4" />
             </div>
             <p className="text-sm font-semibold text-slate-100">Bloco de Questões</p>
-            <p className="text-xs text-slate-400 mt-1">Treinar raciocínio em {smartPlan.reviewSubject}</p>
+            <p className="text-xs text-slate-400 mt-1">Treinar raciocínio em {getDisplayDiscipline(smartPlan.reviewSubject).label}</p>
           </button>
 
           <button
@@ -343,9 +344,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div key={subject} className="space-y-2">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                          <span className="text-xl">{materiaConfig.icon}</span>
+                          <span className="text-xl">{getDisplayDiscipline(subject).icon}</span>
                           <span className="text-sm font-medium text-slate-200">
-                            {subject}
+                            {getDisplayDiscipline(subject).label}
                           </span>
                         </div>
                         <span className="text-xs font-bold text-slate-400">

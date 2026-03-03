@@ -1,69 +1,60 @@
 ﻿# Política de Segurança
 
-## Versões Suportadas
+## Versões suportadas
 
-| Versão | Suportada          |
-| ------ | ------------------ |
-| 2.0.x  | :white_check_mark: |
-| 1.0.x  | :x:                |
+| Versão | Suportada |
+| --- | --- |
+| 2.1.x | ✅ |
+| <= 2.0.x | ❌ |
 
-## Recursos de Segurança
+## Arquitetura de segurança atual
 
-### Implementados
-- Criptografia de senhas (bcrypt)
-- Sanitização de inputs (DOMPurify)
-- Rate limiting (3 tentativas)
-- Validação de formulários
-- Tokens de sessão
-- Proteção XSS básica
+- Frontend em Vite/React usa somente chave pública do Supabase (`publishable` ou `anon`) via variáveis `VITE_*`.
+- Autenticação via Supabase Auth (email/senha, reset de senha e OAuth opcional).
+- Controle de acesso a dados via RLS (Row Level Security) e policies SQL em `supabase/migrations`.
+- Operações administrativas privilegiadas usam `SUPABASE_SERVICE_ROLE_KEY` somente em ambiente server-side (Edge Functions), nunca no cliente.
 
-### Não Implementados
-- HTTPS obrigatório (configure no servidor)
-- Backend com banco de dados real
-- Autenticação OAuth
-- Reset de senha via email
-- 2FA (autenticação em dois fatores)
-- Logs de auditoria
+## Controles implementados
 
-## Reportar Vulnerabilidade
+- RLS habilitado e policies por usuário em tabelas de domínio.
+- Hardening de funções/views (ajustes de `search_path` e `security_invoker`).
+- Fluxo OAuth protegido por configuração explícita de providers na UI (`VITE_SUPABASE_OAUTH_PROVIDERS`).
+- Validação de configuração Supabase no runtime sem fallback silencioso de credenciais.
+- Proteções básicas de formulário e mensagens de erro amigáveis para autenticação.
 
-Se você descobriu uma vulnerabilidade de segurança:
+## Requisitos mínimos para produção/beta público
 
-1. **Não abra uma issue pública**
-2. Envie email para: [seu-email@exemplo.com]
-3. Inclua:
-   - Descrição detalhada
-   - Passos para reproduzir
-   - Impacto potencial
-   - Possível solução (se souber)
+- `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` configurados no ambiente de deploy.
+- `SUPABASE_SERVICE_ROLE_KEY` apenas em funções server-side (Vercel serverless/Edge/Supabase Functions).
+- Providers OAuth habilitados no painel Supabase e redirect URLs corretas por ambiente.
+- Confirmação de email e limites de auth revisados no Supabase Auth.
+- Buckets e policies de storage revisados (sem leitura pública além do necessário).
 
-## ⏱️ Tempo de Resposta
+## Boas práticas operacionais
 
-- Responderemos em até 48 horas
-- Correção em até 7 dias para vulnerabilidades críticas
-- Atualização de segurança será lançada ASAP
+- Não comitar `.env` real, tokens, dumps de produção ou credenciais temporárias.
+- Rodar `npm run build` e validações antes de cada release.
+- Revisar policies RLS sempre que criar tabela nova.
+- Separar ambiente de staging e produção para evitar mistura de dados.
+- Monitorar erros em produção (ex.: Sentry + logs Supabase).
 
-## Melhores Práticas
+## Reporte de vulnerabilidades
 
-### Para Desenvolvedores
-- Mantenha dependências atualizadas
-- Use `npm audit` regularmente
-- Nunca comite senhas ou tokens
-- Revise código antes de merge
+Se você identificar uma vulnerabilidade:
 
-### Para Usuários
-- Use senhas fortes
-- Não compartilhe credenciais
-- Faça logout ao sair
-- Mantenha o app atualizado
+1. Não publique detalhes sensíveis em issue aberta.
+2. Envie a descrição com passos de reprodução e impacto.
+3. Inclua contexto de ambiente (staging/prod), rota afetada e evidências.
 
-## Recursos
+## SLA sugerido
 
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [npm Security Best Practices](https://docs.npmjs.com/packages-and-modules/securing-your-code)
-- [React Security Best Practices](https://reactjs.org/docs/security.html)
+- Triagem inicial: até 48h.
+- Correção crítica: até 7 dias.
+- Correções de severidade média/baixa: conforme janela de release.
 
----
+## Referências
 
-**Segurança é responsabilidade de todos.**
+- OWASP Top 10: https://owasp.org/www-project-top-ten/
+- Supabase Security: https://supabase.com/docs/guides/platform/security
+- Vercel Security: https://vercel.com/docs/security
 

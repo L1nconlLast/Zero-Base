@@ -11,17 +11,27 @@ type SocialProvider = 'google' | 'facebook';
 interface LoginFormProps {
   onLogin: (email: string, password: string) => Promise<void> | void;
   onSocialLogin?: (provider: SocialProvider) => Promise<void> | void;
+  enabledSocialProviders?: SocialProvider[];
   onResetPassword?: (email: string) => Promise<{ success: boolean; message: string }>;
   onSwitchToRegister: () => void;
 }
 
-export const LoginForm = ({ onLogin, onSocialLogin, onResetPassword, onSwitchToRegister }: LoginFormProps) => {
+export const LoginForm = ({
+  onLogin,
+  onSocialLogin,
+  enabledSocialProviders = [],
+  onResetPassword,
+  onSwitchToRegister,
+}: LoginFormProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [showResetForm, setShowResetForm] = useState(false);
+  const isGoogleEnabled = enabledSocialProviders.includes('google');
+  const isFacebookEnabled = enabledSocialProviders.includes('facebook');
+  const hasEnabledSocialProviders = isGoogleEnabled || isFacebookEnabled;
 
   useEffect(() => {
     const prefillEmail = localStorage.getItem('auth_prefill_email');
@@ -77,6 +87,11 @@ export const LoginForm = ({ onLogin, onSocialLogin, onResetPassword, onSwitchToR
 
   const handleSocial = async (provider: SocialProvider) => {
     if (!onSocialLogin) return;
+    if (!enabledSocialProviders.includes(provider)) {
+      setError(`${provider === 'google' ? 'Google' : 'Facebook'} não está habilitado no momento.`);
+      return;
+    }
+
     setError('');
     setLoading(true);
     try {
@@ -203,7 +218,7 @@ export const LoginForm = ({ onLogin, onSocialLogin, onResetPassword, onSwitchToR
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
 
-          {onSocialLogin && (
+          {onSocialLogin && hasEnabledSocialProviders && (
             <>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
@@ -215,22 +230,26 @@ export const LoginForm = ({ onLogin, onSocialLogin, onResetPassword, onSwitchToR
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleSocial('google')}
-                  disabled={loading}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                >
-                  Google
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSocial('facebook')}
-                  disabled={loading}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                >
-                  Facebook
-                </button>
+                {isGoogleEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleSocial('google')}
+                    disabled={loading}
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                  >
+                    Google
+                  </button>
+                )}
+                {isFacebookEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleSocial('facebook')}
+                    disabled={loading}
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                  >
+                    Facebook
+                  </button>
+                )}
               </div>
             </>
           )}

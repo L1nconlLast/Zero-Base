@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, Moon, Sun, User } from 'lucide-react';
+import { History, LogOut, Moon, RefreshCw, Sun, User } from 'lucide-react';
 import { ThemeSelector } from './ThemeSelector';
 import { ZeroBaseLogo } from './ZeroBaseLogo';
 
@@ -44,12 +44,12 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center gap-2 sm:gap-3">
         {/* Logo e Título */}
         <ZeroBaseLogo />
 
         {/* Usuário e Ações */}
-        <div className="flex items-center gap-4">
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-3 flex-wrap justify-end">
           {/* Nome do Usuário */}
           <div className="hidden md:flex items-center gap-2 bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-lg">
             <span className="h-7 w-7 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 flex items-center justify-center text-sm">
@@ -79,20 +79,22 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onSyncNow}
               disabled={disableSyncNow}
-              className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-xs font-semibold disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-xs font-semibold disabled:opacity-50"
               title="Sincronizar agora"
             >
-              Sincronizar agora
+              <RefreshCw size={14} />
+              <span className="hidden sm:inline">Sincronizar agora</span>
             </button>
           )}
 
           {onShowConflictHistory && (
             <button
               onClick={onShowConflictHistory}
-              className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-xs font-semibold"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-xs font-semibold"
               title="Ver conflitos resolvidos"
             >
-              Conflitos
+              <History size={14} />
+              <span className="hidden sm:inline">Conflitos</span>
             </button>
           )}
 
@@ -103,18 +105,18 @@ export const Header: React.FC<HeaderProps> = ({
             title={darkMode ? 'Modo Claro' : 'Modo Escuro'}
           >
             {darkMode ? (
-              <Sun className="text-yellow-500" size={24} />
+              <Sun className="text-yellow-500" size={20} />
             ) : (
-              <Moon className="text-gray-600" size={24} />
+              <Moon className="text-gray-600" size={20} />
             )}
           </button>
 
           {/* Logout */}
           <button
             onClick={onLogout}
-            className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors font-semibold"
+            className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors font-semibold"
           >
-            <LogOut size={20} />
+            <LogOut size={18} />
             <span className="hidden md:inline">Sair</span>
           </button>
         </div>

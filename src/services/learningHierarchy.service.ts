@@ -25,6 +25,8 @@ export interface StudyHierarchyAreaNode {
   disciplines: StudyHierarchyDisciplineNode[];
 }
 
+export type StudyHierarchyTrack = 'enem' | 'concursos' | 'hibrido';
+
 interface ModalidadeRow {
   id: string;
   nome: string;
@@ -55,6 +57,215 @@ interface DesempenhoTopicoRow {
   total_questoes_respondidas: number | null;
 }
 
+interface HierarchyCatalogArea {
+  name: string;
+  disciplines: Array<{
+    name: string;
+    topics: Array<{ name: string; estimatedMinutes?: number }>;
+  }>;
+}
+
+const HIERARCHY_CATALOG: Record<StudyHierarchyTrack, HierarchyCatalogArea[]> = {
+  enem: [
+    {
+      name: 'ENEM',
+      disciplines: [
+        {
+          name: 'Linguagens',
+          topics: [
+            { name: 'Interpretação de Texto', estimatedMinutes: 35 },
+            { name: 'Funções da Linguagem', estimatedMinutes: 35 },
+            { name: 'Figuras de Linguagem', estimatedMinutes: 35 },
+            { name: 'Variação Linguística', estimatedMinutes: 35 },
+            { name: 'Gêneros Textuais', estimatedMinutes: 40 },
+            { name: 'Gramática Aplicada', estimatedMinutes: 40 },
+            { name: 'Redação ENEM', estimatedMinutes: 55 },
+          ],
+        },
+        {
+          name: 'História Geral',
+          topics: [
+            { name: 'Idade Moderna', estimatedMinutes: 35 },
+            { name: 'Revoluções Industriais', estimatedMinutes: 40 },
+            { name: 'Guerras Mundiais', estimatedMinutes: 45 },
+          ],
+        },
+        {
+          name: 'História do Brasil',
+          topics: [
+            { name: 'Período Colonial', estimatedMinutes: 35 },
+            { name: 'Império e República', estimatedMinutes: 40 },
+            { name: 'Brasil Contemporâneo', estimatedMinutes: 45 },
+          ],
+        },
+        {
+          name: 'Geografia',
+          topics: [
+            { name: 'Geopolítica Global', estimatedMinutes: 35 },
+            { name: 'Climatologia', estimatedMinutes: 35 },
+            { name: 'Questões Ambientais', estimatedMinutes: 40 },
+          ],
+        },
+        {
+          name: 'Filosofia/Sociologia',
+          topics: [
+            { name: 'Filosofia Moderna', estimatedMinutes: 35 },
+            { name: 'Ética e Política', estimatedMinutes: 35 },
+            { name: 'Sociologia Brasileira', estimatedMinutes: 40 },
+          ],
+        },
+        {
+          name: 'Física',
+          topics: [
+            { name: 'Mecânica', estimatedMinutes: 45 },
+            { name: 'Termologia', estimatedMinutes: 35 },
+            { name: 'Eletricidade', estimatedMinutes: 40 },
+          ],
+        },
+        {
+          name: 'Química',
+          topics: [
+            { name: 'Química Geral', estimatedMinutes: 40 },
+            { name: 'Química Orgânica', estimatedMinutes: 45 },
+            { name: 'Eletroquímica', estimatedMinutes: 40 },
+          ],
+        },
+        {
+          name: 'Matemática',
+          topics: [
+            { name: 'Funções', estimatedMinutes: 45 },
+            { name: 'Geometria', estimatedMinutes: 40 },
+            { name: 'Probabilidade e Estatística', estimatedMinutes: 35 },
+          ],
+        },
+      ],
+    },
+  ],
+  concursos: [
+    {
+      name: 'Concurso',
+      disciplines: [
+        {
+          name: 'Português',
+          topics: [
+            { name: 'Interpretação', estimatedMinutes: 35 },
+            { name: 'Gramática', estimatedMinutes: 40 },
+            { name: 'Redação Oficial', estimatedMinutes: 35 },
+          ],
+        },
+        {
+          name: 'Raciocínio Lógico',
+          topics: [
+            { name: 'Lógica Proposicional', estimatedMinutes: 35 },
+            { name: 'Conjuntos e Diagramas', estimatedMinutes: 35 },
+            { name: 'Análise Combinatória', estimatedMinutes: 40 },
+          ],
+        },
+        {
+          name: 'Direito Constitucional',
+          topics: [
+            { name: 'Direitos Fundamentais', estimatedMinutes: 40 },
+            { name: 'Organização do Estado', estimatedMinutes: 40 },
+            { name: 'Controle de Constitucionalidade', estimatedMinutes: 45 },
+          ],
+        },
+        {
+          name: 'Direito Administrativo',
+          topics: [
+            { name: 'Atos Administrativos', estimatedMinutes: 35 },
+            { name: 'Licitações', estimatedMinutes: 40 },
+            { name: 'Agentes Públicos', estimatedMinutes: 35 },
+          ],
+        },
+        {
+          name: 'Informática',
+          topics: [
+            { name: 'Pacote Office', estimatedMinutes: 35 },
+            { name: 'Segurança da Informação', estimatedMinutes: 35 },
+            { name: 'Internet e Redes', estimatedMinutes: 35 },
+          ],
+        },
+        {
+          name: 'Atualidades',
+          topics: [
+            { name: 'Política Nacional', estimatedMinutes: 30 },
+            { name: 'Economia', estimatedMinutes: 30 },
+            { name: 'Ciência e Tecnologia', estimatedMinutes: 30 },
+          ],
+        },
+      ],
+    },
+  ],
+  hibrido: [
+    {
+      name: 'ENEM',
+      disciplines: [
+        {
+          name: 'Linguagens',
+          topics: [
+            { name: 'Interpretação de Texto', estimatedMinutes: 35 },
+            { name: 'Redação ENEM', estimatedMinutes: 55 },
+          ],
+        },
+        {
+          name: 'Matemática',
+          topics: [
+            { name: 'Funções', estimatedMinutes: 45 },
+            { name: 'Geometria', estimatedMinutes: 40 },
+          ],
+        },
+        {
+          name: 'Ciências Humanas',
+          topics: [
+            { name: 'História do Brasil', estimatedMinutes: 40 },
+            { name: 'Geopolítica', estimatedMinutes: 35 },
+          ],
+        },
+        {
+          name: 'Ciências da Natureza',
+          topics: [
+            { name: 'Física Mecânica', estimatedMinutes: 40 },
+            { name: 'Química Orgânica', estimatedMinutes: 40 },
+          ],
+        },
+      ],
+    },
+    {
+      name: 'Concurso',
+      disciplines: [
+        {
+          name: 'Português',
+          topics: [
+            { name: 'Interpretação', estimatedMinutes: 35 },
+            { name: 'Gramática', estimatedMinutes: 40 },
+          ],
+        },
+        {
+          name: 'Raciocínio Lógico',
+          topics: [
+            { name: 'Lógica Proposicional', estimatedMinutes: 35 },
+            { name: 'Análise Combinatória', estimatedMinutes: 40 },
+          ],
+        },
+        {
+          name: 'Direito Constitucional',
+          topics: [
+            { name: 'Direitos Fundamentais', estimatedMinutes: 40 },
+            { name: 'Organização do Estado', estimatedMinutes: 40 },
+          ],
+        },
+        {
+          name: 'Informática',
+          topics: [
+            { name: 'Pacote Office', estimatedMinutes: 35 },
+            { name: 'Segurança da Informação', estimatedMinutes: 35 },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 const toSafePercent = (value: number): number => {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -65,7 +276,93 @@ const average = (values: number[]): number => {
   return toSafePercent(values.reduce((acc, current) => acc + current, 0) / values.length);
 };
 
+const normalizeKey = (value: string): string => value.trim().toLowerCase();
+
 class LearningHierarchyService {
+  private createTemplateHierarchy(track: StudyHierarchyTrack): StudyHierarchyAreaNode[] {
+    return HIERARCHY_CATALOG[track].map((area) => {
+      const disciplines = area.disciplines.map((discipline) => {
+        const topics: StudyHierarchyTopicNode[] = discipline.topics.map((topic, index) => ({
+          id: `template-${track}-${normalizeKey(area.name).replace(/\s+/g, '-')}-${normalizeKey(discipline.name).replace(/\s+/g, '-')}-${index}`,
+          name: topic.name,
+          progressPercent: 0,
+          status: 'nao_iniciado',
+          accuracyPercent: 0,
+          answeredQuestions: 0,
+          estimatedMinutes: topic.estimatedMinutes ?? 35,
+        }));
+
+        return {
+          id: `template-${track}-${normalizeKey(area.name).replace(/\s+/g, '-')}-${normalizeKey(discipline.name).replace(/\s+/g, '-')}`,
+          name: discipline.name,
+          progressPercent: average(topics.map((topic) => topic.progressPercent)),
+          topics,
+        };
+      });
+
+      return {
+        id: `template-${track}-${normalizeKey(area.name).replace(/\s+/g, '-')}`,
+        name: area.name,
+        progressPercent: average(disciplines.map((discipline) => discipline.progressPercent)),
+        disciplines,
+      };
+    });
+  }
+
+  normalizeHierarchyForTrack(
+    data: StudyHierarchyAreaNode[],
+    track: StudyHierarchyTrack,
+  ): StudyHierarchyAreaNode[] {
+    const template = this.createTemplateHierarchy(track);
+
+    const areaByName = new Map<string, StudyHierarchyAreaNode>(
+      data.map((area) => [normalizeKey(area.name), area]),
+    );
+
+    return template.map((templateArea) => {
+      const existingArea = areaByName.get(normalizeKey(templateArea.name));
+      const disciplineByName = new Map<string, StudyHierarchyDisciplineNode>(
+        (existingArea?.disciplines || []).map((discipline) => [normalizeKey(discipline.name), discipline]),
+      );
+
+      const disciplines = templateArea.disciplines.map((templateDiscipline) => {
+        const existingDiscipline = disciplineByName.get(normalizeKey(templateDiscipline.name));
+        const topicByName = new Map<string, StudyHierarchyTopicNode>(
+          (existingDiscipline?.topics || []).map((topic) => [normalizeKey(topic.name), topic]),
+        );
+
+        const topics = templateDiscipline.topics.map((templateTopic) => {
+          const existingTopic = topicByName.get(normalizeKey(templateTopic.name));
+          return existingTopic
+            ? {
+                ...templateTopic,
+                id: existingTopic.id,
+                progressPercent: toSafePercent(existingTopic.progressPercent),
+                status: existingTopic.status,
+                accuracyPercent: toSafePercent(existingTopic.accuracyPercent),
+                answeredQuestions: Math.max(0, existingTopic.answeredQuestions),
+                estimatedMinutes: existingTopic.estimatedMinutes || templateTopic.estimatedMinutes,
+              }
+            : templateTopic;
+        });
+
+        return {
+          id: existingDiscipline?.id || templateDiscipline.id,
+          name: templateDiscipline.name,
+          progressPercent: average(topics.map((topic) => topic.progressPercent)),
+          topics,
+        };
+      });
+
+      return {
+        id: existingArea?.id || templateArea.id,
+        name: templateArea.name,
+        progressPercent: average(disciplines.map((discipline) => discipline.progressPercent)),
+        disciplines,
+      };
+    });
+  }
+
   async listForUser(userId: string): Promise<StudyHierarchyAreaNode[]> {
     if (!isSupabaseConfigured || !supabase || !userId) {
       return [];
@@ -159,7 +456,12 @@ class LearningHierarchyService {
     return areas;
   }
 
-  buildLocalFallback(sessions: StudySession[], weakAreas: string[]): StudyHierarchyAreaNode[] {
+  buildLocalFallback(sessions: StudySession[], weakAreas: string[], track: StudyHierarchyTrack = 'enem'): StudyHierarchyAreaNode[] {
+    const normalizedTemplate = this.normalizeHierarchyForTrack([], track);
+    if (sessions.length === 0 && weakAreas.length === 0) {
+      return normalizedTemplate;
+    }
+
     const minutesBySubject = sessions.reduce<Record<string, number>>((acc, session) => {
       acc[session.subject] = (acc[session.subject] || 0) + session.minutes;
       return acc;
@@ -197,10 +499,10 @@ class LearningHierarchyService {
     });
 
     if (disciplines.length === 0) {
-      return [];
+      return normalizedTemplate;
     }
 
-    return [
+    const localData: StudyHierarchyAreaNode[] = [
       {
         id: 'local-area-estudos',
         name: 'Plano de Estudos',
@@ -208,6 +510,8 @@ class LearningHierarchyService {
         disciplines,
       },
     ];
+
+    return this.normalizeHierarchyForTrack(localData, track);
   }
 }
 

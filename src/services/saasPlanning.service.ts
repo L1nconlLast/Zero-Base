@@ -48,10 +48,27 @@ const codeToWeekday = (code: string): number => {
   return map[code] ?? 1;
 };
 
+const getSafeExamDate = (examDate: string): string => {
+  const isIsoDate = /^\d{4}-\d{2}-\d{2}$/.test(examDate);
+  if (isIsoDate) {
+    const parsed = new Date(`${examDate}T12:00:00`);
+    if (!Number.isNaN(parsed.getTime())) {
+      return examDate;
+    }
+  }
+
+  const fallback = new Date();
+  fallback.setDate(fallback.getDate() + 90);
+  const y = fallback.getFullYear();
+  const m = String(fallback.getMonth() + 1).padStart(2, '0');
+  const d = String(fallback.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const toProfileRow = (userId: string, profile: SmartScheduleProfile): Omit<ProfileRow, 'id'> & { id: string } => ({
   id: userId,
   goal: profile.examName,
-  exam_date: profile.examDate,
+  exam_date: getSafeExamDate(profile.examDate),
   hours_per_day: profile.hoursPerDay,
   study_days: profile.availableWeekDays.map(weekdayToCode),
   study_style: profile.studyStyle,

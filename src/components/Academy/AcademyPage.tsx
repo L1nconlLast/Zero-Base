@@ -1,6 +1,6 @@
 import React from 'react';
 import toast from 'react-hot-toast';
-import { Crown, CheckCircle2, Lock, GraduationCap, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Crown, CheckCircle2, Lock, GraduationCap, AlertTriangle, TrendingUp, Flame, PlayCircle, ChevronDown, ChevronUp, Target } from 'lucide-react';
 import type { AcademyContent, AcademyDepartment, AcademySubDepartment } from '../../types';
 import { ACADEMY_CONTENT } from '../../data/academyContent';
 import { useAcademyProgress } from '../../hooks/useAcademyProgress';
@@ -15,6 +15,8 @@ interface AcademyPageProps {
   onRevertCompleteContent?: (contentId: string, xpReward: number) => void;
   onSyncTotalXp?: (newTotalXp: number) => void;
   onApplyMethod: (methodId: string) => void;
+  onStartStudyNow?: (payload: { subDepartment: AcademySubDepartment; contentTitle: string; methodId?: string }) => void;
+  currentStreak?: number;
   isProUser: boolean;
 }
 
@@ -103,12 +105,17 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
   onRevertCompleteContent,
   onSyncTotalXp,
   onApplyMethod,
+  onStartStudyNow,
+  currentStreak = 0,
   isProUser,
 }) => {
   const [selectedContent, setSelectedContent] = React.useState<AcademyContent | null>(null);
   const [activeDepartment, setActiveDepartment] = React.useState<AcademyDepartment>('ENEM');
   const [activeSubDepartment, setActiveSubDepartment] = React.useState<AcademySubDepartment>('Natureza');
+  const [expandedSubDepartment, setExpandedSubDepartment] = React.useState<AcademySubDepartment | null>(null);
   const [checkedItems, setCheckedItems] = React.useState<Record<string, boolean>>({});
+  const [isProgressAnimated, setIsProgressAnimated] = React.useState(false);
+  const focusViewStartedAtRef = React.useRef<number>(Date.now());
   const importInputRef = React.useRef<HTMLInputElement | null>(null);
   const notesStorageKey = React.useMemo(
     () => `mdz_academy_notes_${(userEmail || 'default').toLowerCase()}`,
@@ -117,6 +124,23 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
   const [notesByContentId, setNotesByContentId] = React.useState<Record<string, string>>(() => {
     try {
       const raw = window.localStorage.getItem(`mdz_academy_notes_${(userEmail || 'default').toLowerCase()}`);
+      if (!raw) {
+        return {};
+      }
+
+      const parsed = JSON.parse(raw) as Record<string, string>;
+      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const disciplineActivityStorageKey = React.useMemo(
+    () => `mdz_academy_discipline_activity_${(userEmail || 'default').toLowerCase()}`,
+    [userEmail],
+  );
+  const [disciplineActivity, setDisciplineActivity] = React.useState<Record<string, string>>(() => {
+    try {
+      const raw = window.localStorage.getItem(`mdz_academy_discipline_activity_${(userEmail || 'default').toLowerCase()}`);
       if (!raw) {
         return {};
       }
@@ -139,6 +163,29 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
 
   React.useEffect(() => {
     try {
+      window.localStorage.setItem(disciplineActivityStorageKey, JSON.stringify(disciplineActivity));
+    } catch {
+      // noop
+    }
+  }, [disciplineActivityStorageKey, disciplineActivity]);
+
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(disciplineActivityStorageKey);
+      if (!raw) {
+        setDisciplineActivity({});
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as Record<string, string>;
+      setDisciplineActivity(typeof parsed === 'object' && parsed !== null ? parsed : {});
+    } catch {
+      setDisciplineActivity({});
+    }
+  }, [disciplineActivityStorageKey]);
+
+  React.useEffect(() => {
+    try {
       const raw = window.localStorage.getItem(notesStorageKey);
       if (!raw) {
         setNotesByContentId({});
@@ -158,8 +205,27 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
   }, [activeDepartment]);
 
   React.useEffect(() => {
+    setIsProgressAnimated(false);
+    const animationFrame = window.requestAnimationFrame(() => setIsProgressAnimated(true));
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [activeDepartment]);
+
+  React.useEffect(() => {
     setActiveDepartment(preferredTrack === 'enem' ? 'ENEM' : 'Concursos');
   }, [preferredTrack]);
+
+  React.useEffect(() => {
+    focusViewStartedAtRef.current = Date.now();
+    trackEvent(
+      'department_focus_viewed',
+      {
+        department: activeDepartment,
+        streak: currentStreak,
+      },
+      { userEmail },
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const departmentContent = React.useMemo(
     () => ACADEMY_CONTENT.filter((content) => content.department === activeDepartment),
@@ -248,10 +314,154 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
     };
   }, [departmentContent, completedContentIds]);
 
-  const priorityFocus = React.useMemo(
-    () => subDepartmentStats.slice(0, activeDepartment === 'ENEM' ? 3 : 2),
-    [subDepartmentStats, activeDepartment]
+  const markDisciplineInteraction = React.useCallback((subDepartment: AcademySubDepartment) => {
+    setDisciplineActivity((prev) => ({
+      ...prev,
+      [subDepartment]: new Date().toISOString(),
+    }));
+  }, []);
+
+  const getStatusMeta = React.useCallback(
+    (completionRate: number, daysWithoutStudy: number | null) => {
+      if (completionRate >= 70) {
+        return {
+          label: 'Forte',
+          icon: '👑',
+          className: 'text-emerald-700 bg-emerald-100 dark:text-emerald-200 dark:bg-emerald-900/30',
+          borderClass: 'border-emerald-300 dark:border-emerald-700',
+        };
+      }
+
+      if (daysWithoutStudy === null || daysWithoutStudy >= 5) {
+        return {
+          label: 'Parada',
+          icon: '⚠',
+          className: 'text-rose-700 bg-rose-100 dark:text-rose-200 dark:bg-rose-900/30',
+          borderClass: 'border-rose-300 dark:border-rose-700',
+        };
+      }
+
+      return {
+        label: 'Evoluindo',
+        icon: '📈',
+        className: 'text-sky-700 bg-sky-100 dark:text-sky-200 dark:bg-sky-900/30',
+        borderClass: 'border-sky-300 dark:border-sky-700',
+      };
+    },
+    [],
   );
+
+  const smartSubDepartmentStats = React.useMemo(() => {
+    const now = Date.now();
+
+    return subDepartmentStats.map((stat, index) => {
+      const lastActivityIso = disciplineActivity[stat.subDepartment] || null;
+      const daysWithoutStudy = lastActivityIso
+        ? Math.floor((now - new Date(lastActivityIso).getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      const statusMeta = getStatusMeta(stat.completionRate, daysWithoutStudy);
+
+      const isStrategicPriority =
+        activeDepartment === 'ENEM'
+          ? ENEM_STRATEGIC_PRIORITIES.includes(stat.subDepartment)
+          : index < 2;
+
+      const score =
+        (daysWithoutStudy === null ? 10 : Math.min(10, daysWithoutStudy))
+        + (100 - stat.completionRate) * 0.2
+        + (isStrategicPriority ? 2 : 0);
+
+      return {
+        ...stat,
+        lastActivityIso,
+        daysWithoutStudy,
+        statusMeta,
+        isStrategicPriority,
+        score,
+      };
+    });
+  }, [subDepartmentStats, disciplineActivity, getStatusMeta, activeDepartment]);
+
+  const recommendedFocus = React.useMemo(() => {
+    if (smartSubDepartmentStats.length === 0) return null;
+    return [...smartSubDepartmentStats].sort((a, b) => b.score - a.score)[0];
+  }, [smartSubDepartmentStats]);
+
+  const strongestDiscipline = React.useMemo(() => {
+    if (smartSubDepartmentStats.length === 0) return null;
+    return [...smartSubDepartmentStats].sort((a, b) => b.completionRate - a.completionRate)[0];
+  }, [smartSubDepartmentStats]);
+
+  const estimatedDaysToFinish = React.useMemo(() => {
+    const remainingTracks = Math.max(0, departmentSummary.totalTracks - departmentSummary.completedTracks);
+    return remainingTracks * 4;
+  }, [departmentSummary]);
+
+  const handleOpenDiscipline = (subDepartment: AcademySubDepartment) => {
+    markDisciplineInteraction(subDepartment);
+    trackEvent(
+      'academia_disciplina_expandida',
+      {
+        department: activeDepartment,
+        subDepartment,
+      },
+      { userEmail },
+    );
+    setActiveSubDepartment(subDepartment);
+    setExpandedSubDepartment((prev) => (prev === subDepartment ? null : subDepartment));
+  };
+
+  const smartStatsBySubDepartment = React.useMemo(
+    () =>
+      smartSubDepartmentStats.reduce((acc, stat) => {
+        acc[stat.subDepartment] = stat;
+        return acc;
+      }, {} as Record<AcademySubDepartment, (typeof smartSubDepartmentStats)[number]>),
+    [smartSubDepartmentStats],
+  );
+
+  const handleStudyDisciplineNow = (subDepartment: AcademySubDepartment) => {
+    const disciplineTracks = departmentContent.filter((content) => content.subDepartment === subDepartment);
+    const nextContent = disciplineTracks.find((content) => !completedContentIds.includes(content.id)) || disciplineTracks[0];
+
+    if (!nextContent) {
+      toast('Não há trilhas disponíveis nessa disciplina no momento.');
+      return;
+    }
+
+    markDisciplineInteraction(subDepartment);
+    const stat = smartStatsBySubDepartment[subDepartment];
+    const elapsedMs = Date.now() - focusViewStartedAtRef.current;
+    setActiveSubDepartment(subDepartment);
+    setExpandedSubDepartment(subDepartment);
+
+    trackEvent(
+      'department_focus_clicked',
+      {
+        subject: subDepartment,
+        status: (stat?.statusMeta.label || 'Parada').toLowerCase(),
+        completion: stat?.completionRate || 0,
+        streak: currentStreak,
+        secondsToClick: Math.max(0, Math.round(elapsedMs / 1000)),
+        contentId: nextContent.id,
+      },
+      { userEmail },
+    );
+
+    toast.success(`🚀 Iniciando sessão de ${subDepartment}`);
+
+    if (onStartStudyNow) {
+      onStartStudyNow({
+        subDepartment,
+        contentTitle: nextContent.title,
+        methodId: nextContent.applyMethodId,
+      });
+      return;
+    }
+
+    setSelectedContent(nextContent);
+  };
 
   const handleToggleChecklist = (id: string) => {
     setCheckedItems((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -414,75 +624,159 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-700/70 bg-slate-900 p-4">
-        <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Departamento ativo</p>
-        <p className="text-lg font-bold text-slate-100 mt-1">{activeDepartment}</p>
-
-        <div className="mt-4 grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <div className="rounded-lg border border-slate-700 bg-slate-800/80 p-3">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Trilhas</p>
-            <p className="text-lg font-bold text-slate-100 mt-1">{departmentSummary.completedTracks}/{departmentSummary.totalTracks}</p>
-          </div>
-          <div className="rounded-lg border border-slate-700 bg-slate-800/80 p-3">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">Conclusão</p>
-            <p className="text-lg font-bold text-slate-100 mt-1">{departmentSummary.completionRate}%</p>
-          </div>
-          <div className="rounded-lg border border-slate-700 bg-slate-800/80 p-3">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">XP conquistado</p>
-            <p className="text-lg font-bold text-slate-100 mt-1">{departmentSummary.completedXp}</p>
-          </div>
-          <div className="rounded-lg border border-slate-700 bg-slate-800/80 p-3">
-            <p className="text-[11px] uppercase tracking-[0.12em] text-slate-400">XP potencial</p>
-            <p className="text-lg font-bold text-slate-100 mt-1">{departmentSummary.totalXp}</p>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-lg border border-amber-700/30 bg-amber-950/20 p-3">
-          <p className="text-xs font-semibold text-amber-200 inline-flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" /> Prioridade de intervenção
+      <div className="rounded-2xl border border-slate-700/70 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-4 sm:p-5 space-y-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.12em] text-slate-400">{activeDepartment}</p>
+          <p className="text-lg font-bold text-slate-100 mt-1">
+            Você está {departmentSummary.completionRate}% concluído.
           </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {priorityFocus.map((item) => (
-              <button
-                key={item.subDepartment}
-                onClick={() => setActiveSubDepartment(item.subDepartment)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-amber-700/40 bg-amber-900/30 text-amber-100 hover:bg-amber-900/40"
-              >
-                {item.subDepartment} · {item.completionRate}%
-              </button>
-            ))}
+          <p className="text-xs text-slate-400 mt-1">
+            Se mantiver o ritmo atual, termina em aproximadamente {estimatedDaysToFinish} dias.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+          <div className="flex items-center justify-between text-xs text-slate-300 mb-2">
+            <span>Progresso geral</span>
+            <span>{departmentSummary.completedTracks}/{departmentSummary.totalTracks} trilhas</span>
+          </div>
+          <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${isProgressAnimated ? departmentSummary.completionRate : 0}%`, backgroundColor: 'var(--color-primary)' }}
+            />
+          </div>
+          <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300">
+            <span>Conclusão: <strong className="text-slate-100">{departmentSummary.completionRate}%</strong></span>
+            <span>XP: <strong className="text-slate-100">{departmentSummary.completedXp}</strong></span>
+            <span>Potencial: <strong className="text-slate-100">{departmentSummary.totalXp}</strong></span>
+            <span>
+              Melhor disciplina:{' '}
+              <strong className="text-slate-100">{strongestDiscipline?.subDepartment || 'N/A'}</strong>
+            </span>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {subDepartmentStats.map((stat, index) => {
-            const isStrategicPriority =
-              activeDepartment === 'ENEM'
-                ? ENEM_STRATEGIC_PRIORITIES.includes(stat.subDepartment)
-                : index < 2;
+        {recommendedFocus && (
+          <div className="rounded-xl border border-amber-600/40 bg-amber-950/30 p-4">
+            <p className="text-xs font-semibold text-amber-200 inline-flex items-center gap-2 uppercase tracking-[0.12em]">
+              <Flame className="w-4 h-4" /> Foco recomendado hoje
+            </p>
+            <h4 className="text-base font-bold text-amber-100 mt-2">{recommendedFocus.subDepartment} precisa de atenção</h4>
+            <p className="text-sm text-amber-200/90 mt-1">
+              {recommendedFocus.daysWithoutStudy === null
+                ? 'Você ainda não iniciou essa disciplina.'
+                : `Você está há ${recommendedFocus.daysWithoutStudy} dias sem estudar essa disciplina.`}
+            </p>
+            <button
+              type="button"
+              onClick={() => handleStudyDisciplineNow(recommendedFocus.subDepartment)}
+              className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-slate-950 inline-flex items-center gap-2 hover:bg-amber-400 transition-colors"
+            >
+              <Target className="w-4 h-4" /> Estudar agora
+            </button>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {smartSubDepartmentStats.map((stat) => {
+            const isExpanded = expandedSubDepartment === stat.subDepartment;
+            const disciplineTracks = departmentContent.filter((content) => content.subDepartment === stat.subDepartment);
+            const nextTrack = disciplineTracks.find((content) => !completedContentIds.includes(content.id)) || disciplineTracks[0];
 
             return (
-              <button
+              <div
                 key={stat.subDepartment}
-                onClick={() => setActiveSubDepartment(stat.subDepartment)}
-                className={`text-left rounded-xl border p-3 transition-colors ${
-                  activeSubDepartment === stat.subDepartment
-                    ? 'text-white border-transparent'
-                    : 'text-slate-200 border-slate-700 bg-slate-800'
+                className={`rounded-xl border bg-slate-900/80 transition-all ${stat.statusMeta.borderClass} ${
+                  activeSubDepartment === stat.subDepartment ? 'ring-1 ring-white/20' : ''
                 }`}
-                style={activeSubDepartment === stat.subDepartment ? { backgroundColor: 'var(--color-primary)' } : undefined}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-bold tracking-tight">{stat.subDepartment}</p>
-                  {isStrategicPriority && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/50 bg-amber-950/40 text-amber-200 inline-flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" /> {activeDepartment === 'ENEM' ? 'Prioridade estratégica' : 'Prioridade alta'}
+                <button
+                  type="button"
+                  onClick={() => handleOpenDiscipline(stat.subDepartment)}
+                  className="w-full text-left px-4 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-100">{stat.subDepartment}</p>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        {stat.completedTracks}/{stat.totalTracks} trilhas • {stat.completionRate}%
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${stat.statusMeta.className}`}>
+                        {stat.statusMeta.icon} {stat.statusMeta.label}
+                      </span>
+                      {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${isProgressAnimated ? stat.completionRate : 0}%`, backgroundColor: 'var(--color-primary)' }}
+                    />
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
+                    <span>XP: {stat.completedXp}/{stat.totalXp}</span>
+                    <span>
+                      {stat.daysWithoutStudy === null
+                        ? 'sem histórico recente'
+                        : `${stat.daysWithoutStudy} dia(s) sem estudo`}
                     </span>
-                  )}
+                  </div>
+                </button>
+
+                <div
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    isExpanded ? 'max-h-[1200px] opacity-100' : 'max-h-0 opacity-0'
+                  }`}
+                >
+                  <div className="px-4 pb-4 border-t border-slate-700/80 pt-3 space-y-3">
+                    <div className="space-y-1.5">
+                      {disciplineTracks.map((track) => {
+                        const done = completedContentIds.includes(track.id);
+                        return (
+                          <div
+                            key={track.id}
+                            className="rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 flex items-center justify-between gap-2"
+                          >
+                            <div>
+                              <p className="text-sm text-slate-100 font-semibold">{track.title}</p>
+                              <p className="text-xs text-slate-400">+{track.xpReward} XP • {track.estimatedMinutes} min</p>
+                            </div>
+                            <span className={`text-xs font-semibold ${done ? 'text-emerald-300' : 'text-amber-300'}`}>
+                              {done ? 'Concluído' : 'Pendente'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="rounded-lg border border-slate-700 bg-slate-800/70 p-3">
+                      <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Recomendação</p>
+                      <p className="text-sm text-slate-200 mt-1">
+                        {nextTrack
+                          ? `Continue por ${nextTrack.title} para avançar nesta disciplina.`
+                          : 'Esta disciplina ainda não possui trilhas disponíveis.'}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleStudyDisciplineNow(stat.subDepartment)}
+                        disabled={!nextTrack}
+                        className="px-3 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                        style={{ backgroundColor: 'var(--color-primary)' }}
+                      >
+                        <span className="inline-flex items-center gap-1.5"><PlayCircle className="w-4 h-4" /> Continuar de onde parou</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs mt-1 opacity-90">{stat.completedTracks}/{stat.totalTracks} trilhas · {stat.completionRate}%</p>
-                <p className="text-xs mt-1 opacity-90">XP: {stat.completedXp}/{stat.totalXp}</p>
-              </button>
+              </div>
             );
           })}
         </div>

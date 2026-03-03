@@ -5,8 +5,10 @@ import { getLevelByPoints } from '../../data/levels';
 import { predictNextLevel } from '../../utils/levelPrediction';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import type { StudySession } from '../../types';
+import { buildWeeklyRetentionSnapshot } from '../../utils/weeklyRetention';
 import StudyHierarchyTree from './StudyHierarchyTree';
-import { learningHierarchyService, type StudyHierarchyAreaNode } from '../../services/learningHierarchy.service';
+import { learningHierarchyService, type StudyHierarchyAreaNode, type StudyHierarchyTrack } from '../../services/learningHierarchy.service';
+import { CYCLE_DISCIPLINE_LABELS } from '../../utils/disciplineLabels';
 
 interface MockExamHistoryEntry {
   date: string;
@@ -42,6 +44,7 @@ interface DashboardPageProps {
   onContinueNow: () => void;
   onOpenRanks?: () => void;
   onNavigate?: (tab: string) => void;
+  preferredTrack?: 'enem' | 'concursos' | 'hibrido';
   onOpenTopicQuestions?: (payload: { areaName: string; disciplineName: string; topicName: string; target: 'quiz' | 'simulado' }) => void;
 }
 
@@ -57,6 +60,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
   onContinueNow,
   onOpenRanks,
   onNavigate,
+  preferredTrack = 'enem',
   onOpenTopicQuestions,
 }) => {
   const [mockExamHistory] = useLocalStorage<MockExamHistoryEntry[]>('mock_exam_history', []);
@@ -64,6 +68,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
   const [hierarchyData, setHierarchyData] = React.useState<StudyHierarchyAreaNode[]>([]);
   const [isHierarchyLoading, setIsHierarchyLoading] = React.useState(false);
   const [focusedDisciplineName, setFocusedDisciplineName] = React.useState<string | null>(null);
+  const [hierarchyTrack, setHierarchyTrack] = React.useState<StudyHierarchyTrack>(preferredTrack);
+  const weekDayLabels = React.useMemo(() => ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'], []);
+
+  React.useEffect(() => {
+    setHierarchyTrack(preferredTrack);
+  }, [preferredTrack]);
 
   const currentLevel = React.useMemo(() => getLevelByPoints(totalPoints), [totalPoints]);
   const levelPred = React.useMemo(() => predictNextLevel(totalPoints, sessions), [totalPoints, sessions]);
@@ -190,9 +200,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     };
   }, [sessions]);
 
+  const weeklyRetention = React.useMemo(() => buildWeeklyRetentionSnapshot(sessions, 4), [sessions]);
+
   const localHierarchyFallback = React.useMemo(
-    () => learningHierarchyService.buildLocalFallback(sessions, weakAreas),
-    [sessions, weakAreas],
+    () => learningHierarchyService.buildLocalFallback(sessions, weakAreas, hierarchyTrack),
+    [sessions, weakAreas, hierarchyTrack],
   );
 
   React.useEffect(() => {
@@ -218,7 +230,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         }
 
         if (cloudTree.length > 0) {
-          setHierarchyData(cloudTree);
+          setHierarchyData(learningHierarchyService.normalizeHierarchyForTrack(cloudTree, hierarchyTrack));
         } else {
           setHierarchyData(localHierarchyFallback);
         }
@@ -238,7 +250,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     return () => {
       active = false;
     };
-  }, [supabaseUserId, localHierarchyFallback]);
+  }, [supabaseUserId, localHierarchyFallback, hierarchyTrack]);
 
   const focusPriorityInTree = React.useCallback((disciplineName: string) => {
     setFocusedDisciplineName(disciplineName);
@@ -308,6 +320,59 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </section>
 
+      <section className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-xs uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-300">Missão semanal</p>
+            <h3 className="text-lg font-bold text-indigo-900 dark:text-indigo-100 mt-1">Retenção de 7 dias</h3>
+            <p className="text-sm text-indigo-700 dark:text-indigo-300 mt-1">
+              {weeklyRetention.isMaintained
+                ? '✅ Sequência semanal garantida. Continue para criar hábito.'
+                : `Faltam ${weeklyRetention.remainingDays} dia(s) para fechar sua semana (${weeklyRetention.studiedDays}/${weeklyRetention.targetDays}).`}
+            </p>
+          </div>
+          <button
+            onClick={onContinueNow}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+            style={{ backgroundColor: 'var(--color-primary)' }}
+          >
+            Estudar 25 min
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-7 gap-2">
+          {weekDayLabels.map((label, index) => {
+            const studied = weeklyRetention.studiedDayIndexes.includes(index);
+            return (
+              <div
+                key={label}
+                className={`rounded-lg border p-2 text-center ${
+                  studied
+                    ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-100 dark:bg-emerald-900/30'
+                    : 'border-indigo-200 dark:border-indigo-800 bg-white/80 dark:bg-slate-900/40'
+                }`}
+              >
+                <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">{label}</p>
+                <p className="text-sm mt-1">{studied ? '●' : '○'}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 h-2 w-full rounded-full bg-indigo-100 dark:bg-indigo-900/50 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${Math.min(100, Math.round((weeklyRetention.studiedDays / weeklyRetention.targetDays) * 100))}%`, backgroundColor: 'var(--color-primary)' }}
+          />
+        </div>
+
+        {weeklyRetention.remainingDays === 1 && !weeklyRetention.isMaintained && (
+          <p className="mt-3 text-sm font-semibold text-amber-700 dark:text-amber-300">
+            ⚠ Falta 1 sessão para manter sua sequência semanal.
+          </p>
+        )}
+      </section>
+
       <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-5 sm:p-6">
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Progresso geral</h3>
@@ -345,7 +410,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
                 progressCenter.bySubject.map((item) => (
                   <div key={item.subject}>
                     <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="font-medium text-slate-800 dark:text-slate-100">{item.subject}</span>
+                      <span className="font-medium text-slate-800 dark:text-slate-100">{CYCLE_DISCIPLINE_LABELS[item.subject as keyof typeof CYCLE_DISCIPLINE_LABELS]?.label ?? item.subject}</span>
                       <span className="text-slate-500 dark:text-slate-300">{item.percent}% · {item.minutes} min</span>
                     </div>
                     <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -369,7 +434,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
             <div className="space-y-2">
               {weakAreas.map((area) => (
                 <div key={area} className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-amber-900 dark:text-amber-300">{area}</span>
+                  <span className="font-medium text-amber-900 dark:text-amber-300">{CYCLE_DISCIPLINE_LABELS[area as keyof typeof CYCLE_DISCIPLINE_LABELS]?.label ?? area}</span>
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => focusPriorityInTree(area)}
@@ -420,10 +485,40 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
       </section>
 
       <section id="study-tree-section" className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
-        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">Mapa de estudos por hierarquia</h3>
-          <span className="text-xs text-slate-500 dark:text-slate-400">Área → Disciplina → Tópico</span>
+        <div className="flex items-start justify-between gap-3 mb-4 flex-wrap sm:flex-nowrap">
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">Mapa de estudos por hierarquia</h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400">Área → Disciplina → Tópico</span>
+          </div>
+
+          <div className="w-full sm:w-auto sm:ml-auto">
+            <div className="inline-flex items-center gap-1 p-1.5 rounded-2xl border border-slate-300/80 dark:border-slate-600 bg-slate-100/90 dark:bg-slate-800/80 shadow-sm sm:float-right">
+            {([
+              { key: 'enem', label: 'ENEM' },
+              { key: 'concursos', label: 'Concurso' },
+              { key: 'hibrido', label: 'Híbrido' },
+            ] as const).map((option) => {
+              const selected = hierarchyTrack === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setHierarchyTrack(option.key)}
+                  className={`min-w-[92px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:focus-visible:ring-slate-500 ${
+                    selected
+                      ? 'text-white shadow-md border border-transparent'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/80 dark:hover:bg-slate-700/70'
+                  }`}
+                  style={selected ? { backgroundColor: 'var(--color-primary)', boxShadow: '0 6px 18px -10px var(--color-primary)' } : undefined}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+            </div>
+          </div>
         </div>
+
         <StudyHierarchyTree
           data={hierarchyData}
           loading={isHierarchyLoading}

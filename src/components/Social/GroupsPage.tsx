@@ -1,12 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { MessageSquare, Plus, Target, Trophy, Users } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AtSign, Image as ImageIcon, MessageSquare, Paperclip, Plus, Target, Trophy, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { rankingService } from '../../services/ranking.service';
 import { socialChallengesService } from '../../services/socialChallenges.service';
 import { socialGroupsService } from '../../services/socialGroups.service';
 import { offlineSyncService } from '../../services/offlineSync.service';
 import { isSupabaseConfigured, supabase } from '../../services/supabase.client';
-import type { ChallengeParticipant, GroupChallenge, GroupMessage, RankingPeriod, RankingRow, StudyGroup } from '../../types/social';
+import type { ChallengeParticipant, GroupChallenge, GroupMember, GroupMessage, RankingPeriod, RankingRow, StudyGroup } from '../../types/social';
 
 interface GroupsPageProps {
   userId?: string | null;
@@ -78,6 +78,31 @@ const createLocalRankingId = (input: {
   return `local-${input.userId}-${scope}-${input.period}-${input.periodStart}-${input.periodEnd}`;
 };
 
+const MAX_CHAT_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024;
+
+const extractFirstName = (value?: string | null) => {
+  if (!value) return '';
+  return value.trim().split(/\s+/)[0] || '';
+};
+
+const renderMentionText = (content: string) => {
+  const parts = content.split(/(@[A-Za-zÀ-ÿ0-9_]+)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith('@') && part.length > 1) {
+      return (
+        <span
+          key={`${part}-${index}`}
+          className="px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-semibold"
+        >
+          {part}
+        </span>
+      );
+    }
+
+    return <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>;
+  });
+};
+
 const GroupsPage: React.FC<GroupsPageProps> = ({
   userId,
   userName,
@@ -85,13 +110,15 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
   weeklyGoalMinutes = 900,
   weeklyStudiedMinutes = 0,
 }) => {
-  const [activePanel, setActivePanel] = useState<'chat' | 'desafios' | 'ranking'>('chat');
+  const [activePanel, setActivePanel] = useState<'chat' | 'membros' | 'desafios' | 'ranking'>('chat');
   const [groups, setGroups] = useState<StudyGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<GroupMessage[]>([]);
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(false);
 
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [joiningGroupId, setJoiningGroupId] = useState<string | null>(null);
@@ -116,6 +143,13 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
   const [newGroupDescription, setNewGroupDescription] = useState('');
   const [newGroupPrivate, setNewGroupPrivate] = useState(false);
   const [messageInput, setMessageInput] = useState('');
+  const [showMentionMenu, setShowMentionMenu] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const [attachedImageFile, setAttachedImageFile] = useState<File | null>(null);
+  const [attachedImagePreviewUrl, setAttachedImagePreviewUrl] = useState<string | null>(null);
+  const messageInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   const [newChallengeName, setNewChallengeName] = useState('');
   const [newChallengeGoalValue, setNewChallengeGoalValue] = useState<number>(300);
@@ -144,6 +178,30 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     return challengeParticipants.find((participant) => participant.userId === userId) || null;
   }, [challengeParticipants, userId]);
 
+  const memberNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    groupMembers.forEach((member) => {
+      if (member.userName?.trim()) {
+        map.set(member.userId, member.userName.trim());
+      }
+    });
+    return map;
+  }, [groupMembers]);
+
+  const mentionSuggestions = useMemo(() => {
+    if (!showMentionMenu || !mentionQuery.trim()) {
+      return [] as GroupMember[];
+    }
+
+    const normalized = mentionQuery.trim().toLowerCase();
+    return groupMembers
+      .filter((member) => {
+        const candidate = extractFirstName(member.userName).toLowerCase();
+        return candidate.startsWith(normalized);
+      })
+      .slice(0, 6);
+  }, [groupMembers, mentionQuery, showMentionMenu]);
+
   const fetchGroups = async () => {
     if (!userId) return;
     setLoadingGroups(true);
@@ -170,6 +228,19 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
       toast.error(error instanceof Error ? error.message : 'Erro ao carregar mensagens.');
     } finally {
       setLoadingMessages(false);
+    }
+  };
+
+  const fetchGroupMembers = async (groupId: string) => {
+    setLoadingMembers(true);
+    try {
+      const data = await socialGroupsService.listMembers(groupId);
+      setGroupMembers(data);
+    } catch (error) {
+      setGroupMembers([]);
+      toast.error(error instanceof Error ? error.message : 'Erro ao carregar membros do grupo.');
+    } finally {
+      setLoadingMembers(false);
     }
   };
 
@@ -245,6 +316,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
   useEffect(() => {
     if (!selectedGroupId) {
       setMessages([]);
+      setGroupMembers([]);
       setChallenges([]);
       setSelectedChallengeId(null);
       setChallengeParticipants([]);
@@ -252,6 +324,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     }
 
     void fetchMessages(selectedGroupId);
+    void fetchGroupMembers(selectedGroupId);
     void fetchChallenges(selectedGroupId);
   }, [selectedGroupId]);
 
@@ -626,22 +699,147 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     }
   };
 
+  const resolveAuthorLabel = (message: GroupMessage) => {
+    if (userId && message.userId === userId) {
+      return userName || 'Você';
+    }
+
+    return memberNameById.get(message.userId) || message.userId.slice(0, 8);
+  };
+
+  const clearAttachment = () => {
+    setAttachedImageFile(null);
+    if (attachedImagePreviewUrl) {
+      URL.revokeObjectURL(attachedImagePreviewUrl);
+    }
+    setAttachedImagePreviewUrl(null);
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = '';
+    }
+  };
+
+  const handleMessageInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextValue = event.target.value;
+    const nextCursorPosition = event.target.selectionStart ?? nextValue.length;
+    setMessageInput(nextValue);
+    setCursorPosition(nextCursorPosition);
+
+    const beforeCursor = nextValue.slice(0, nextCursorPosition);
+    const mentionMatch = beforeCursor.match(/(?:^|\s)@([A-Za-zÀ-ÿ0-9_]*)$/);
+
+    if (mentionMatch) {
+      setMentionQuery(mentionMatch[1] || '');
+      setShowMentionMenu(true);
+      return;
+    }
+
+    setShowMentionMenu(false);
+    setMentionQuery('');
+  };
+
+  const handleSelectMention = (member: GroupMember) => {
+    const firstName = extractFirstName(member.userName);
+    if (!firstName) {
+      return;
+    }
+
+    const beforeCursor = messageInput.slice(0, cursorPosition);
+    const atIndex = beforeCursor.lastIndexOf('@');
+    if (atIndex < 0) {
+      return;
+    }
+
+    const afterCursor = messageInput.slice(cursorPosition);
+    const replaced = `${beforeCursor.slice(0, atIndex)}@${firstName} ${afterCursor}`;
+    setMessageInput(replaced);
+    setShowMentionMenu(false);
+    setMentionQuery('');
+
+    requestAnimationFrame(() => {
+      if (messageInputRef.current) {
+        const nextPos = atIndex + firstName.length + 2;
+        messageInputRef.current.focus();
+        messageInputRef.current.setSelectionRange(nextPos, nextPos);
+        setCursorPosition(nextPos);
+      }
+    });
+  };
+
+  const handlePickAttachment = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecione apenas arquivos de imagem.');
+      if (attachmentInputRef.current) {
+        attachmentInputRef.current.value = '';
+      }
+      return;
+    }
+
+    if (file.size > MAX_CHAT_ATTACHMENT_SIZE_BYTES) {
+      toast.error('Imagem muito grande. Limite: 5MB.');
+      if (attachmentInputRef.current) {
+        attachmentInputRef.current.value = '';
+      }
+      return;
+    }
+
+    if (attachedImagePreviewUrl) {
+      URL.revokeObjectURL(attachedImagePreviewUrl);
+    }
+
+    setAttachedImageFile(file);
+    setAttachedImagePreviewUrl(URL.createObjectURL(file));
+  };
+
+  useEffect(() => {
+    return () => {
+      if (attachedImagePreviewUrl) {
+        URL.revokeObjectURL(attachedImagePreviewUrl);
+      }
+    };
+  }, [attachedImagePreviewUrl]);
+
   const handleSendMessage = async () => {
     if (!userId || !selectedGroupId) {
       return;
     }
 
     const trimmed = messageInput.trim();
-    if (!trimmed) {
+    const hasAttachment = Boolean(attachedImageFile);
+    if (!trimmed && !hasAttachment) {
       return;
     }
 
+    const uploadToastId = attachedImageFile ? toast.loading('Enviando imagem...') : null;
     setSendingMessage(true);
     try {
+      let uploadedAttachmentUrl: string | undefined;
+
+      if (attachedImageFile) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          throw new Error('Para enviar imagem, conecte-se à internet e tente novamente.');
+        }
+
+        uploadedAttachmentUrl = await socialGroupsService.uploadMessageAttachment({
+          file: attachedImageFile,
+          groupId: selectedGroupId,
+          userId,
+        });
+
+        if (uploadToastId) {
+          toast.success('Imagem enviada com sucesso.', { id: uploadToastId });
+        }
+      }
+
       const sent = await socialGroupsService.sendMessage({
         groupId: selectedGroupId,
         userId,
-        content: trimmed,
+        content: trimmed || '[imagem]',
+        attachmentUrl: uploadedAttachmentUrl,
       });
 
       if (String(sent.id).startsWith('local-')) {
@@ -653,9 +851,18 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
       }
 
       setMessageInput('');
+      clearAttachment();
+      setShowMentionMenu(false);
+      setMentionQuery('');
     } catch (error) {
+      if (uploadToastId) {
+        toast.error(error instanceof Error ? error.message : 'Erro ao enviar imagem.', { id: uploadToastId });
+      }
       toast.error(error instanceof Error ? error.message : 'Erro ao enviar mensagem.');
     } finally {
+      if (uploadToastId) {
+        toast.dismiss(uploadToastId);
+      }
       setSendingMessage(false);
     }
   };
@@ -928,7 +1135,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
       <div className="text-center">
         <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Grupos de Estudo</h2>
         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
@@ -936,7 +1143,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-3 sm:gap-4">
         <div className="space-y-4">
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
@@ -992,7 +1199,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
                 {groups.map((group) => (
                   <div
                     key={group.id}
-                    className={`rounded-xl border p-3 transition ${
+                    className={`rounded-xl border p-3 bg-slate-50/70 dark:bg-slate-800/30 shadow-sm transition ${
                       selectedGroupId === group.id
                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                         : 'border-slate-200 dark:border-slate-700'
@@ -1029,9 +1236,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex flex-col min-h-[560px]">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 sm:p-4 flex flex-col min-h-[430px] sm:min-h-[560px]">
           <div className="pb-3 border-b border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setActivePanel('chat')}
@@ -1043,6 +1250,18 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
                 style={activePanel === 'chat' ? { backgroundColor: 'var(--color-primary)' } : undefined}
               >
                 Chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePanel('membros')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                  activePanel === 'membros'
+                    ? 'text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                }`}
+                style={activePanel === 'membros' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+              >
+                Membros
               </button>
               <button
                 type="button"
@@ -1096,6 +1315,18 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
               </>
             )}
 
+            {activePanel === 'membros' && (
+              <>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  {selectedGroup ? `Membros — ${selectedGroup.name}` : 'Membros do grupo'}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Visualize quem já está no grupo e o papel de cada pessoa.
+                </p>
+              </>
+            )}
+
             {activePanel === 'ranking' && (
               <>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
@@ -1110,7 +1341,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
 
           {activePanel === 'chat' && (
             <>
-              <div className="flex-1 overflow-y-auto py-3 space-y-2">
+              <div className="flex-1 min-h-[240px] max-h-[52vh] sm:min-h-0 sm:max-h-none overflow-y-auto overscroll-contain py-3 pr-1 -mr-1 space-y-2">
                 {!selectedGroup ? (
                   <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum grupo selecionado.</p>
                 ) : loadingMessages ? (
@@ -1124,41 +1355,208 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
                       className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2"
                     >
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {message.userId.slice(0, 8)} • {new Date(message.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        {resolveAuthorLabel(message)} • {new Date(message.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                       </p>
-                      <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 whitespace-pre-wrap">{message.content}</p>
+
+                      {message.attachmentUrl && (
+                        <a
+                          href={message.attachmentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block mt-1 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700"
+                        >
+                          <img
+                            src={message.attachmentUrl}
+                            alt="Anexo da mensagem"
+                            className="w-full max-h-64 object-cover"
+                            loading="lazy"
+                          />
+                        </a>
+                      )}
+
+                      {!(message.attachmentUrl && message.content === '[imagem]') && (
+                        <p className="text-sm text-slate-800 dark:text-slate-100 mt-1 whitespace-pre-wrap">
+                          {renderMentionText(message.content)}
+                        </p>
+                      )}
                     </div>
                   ))
                 )}
               </div>
 
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex gap-2">
-                <input
-                  value={messageInput}
-                  onChange={(event) => setMessageInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void handleSendMessage();
-                    }
-                  }}
-                  disabled={!selectedGroup || !userId || sendingMessage}
-                  placeholder={selectedGroup ? 'Escreva uma mensagem...' : 'Selecione um grupo primeiro'}
-                  className="flex-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleSendMessage();
-                  }}
-                  disabled={!selectedGroup || !userId || sendingMessage || !messageInput.trim()}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
-                  style={{ backgroundColor: 'var(--color-primary)' }}
-                >
-                  {sendingMessage ? 'Enviando...' : 'Enviar'}
-                </button>
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm">
+                {attachedImagePreviewUrl && (
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <img
+                        src={attachedImagePreviewUrl}
+                        alt="Preview do anexo"
+                        className="h-12 w-12 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
+                      />
+                      <p className="text-xs text-slate-600 dark:text-slate-300 truncate">
+                        {attachedImageFile?.name || 'Imagem selecionada'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearAttachment}
+                      className="p-1.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-100"
+                      title="Remover anexo"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                <div className="relative">
+                  {showMentionMenu && mentionSuggestions.length > 0 && (
+                    <div className="absolute bottom-full mb-2 left-0 w-full sm:w-[320px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm z-10 overflow-hidden">
+                      <p className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                        Mencionar membro
+                      </p>
+                      <div className="max-h-56 overflow-y-auto">
+                        {mentionSuggestions.map((member) => (
+                          <button
+                            key={member.id}
+                            type="button"
+                            onClick={() => handleSelectMention(member)}
+                            className="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400"
+                          >
+                            @{extractFirstName(member.userName)}
+                            <span className="text-xs text-slate-500 dark:text-slate-400 ml-2">{member.userName || member.userId.slice(0, 8)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <input
+                      ref={attachmentInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePickAttachment}
+                      className="hidden"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => attachmentInputRef.current?.click()}
+                      disabled={!selectedGroup || !userId || sendingMessage}
+                      className="w-full sm:w-auto sm:shrink-0 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                    >
+                      <Paperclip className="w-4 h-4" />
+                      <span className="sm:hidden">Anexo</span>
+                      <span className="hidden sm:inline">Anexar</span>
+                    </button>
+
+                    <div className="flex-1 flex gap-2 min-w-0">
+                      <input
+                        ref={messageInputRef}
+                        value={messageInput}
+                        onChange={handleMessageInputChange}
+                        onClick={() => setShowMentionMenu(false)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && !showMentionMenu) {
+                            event.preventDefault();
+                            void handleSendMessage();
+                          }
+                        }}
+                        disabled={!selectedGroup || !userId || sendingMessage}
+                        placeholder={selectedGroup ? 'Escreva uma mensagem... (use @ para mencionar)' : 'Selecione um grupo primeiro'}
+                        className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-slate-100 shadow-sm outline-none focus:outline-none focus:ring-2 focus:ring-slate-400"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMessageInput((current) => `${current}@`);
+                          requestAnimationFrame(() => {
+                            messageInputRef.current?.focus();
+                          });
+                        }}
+                        disabled={!selectedGroup || !userId || sendingMessage}
+                        className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-50 sm:shrink-0"
+                        title="Inserir menção"
+                      >
+                        <AtSign className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleSendMessage();
+                      }}
+                      disabled={!selectedGroup || !userId || sendingMessage || (!messageInput.trim() && !attachedImageFile)}
+                      className="w-full sm:w-auto sm:shrink-0 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                      style={{ backgroundColor: 'var(--color-primary)' }}
+                    >
+                      {sendingMessage ? (
+                        'Enviando...'
+                      ) : attachedImageFile ? (
+                        <>
+                          <ImageIcon className="w-4 h-4" />
+                          Enviar
+                        </>
+                      ) : (
+                        'Enviar'
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             </>
+          )}
+
+          {activePanel === 'membros' && (
+            <div className="flex-1 overflow-y-auto py-3 space-y-3">
+              {!selectedGroup ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Selecione um grupo para ver os membros.</p>
+              ) : loadingMembers ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Carregando membros...</p>
+              ) : groupMembers.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum membro encontrado neste grupo.</p>
+              ) : (
+                <>
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-slate-50 dark:bg-slate-800/40">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Total de membros: <span className="font-semibold text-slate-800 dark:text-slate-100">{groupMembers.length}</span>
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {groupMembers.map((member) => (
+                      <div
+                        key={member.id}
+                        className={`rounded-xl border px-3 py-2 flex items-center justify-between gap-3 ${
+                          userId && member.userId === userId
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                            : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            {member.userName || `Usuário ${member.userId.slice(0, 8)}`}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {member.userEmail || member.userId.slice(0, 8)} • entrou em {new Date(member.joinedAt).toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                        <span
+                          className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
+                            member.role === 'admin'
+                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                              : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+                          }`}
+                        >
+                          {member.role === 'admin' ? 'Admin' : 'Membro'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
           {activePanel === 'desafios' && (

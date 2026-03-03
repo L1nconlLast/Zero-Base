@@ -1,27 +1,114 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Pause, RotateCcw, CheckCircle, Clock3, Lightbulb } from 'lucide-react';
 import { useTimer } from '../../hooks/useTimer';
 import { formatTime } from '../../utils/helpers';
 import { MATERIAS_CONFIG, MateriaTipo } from '../../types';
 import { ConfirmModal } from '../UI/ConfirmModal';
 import toast from 'react-hot-toast';
+import { getCycleDisciplineLabels, type StudyTrackLabel } from '../../utils/disciplineLabels';
+
+const FREE_TIMER_TARGET_SECONDS = 60 * 60;
 
 interface StudyTimerProps {
   onFinishSession: (minutes: number, subject: MateriaTipo) => void;
+  preferredTrack?: StudyTrackLabel;
+  hybridEnemWeight?: number;
 }
 
-export const StudyTimer: React.FC<StudyTimerProps> = ({ onFinishSession }) => {
+export const StudyTimer: React.FC<StudyTimerProps> = ({
+  onFinishSession,
+  preferredTrack = 'enem',
+  hybridEnemWeight = 70,
+}) => {
   const { seconds, isRunning, reset, toggle } = useTimer();
   const [selectedSubject, setSelectedSubject] = useState<MateriaTipo>('Anatomia');
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const cycleDisciplineLabels = useMemo(
+    () => getCycleDisciplineLabels(preferredTrack, hybridEnemWeight),
+    [preferredTrack, hybridEnemWeight]
+  );
+  const previousIsRunningRef = useRef(false);
+  const warnedFiveSecondsRef = useRef(false);
+  const reachedTargetRef = useRef(false);
 
   const elapsedSeconds = seconds;
-  const baselineSeconds = elapsedSeconds > 0 ? elapsedSeconds : 3600;
-  const progress = Math.min((elapsedSeconds / baselineSeconds) * 100, 100);
+  const progress = Math.min((elapsedSeconds / FREE_TIMER_TARGET_SECONDS) * 100, 100);
   const radius = 88;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
+
+  const playTone = useCallback((frequency: number, duration: number, volume = 0.05) => {
+    if (typeof window === 'undefined') return;
+    const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, context.currentTime);
+    gainNode.gain.setValueAtTime(volume, context.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, context.currentTime + duration);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + duration);
+
+    setTimeout(() => {
+      context.close().catch(() => {});
+    }, Math.ceil(duration * 1000) + 50);
+  }, []);
+
+  const playStartSound = useCallback(() => {
+    playTone(720, 0.08, 0.04);
+    setTimeout(() => playTone(920, 0.12, 0.04), 90);
+  }, [playTone]);
+
+  const playWarningSound = useCallback(() => {
+    playTone(520, 0.1, 0.05);
+    setTimeout(() => playTone(520, 0.1, 0.05), 140);
+    setTimeout(() => playTone(520, 0.15, 0.06), 280);
+  }, [playTone]);
+
+  const playTargetReachedSound = useCallback(() => {
+    playTone(620, 0.12, 0.05);
+    setTimeout(() => playTone(820, 0.14, 0.05), 130);
+    setTimeout(() => playTone(980, 0.16, 0.05), 280);
+  }, [playTone]);
+
+  useEffect(() => {
+    if (isRunning && !previousIsRunningRef.current) {
+      playStartSound();
+    }
+    previousIsRunningRef.current = isRunning;
+  }, [isRunning, playStartSound]);
+
+  useEffect(() => {
+    if (!isRunning) {
+      return;
+    }
+
+    if (seconds === FREE_TIMER_TARGET_SECONDS - 5 && !warnedFiveSecondsRef.current) {
+      warnedFiveSecondsRef.current = true;
+      playWarningSound();
+    }
+
+    if (seconds >= FREE_TIMER_TARGET_SECONDS && !reachedTargetRef.current) {
+      reachedTargetRef.current = true;
+      playTargetReachedSound();
+      toast.success('Meta de 60 minutos atingida!');
+    }
+  }, [isRunning, seconds, playWarningSound, playTargetReachedSound]);
+
+  useEffect(() => {
+    if (seconds === 0) {
+      warnedFiveSecondsRef.current = false;
+      reachedTargetRef.current = false;
+    }
+  }, [seconds]);
 
   const handleFinish = () => {
     const minutes = Math.floor(seconds / 60);
@@ -74,13 +161,14 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({ onFinishSession }) => {
           <div className="flex gap-1.5 sm:gap-2 flex-wrap justify-center">
             {(Object.keys(MATERIAS_CONFIG) as MateriaTipo[]).map((key) => {
               const config = MATERIAS_CONFIG[key];
+              const discipline = cycleDisciplineLabels[key];
               const isSelected = selectedSubject === key;
               return (
                 <button
                   key={key}
                   onClick={() => !isRunning && setSelectedSubject(key)}
                   disabled={isRunning}
-                  title={key}
+                  title={discipline.label}
                   className={`
                     flex flex-col items-center p-2 sm:p-2.5 rounded-xl border-2 transition-all min-w-[56px] sm:min-w-[60px]
                     ${isSelected
@@ -89,16 +177,16 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({ onFinishSession }) => {
                     ${isRunning ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'}
                   `}
                 >
-                  <span className="text-lg sm:text-xl mb-0.5 sm:mb-1">{config.icon}</span>
+                  <span className="text-lg sm:text-xl mb-0.5 sm:mb-1">{discipline.icon}</span>
                   <span className={`text-[9px] sm:text-[10px] font-medium ${isSelected ? config.color : 'text-gray-500'}`}>
-                    {key}
+                    {discipline.label}
                   </span>
                 </button>
               );
             })}
           </div>
           <p className="text-center text-xs mt-3 text-gray-400">
-            Estudando: <strong className={MATERIAS_CONFIG[selectedSubject].color}>{MATERIAS_CONFIG[selectedSubject].icon} {selectedSubject}</strong>
+            Estudando: <strong className={MATERIAS_CONFIG[selectedSubject].color}>{cycleDisciplineLabels[selectedSubject].icon} {cycleDisciplineLabels[selectedSubject].label}</strong>
           </p>
         </div>
 
@@ -181,7 +269,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({ onFinishSession }) => {
       <ConfirmModal
         open={showFinishModal}
         title="Finalizar Sessão"
-        message={`Finalizar sessão de ${Math.floor(seconds / 60)} minuto${Math.floor(seconds / 60) !== 1 ? 's' : ''} de ${selectedSubject}?`}
+        message={`Finalizar sessão de ${Math.floor(seconds / 60)} minuto${Math.floor(seconds / 60) !== 1 ? 's' : ''} de ${cycleDisciplineLabels[selectedSubject].label}?`}
         confirmLabel="Finalizar"
         variant="success"
         onConfirm={confirmFinish}

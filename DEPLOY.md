@@ -1,43 +1,91 @@
-# Guia de Deploy - Zero Base 2.0
+# Deploy seguro (Vercel + Supabase)
 
-## Pré-requisitos
+## 1) Pré-requisitos
 
-- Projeto compilando localmente
-- Conta em uma plataforma de hospedagem
+- Projeto compilando localmente com Node compatível.
+- Projeto Supabase ativo com migrations aplicadas.
+- Conta no Vercel conectada ao repositório.
 
-## Build local
+## 2) Validação local obrigatória
 
 ```bash
 npm install
 npm run build
-npm run preview
 ```
 
-## Opções de deploy
+Se o build falhar, não publique.
 
-### Vercel
-- Importar o repositório
+## 3) Variáveis de ambiente (Vercel)
+
+Configure em `Project Settings > Environment Variables`:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY` (preferencial)
+- `VITE_SUPABASE_ANON_KEY` (somente compatibilidade)
+- `VITE_SUPABASE_OAUTH_PROVIDERS` (ex.: `google,facebook`)
+
+Regras importantes:
+
+- Defina em `Production` e `Preview`.
+- Nunca colocar `SUPABASE_SERVICE_ROLE_KEY` em variável `VITE_*`.
+- Após mudar env, faça novo deploy.
+
+## 4) Supabase Auth (antes de abrir beta)
+
+- Authentication > Providers:
+	- Habilite apenas providers que realmente vai usar.
+	- Configure Client ID/Secret corretamente.
+- Authentication > URL Configuration:
+	- Adicione URL do Vercel em `Site URL`.
+	- Adicione callbacks em `Redirect URLs` (produção + preview/local).
+- Defina política de confirmação de email conforme estratégia de beta.
+
+## 5) Banco e storage
+
+- Garantir que migrations de segurança e RLS foram aplicadas.
+- Confirmar que buckets/policies permitem só o acesso esperado.
+- Validar com usuário autenticado e não autenticado.
+
+## 6) Deploy no Vercel
+
+- Framework: `Vite`
 - Build command: `npm run build`
 - Output directory: `dist`
 
-### Netlify
-- Build command: `npm run build`
-- Publish directory: `dist`
+Deploy recomendado para beta:
 
-### GitHub Pages
-- Gerar build em `dist`
-- Publicar conteúdo estático via workflow
+1. Publicar primeiro em ambiente Preview.
+2. Validar login, OAuth, upload e sincronização.
+3. Só então promover para Production.
 
-## Checklist pré-deploy
+## 7) Checklist Go/No-Go
 
-- [ ] `npm run test -- --run` sem falhas
-- [ ] `npm run build` sem falhas
-- [ ] Variáveis de ambiente definidas
-- [ ] Navegação principal validada
+- [ ] `npm run build` sem erros
+- [ ] Login email/senha funcionando
+- [ ] Reset de senha funcionando
+- [ ] OAuth funcionando (apenas providers habilitados)
+- [ ] Sem erros críticos no console
+- [ ] RLS/policies revisadas para novas tabelas
+- [ ] Upload/download em storage respeitando permissões
+- [ ] PWA inicia sem quebrar fluxo principal
 
-## Pós-deploy
+## 8) Pós-deploy imediato (15 min)
 
-- Verificar carregamento inicial
-- Testar autenticação
-- Testar dashboard e cronômetro
-- Validar modo offline (PWA)
+- Criar conta nova e concluir onboarding.
+- Fazer login/logout em aba anônima.
+- Testar um fluxo crítico de estudo e social.
+- Confirmar que não há página de erro JSON no OAuth.
+
+## 9) Rollback rápido
+
+Se ocorrer incidente:
+
+1. Remova providers de `VITE_SUPABASE_OAUTH_PROVIDERS` no Vercel.
+2. Redeploy para ocultar social login imediatamente.
+3. Rever configuração de provider/redirect no Supabase.
+
+## 10) Execução guiada para desktop e celular
+
+Para a operação de beta com validação prática em PC e mobile, use também:
+
+- [PC_MOBILE_BETA_PLAYBOOK.md](PC_MOBILE_BETA_PLAYBOOK.md)

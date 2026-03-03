@@ -13,6 +13,29 @@ import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 type OAuthProvider = 'google' | 'facebook';
 
+const OAUTH_PROVIDER_LABEL: Record<OAuthProvider, string> = {
+  google: 'Google',
+  facebook: 'Facebook',
+};
+
+const parseEnabledOAuthProviders = (): OAuthProvider[] => {
+  const rawProviders = String(import.meta.env.VITE_SUPABASE_OAUTH_PROVIDERS || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  const providerSet = new Set<OAuthProvider>();
+  rawProviders.forEach((provider) => {
+    if (provider === 'google' || provider === 'facebook') {
+      providerSet.add(provider);
+    }
+  });
+
+  return Array.from(providerSet);
+};
+
+const ENABLED_OAUTH_PROVIDERS = parseEnabledOAuthProviders();
+
 // ─── helpers ────────────────────────────────────────────────────
 
 /** Converte o objeto Supabase Auth → tipo local User */
@@ -253,6 +276,13 @@ export const useAuth = () => {
         return { success: false, message: 'Supabase não configurado.' };
       }
 
+      if (!ENABLED_OAUTH_PROVIDERS.includes(provider)) {
+        return {
+          success: false,
+          message: `${OAUTH_PROVIDER_LABEL[provider]} não está habilitado. Ative o provider no Supabase (Authentication > Providers) e adicione em VITE_SUPABASE_OAUTH_PROVIDERS.`,
+        };
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
@@ -267,7 +297,7 @@ export const useAuth = () => {
 
       return {
         success: true,
-        message: `Redirecionando para autenticação com ${provider === 'google' ? 'Google' : 'Facebook'}...`,
+        message: `Redirecionando para autenticação com ${OAUTH_PROVIDER_LABEL[provider]}...`,
       };
     },
     [],
@@ -283,6 +313,7 @@ export const useAuth = () => {
     logout,
     resetPassword,
     loginWithOAuth,
+    enabledOAuthProviders: ENABLED_OAUTH_PROVIDERS,
     updateActivity,
   };
 };

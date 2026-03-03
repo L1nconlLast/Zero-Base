@@ -76,7 +76,7 @@ const studyMethods: StudyMethod[] = [
       'Revise os difíceis mais vezes',
       'Use apps como Anki ou Quizlet'
     ],
-    bestFor: ['Anatomia', 'Terminologia médica', 'Farmacologia', 'Datas e nomes'],
+    bestFor: ['Matemática', 'Linguagens', 'Atualidades', 'Datas e nomes'],
     timeEstimate: '15-30 min/dia'
   },
   {
@@ -101,7 +101,7 @@ const studyMethods: StudyMethod[] = [
       'Use cores e símbolos',
       'Revise e complemente'
     ],
-    bestFor: ['Fisiologia', 'Patologia', 'Sistemas corporais', 'Ciclos bioquímicos'],
+    bestFor: ['Ciências da Natureza', 'Ciências Humanas', 'Sistemas complexos', 'Ciclos de conteúdo'],
     timeEstimate: '20-40 min/mapa'
   },
   {
@@ -151,7 +151,7 @@ const studyMethods: StudyMethod[] = [
       'Identifique onde travou',
       'Volte ao material e reestude'
     ],
-    bestFor: ['Fisiopatologia', 'Mecanismos de ação', 'Conceitos abstratos'],
+    bestFor: ['Direito Constitucional', 'Direito Administrativo', 'Conceitos abstratos'],
     timeEstimate: '10-20 min/conceito'
   },
   {
@@ -171,9 +171,9 @@ const studyMethods: StudyMethod[] = [
     ],
     howToUse: [
       'Divida sessão em blocos de 30-45min',
-      'Estude Anatomia no 1º bloco',
-      'Mude para Fisiologia no 2º',
-      'Termine com Farmacologia',
+      'Estude Matemática no 1º bloco',
+      'Mude para Linguagens no 2º',
+      'Termine com Humanas ou Direito',
       'Varie ordem a cada dia'
     ],
     bestFor: ['Sessões longas', 'Revisão geral', 'Preparação para provas'],

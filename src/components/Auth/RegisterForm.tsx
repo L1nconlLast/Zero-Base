@@ -7,16 +7,25 @@ type SocialProvider = 'google' | 'facebook';
 interface RegisterFormProps {
   onRegister: (name: string, email: string, password: string) => Promise<{ success: boolean; message: string }>;
   onSocialLogin?: (provider: SocialProvider) => Promise<void> | void;
+  enabledSocialProviders?: SocialProvider[];
   onSwitchToLogin: () => void;
 }
 
-export const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister, onSocialLogin, onSwitchToLogin }) => {
+export const RegisterForm: React.FC<RegisterFormProps> = ({
+  onRegister,
+  onSocialLogin,
+  enabledSocialProviders = [],
+  onSwitchToLogin,
+}) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const isGoogleEnabled = enabledSocialProviders.includes('google');
+  const isFacebookEnabled = enabledSocialProviders.includes('facebook');
+  const hasEnabledSocialProviders = isGoogleEnabled || isFacebookEnabled;
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -65,6 +74,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister, onSocial
 
   const handleSocial = async (provider: SocialProvider) => {
     if (!onSocialLogin) return;
+    if (!enabledSocialProviders.includes(provider)) {
+      toast.error(`${provider === 'google' ? 'Google' : 'Facebook'} não está habilitado no momento.`);
+      return;
+    }
+
     setIsLoading(true);
     try {
       await onSocialLogin(provider);
@@ -187,7 +201,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister, onSocial
             )}
           </button>
 
-          {onSocialLogin && (
+          {onSocialLogin && hasEnabledSocialProviders && (
             <>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
@@ -199,22 +213,26 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister, onSocial
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleSocial('google')}
-                  disabled={isLoading || cooldownSeconds > 0}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                >
-                  Google
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSocial('facebook')}
-                  disabled={isLoading || cooldownSeconds > 0}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                >
-                  Facebook
-                </button>
+                {isGoogleEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleSocial('google')}
+                    disabled={isLoading || cooldownSeconds > 0}
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                  >
+                    Google
+                  </button>
+                )}
+                {isFacebookEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleSocial('facebook')}
+                    disabled={isLoading || cooldownSeconds > 0}
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                  >
+                    Facebook
+                  </button>
+                )}
               </div>
             </>
           )}

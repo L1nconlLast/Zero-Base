@@ -10,6 +10,7 @@ import {
   scoreQuestionForModel,
 } from '../../data/officialExamModels';
 import { questionsCloudService } from '../../services/questionsCloud.service';
+import { getDisplayDiscipline } from '../../utils/disciplineLabels';
 
 interface MockExamProps {
   onEarnXP?: (xp: number) => void;
@@ -43,20 +44,6 @@ const TRACK_LABEL: Record<QuestionTrack | 'ambos', string> = {
 
 const ENEM_SUBJECT_ORDER = ['Linguagens', 'Ciências Humanas', 'Ciências da Natureza', 'Matemática', 'Redação'];
 const CONCURSO_SUBJECT_ORDER = ['Português', 'Raciocínio Lógico', 'Direito Constitucional', 'Direito Administrativo', 'Informática', 'Atualidades'];
-
-const SUBJECT_ICON: Record<string, string> = {
-  Matemática: '📐',
-  Linguagens: '📝',
-  'Ciências Humanas': '🌍',
-  'Ciências da Natureza': '🧪',
-  Redação: '✍️',
-  Português: '📖',
-  'Raciocínio Lógico': '🧠',
-  'Direito Constitucional': '⚖️',
-  'Direito Administrativo': '🏛️',
-  Informática: '💻',
-  Atualidades: '📰',
-};
 
 const ENEM_SUBJECTS = new Set(ENEM_SUBJECT_ORDER);
 const CONCURSO_SUBJECTS = new Set(CONCURSO_SUBJECT_ORDER);
@@ -584,7 +571,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
                     : getSubjectChipClass(subject, selectedSubject === subject)
                 }`}
               >
-                {subject === 'Todas' ? 'Todas' : `${SUBJECT_ICON[subject] || '📚'} ${subject}`}
+                {subject === 'Todas' ? 'Todas' : `${getDisplayDiscipline(subject).icon} ${getDisplayDiscipline(subject).label}`}
               </button>
             ))}
           </div>
@@ -688,7 +675,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
             {plannedDistribution.length > 0 ? (
               plannedDistribution.map((item) => (
                 <span key={item.subject} className="px-2.5 py-1 rounded-full text-xs font-medium border bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700">
-                  {item.subject === 'Aleatório' ? '🎲' : (SUBJECT_ICON[item.subject] || '📚')} {item.subject} · {item.count}
+                  {item.subject === 'Aleatório' ? '🎲 Aleatório' : `${getDisplayDiscipline(item.subject).icon} ${getDisplayDiscipline(item.subject).label}`} · {item.count}
                 </span>
               ))
             ) : (
@@ -785,7 +772,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-sm">
         <div className="flex gap-2 flex-wrap">
           <span className="text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 px-2.5 py-1 rounded-full border border-blue-100 dark:border-blue-800">
-            {(SUBJECT_ICON[currentQuestion?.subject || ''] || '📚')} {currentQuestion?.subject}
+            {getDisplayDiscipline(currentQuestion?.subject || '').icon} {getDisplayDiscipline(currentQuestion?.subject || '').label}
           </span>
           {selectedModel && (
             <span className="text-xs font-medium bg-violet-50 dark:bg-violet-900/20 text-violet-600 px-2.5 py-1 rounded-full border border-violet-100 dark:border-violet-800">
