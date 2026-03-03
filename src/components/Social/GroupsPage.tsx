@@ -64,6 +64,17 @@ const formatDatePtBr = (value: string) => {
   return date.toLocaleDateString('pt-BR');
 };
 
+const createLocalRankingId = (input: {
+  userId: string;
+  groupId?: string | null;
+  period: RankingPeriod;
+  periodStart: string;
+  periodEnd: string;
+}) => {
+  const scope = input.groupId || 'global';
+  return `local-${input.userId}-${scope}-${input.period}-${input.periodStart}-${input.periodEnd}`;
+};
+
 const GroupsPage: React.FC<GroupsPageProps> = ({
   userId,
   userName,
@@ -546,14 +557,66 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     }
 
     const { periodStart, periodEnd } = getRankingWindow(params.period);
+    const rankingGroupId = params.useGroupScope ? selectedGroupId || null : null;
+    const totalPoints = Number(userTotalPoints || 0);
 
     await rankingService.upsertUserRanking({
       userId,
       period: params.period,
       periodStart,
       periodEnd,
-      totalPoints: Number(userTotalPoints || 0),
-      groupId: params.useGroupScope ? selectedGroupId || null : null,
+      totalPoints,
+      groupId: rankingGroupId,
+    });
+
+    setRankingRows((previous) => {
+      const shouldHydrateCurrentView =
+        rankingPeriod === params.period &&
+        ((rankingScope === 'group' && params.useGroupScope && selectedGroupId) ||
+          (rankingScope === 'global' && !params.useGroupScope));
+
+      if (!shouldHydrateCurrentView) {
+        return previous;
+      }
+
+      const next: RankingRow[] = [...previous];
+      const rowIndex = next.findIndex(
+        (row) =>
+          row.userId === userId &&
+          row.period === params.period &&
+          row.periodStart === periodStart &&
+          row.periodEnd === periodEnd &&
+          (row.groupId || null) === rankingGroupId,
+      );
+
+      const updatedRow: RankingRow = {
+        id:
+          rowIndex >= 0
+            ? next[rowIndex].id
+            : createLocalRankingId({
+                userId,
+                groupId: rankingGroupId,
+                period: params.period,
+                periodStart,
+                periodEnd,
+              }),
+        userId,
+        groupId: rankingGroupId,
+        period: params.period,
+        periodStart,
+        periodEnd,
+        totalPoints,
+        rankPosition: null,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (rowIndex >= 0) {
+        next[rowIndex] = updatedRow;
+      } else {
+        next.push(updatedRow);
+      }
+
+      return next.sort((a, b) => Number(b.totalPoints) - Number(a.totalPoints));
     });
 
     if (params.showSuccessToast) {
