@@ -64,6 +64,8 @@ const formatDatePtBr = (value: string) => {
   return date.toLocaleDateString('pt-BR');
 };
 
+const sortRankingRows = (rows: RankingRow[]) => [...rows].sort((a, b) => Number(b.totalPoints) - Number(a.totalPoints));
+
 const createLocalRankingId = (input: {
   userId: string;
   groupId?: string | null;
@@ -327,6 +329,238 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
       void client.removeChannel(channel);
     };
   }, [selectedGroupId]);
+
+  useEffect(() => {
+    if (!selectedGroupId || !isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    const client = supabase;
+
+    const channel = client
+      .channel(`group-challenges-${selectedGroupId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'challenges',
+          filter: `group_id=eq.${selectedGroupId}`,
+        },
+        (payload) => {
+          const newRow = payload.new as {
+            id: string;
+            group_id: string;
+            name: string;
+            goal_type: string;
+            goal_value: number;
+            start_date: string;
+            end_date: string;
+            status: 'draft' | 'active' | 'completed' | 'cancelled';
+            created_by: string;
+            created_at: string;
+            updated_at: string;
+          };
+          const oldRow = payload.old as { id: string };
+
+          setChallenges((previous) => {
+            if (payload.eventType === 'DELETE') {
+              return previous.filter((item) => item.id !== oldRow.id);
+            }
+
+            const mapped: GroupChallenge = {
+              id: newRow.id,
+              groupId: newRow.group_id,
+              name: newRow.name,
+              goalType: newRow.goal_type,
+              goalValue: Number(newRow.goal_value),
+              startDate: newRow.start_date,
+              endDate: newRow.end_date,
+              status: newRow.status,
+              createdBy: newRow.created_by,
+              createdAt: newRow.created_at,
+              updatedAt: newRow.updated_at,
+            };
+
+            const index = previous.findIndex((item) => item.id === mapped.id);
+            if (index >= 0) {
+              const next = [...previous];
+              next[index] = mapped;
+              return next;
+            }
+
+            return [mapped, ...previous];
+          });
+
+          if (payload.eventType === 'DELETE') {
+            setSelectedChallengeId((current) => (current === oldRow.id ? null : current));
+            return;
+          }
+
+          if (!selectedChallengeId) {
+            setSelectedChallengeId(newRow.id);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [selectedGroupId, selectedChallengeId]);
+
+  useEffect(() => {
+    if (!selectedChallengeId || !isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    const client = supabase;
+
+    const channel = client
+      .channel(`challenge-participants-${selectedChallengeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'challenge_participants',
+          filter: `challenge_id=eq.${selectedChallengeId}`,
+        },
+        (payload) => {
+          const newRow = payload.new as {
+            id: string;
+            challenge_id: string;
+            user_id: string;
+            progress: number;
+            completed: boolean;
+            joined_at: string;
+          };
+          const oldRow = payload.old as { id: string };
+
+          setChallengeParticipants((previous) => {
+            if (payload.eventType === 'DELETE') {
+              return previous.filter((item) => item.id !== oldRow.id);
+            }
+
+            const mapped: ChallengeParticipant = {
+              id: newRow.id,
+              challengeId: newRow.challenge_id,
+              userId: newRow.user_id,
+              progress: Number(newRow.progress),
+              completed: newRow.completed,
+              joinedAt: newRow.joined_at,
+            };
+
+            const index = previous.findIndex((item) => item.id === mapped.id);
+            if (index >= 0) {
+              const next = [...previous];
+              next[index] = mapped;
+              return next.sort((a, b) => Number(b.progress) - Number(a.progress));
+            }
+
+            return [...previous, mapped].sort((a, b) => Number(b.progress) - Number(a.progress));
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [selectedChallengeId]);
+
+  useEffect(() => {
+    if (!userId || !isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    const { periodStart, periodEnd } = getRankingWindow(rankingPeriod);
+    const expectedGroupId = rankingScope === 'group' ? selectedGroupId || null : null;
+
+    const client = supabase;
+
+    const channel = client
+      .channel(`ranking-live-${rankingScope}-${rankingPeriod}-${selectedGroupId || 'global'}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rankings_periodic',
+        },
+        (payload) => {
+          const newRow = payload.new as {
+            id: string;
+            user_id: string;
+            group_id: string | null;
+            period: RankingPeriod;
+            period_start: string;
+            period_end: string;
+            total_points: number;
+            rank_position: number | null;
+            updated_at: string;
+          };
+          const oldRow = payload.old as {
+            id: string;
+            user_id: string;
+            group_id: string | null;
+            period: RankingPeriod;
+            period_start: string;
+            period_end: string;
+          };
+
+          const matchesScope = (row: {
+            group_id: string | null;
+            period: RankingPeriod;
+            period_start: string;
+            period_end: string;
+          }) =>
+            row.period === rankingPeriod &&
+            row.period_start === periodStart &&
+            row.period_end === periodEnd &&
+            (row.group_id || null) === expectedGroupId;
+
+          setRankingRows((previous) => {
+            if (payload.eventType === 'DELETE') {
+              if (!matchesScope(oldRow)) {
+                return previous;
+              }
+              return previous.filter((item) => item.id !== oldRow.id);
+            }
+
+            if (!matchesScope(newRow)) {
+              return previous;
+            }
+
+            const mapped: RankingRow = {
+              id: newRow.id,
+              userId: newRow.user_id,
+              groupId: newRow.group_id,
+              period: newRow.period,
+              periodStart: newRow.period_start,
+              periodEnd: newRow.period_end,
+              totalPoints: Number(newRow.total_points),
+              rankPosition: newRow.rank_position,
+              updatedAt: newRow.updated_at,
+            };
+
+            const index = previous.findIndex((item) => item.id === mapped.id);
+            if (index >= 0) {
+              const next = [...previous];
+              next[index] = mapped;
+              return sortRankingRows(next);
+            }
+
+            return sortRankingRows([...previous, mapped]);
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [userId, rankingScope, rankingPeriod, selectedGroupId]);
 
   const handleCreateGroup = async () => {
     if (!userId) {
