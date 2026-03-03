@@ -1,7 +1,7 @@
 import { isSupabaseConfigured, supabase } from './supabase.client';
 
 type SyncAction = 'CREATE' | 'UPDATE' | 'DELETE';
-type SyncTable = 'study_sessions' | 'messages';
+type SyncTable = 'study_sessions' | 'messages' | 'study_blocks' | 'challenges' | 'challenge_participants';
 
 interface SyncQueueItem {
   id?: number;
@@ -53,6 +53,14 @@ const isNetworkError = (message: string) => {
 };
 
 const toIso = () => new Date().toISOString();
+
+const ownerColumnByTable: Record<SyncTable, string> = {
+  study_sessions: 'user_id',
+  messages: 'user_id',
+  study_blocks: 'user_id',
+  challenges: 'created_by',
+  challenge_participants: 'user_id',
+};
 
 const toNumberId = (value: IDBValidKey | undefined): number | undefined => {
   if (typeof value === 'number') return value;
@@ -384,6 +392,121 @@ class OfflineSyncService {
       return;
     }
 
+    if (item.table === 'study_blocks') {
+      const payload = {
+        id: String(item.data.id),
+        user_id: userId,
+        study_date: String(item.data.study_date),
+        start_time: String(item.data.start_time),
+        end_time: String(item.data.end_time),
+        subject: String(item.data.subject || ''),
+        topic: item.data.topic ? String(item.data.topic) : null,
+        note: item.data.note ? String(item.data.note) : null,
+        type: item.data.type ? String(item.data.type) : null,
+        status: String(item.data.status || 'pendente'),
+        reason: item.data.reason ? String(item.data.reason) : null,
+        source: item.data.source ? String(item.data.source) : null,
+      };
+
+      const { data, error } = await client
+        .from('study_blocks')
+        .upsert(payload, { onConflict: 'id' })
+        .select('id, updated_at')
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const row = data as { id: string; updated_at?: string };
+      await this.upsertLocalCache('study_blocks', row.id, {
+        ...payload,
+        updated_at: row.updated_at || toIso(),
+      });
+
+      return;
+    }
+
+    if (item.table === 'challenges') {
+      const payload = {
+        group_id: String(item.data.group_id),
+        created_by: userId,
+        name: String(item.data.name || ''),
+        goal_type: String(item.data.goal_type || 'minutes'),
+        goal_value: Number(item.data.goal_value || 0),
+        start_date: String(item.data.start_date),
+        end_date: String(item.data.end_date),
+        status: String(item.data.status || 'active'),
+      };
+
+      const { data, error } = await client
+        .from('challenges')
+        .insert(payload)
+        .select('id, updated_at')
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const row = data as { id: string; updated_at?: string };
+
+      const autoJoinUserId = item.data.auto_join_user_id ? String(item.data.auto_join_user_id) : null;
+      if (autoJoinUserId) {
+        const { error: joinError } = await client
+          .from('challenge_participants')
+          .upsert(
+            {
+              challenge_id: row.id,
+              user_id: autoJoinUserId,
+              progress: 0,
+              completed: false,
+            },
+            { onConflict: 'challenge_id,user_id' },
+          );
+
+        if (joinError) {
+          throw new Error(joinError.message);
+        }
+      }
+
+      await this.upsertLocalCache('challenges', row.id, {
+        ...payload,
+        id: row.id,
+        updated_at: row.updated_at || toIso(),
+      });
+
+      return;
+    }
+
+    if (item.table === 'challenge_participants') {
+      const payload = {
+        challenge_id: String(item.data.challenge_id),
+        user_id: userId,
+        progress: Number(item.data.progress || 0),
+        completed: Boolean(item.data.completed),
+      };
+
+      const { data, error } = await client
+        .from('challenge_participants')
+        .upsert(payload, { onConflict: 'challenge_id,user_id' })
+        .select('id, updated_at')
+        .single();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const row = data as { id: string; updated_at?: string };
+      await this.upsertLocalCache('challenge_participants', row.id, {
+        ...payload,
+        id: row.id,
+        updated_at: row.updated_at || toIso(),
+      });
+
+      return;
+    }
+
     throw new Error(`Tabela não suportada para CREATE: ${item.table}`);
   }
 
@@ -414,12 +537,15 @@ class OfflineSyncService {
 
     const payload = { ...item.data };
     delete (payload as Record<string, unknown>).local_updated_at;
+    delete (payload as Record<string, unknown>).auto_join_user_id;
+
+    const ownerColumn = ownerColumnByTable[item.table];
 
     const { error } = await client
       .from(tableName)
       .update(payload)
       .eq('id', item.record_id)
-      .eq('user_id', userId);
+      .eq(ownerColumn, userId);
 
     if (error) {
       throw new Error(error.message);
@@ -453,11 +579,13 @@ class OfflineSyncService {
       return;
     }
 
+    const ownerColumn = ownerColumnByTable[item.table];
+
     const { error } = await client
       .from(tableName)
       .delete()
       .eq('id', item.record_id)
-      .eq('user_id', userId);
+      .eq(ownerColumn, userId);
 
     if (error) {
       throw new Error(error.message);

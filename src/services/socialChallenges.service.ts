@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from './supabase.client';
+import { offlineSyncService } from './offlineSync.service';
 import type { ChallengeParticipant, GroupChallenge } from '../types/social';
 
 interface ChallengeRow {
@@ -81,6 +82,42 @@ class SocialChallengesService {
     startDate: string;
     endDate: string;
   }): Promise<GroupChallenge> {
+    const localNow = new Date().toISOString();
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const localId = `local-${Date.now()}`;
+      await offlineSyncService.enqueue({
+        action: 'CREATE',
+        table: 'challenges',
+        recordId: localId,
+        data: {
+          group_id: input.groupId,
+          name: input.name,
+          goal_type: input.goalType || 'minutes',
+          goal_value: input.goalValue,
+          start_date: input.startDate,
+          end_date: input.endDate,
+          status: 'active',
+          auto_join_user_id: input.createdBy,
+          local_updated_at: localNow,
+        },
+      });
+
+      return {
+        id: localId,
+        groupId: input.groupId,
+        name: input.name,
+        goalType: input.goalType || 'minutes',
+        goalValue: input.goalValue,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        status: 'active',
+        createdBy: input.createdBy,
+        createdAt: localNow,
+        updatedAt: localNow,
+      };
+    }
+
     const client = assertClient();
 
     const { data, error } = await client
@@ -99,13 +136,83 @@ class SocialChallengesService {
       .single();
 
     if (error) {
-      throw new Error(`Erro ao criar desafio: ${error.message}`);
+      const message = `Erro ao criar desafio: ${error.message}`;
+      if (message.toLowerCase().includes('fetch') || message.toLowerCase().includes('network')) {
+        const localId = `local-${Date.now()}`;
+        await offlineSyncService.enqueue({
+          action: 'CREATE',
+          table: 'challenges',
+          recordId: localId,
+          data: {
+            group_id: input.groupId,
+            name: input.name,
+            goal_type: input.goalType || 'minutes',
+            goal_value: input.goalValue,
+            start_date: input.startDate,
+            end_date: input.endDate,
+            status: 'active',
+            auto_join_user_id: input.createdBy,
+            local_updated_at: localNow,
+          },
+        });
+
+        return {
+          id: localId,
+          groupId: input.groupId,
+          name: input.name,
+          goalType: input.goalType || 'minutes',
+          goalValue: input.goalValue,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          status: 'active',
+          createdBy: input.createdBy,
+          createdAt: localNow,
+          updatedAt: localNow,
+        };
+      }
+
+      throw new Error(message);
     }
 
     return toGroupChallenge(data as ChallengeRow);
   }
 
   async joinChallenge(challengeId: string, userId: string): Promise<ChallengeParticipant> {
+    const localNow = new Date().toISOString();
+
+    if (String(challengeId).startsWith('local-')) {
+      return {
+        id: `local-participant-${Date.now()}`,
+        challengeId,
+        userId,
+        progress: 0,
+        completed: false,
+        joinedAt: localNow,
+      };
+    }
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await offlineSyncService.enqueue({
+        action: 'CREATE',
+        table: 'challenge_participants',
+        data: {
+          challenge_id: challengeId,
+          progress: 0,
+          completed: false,
+          local_updated_at: localNow,
+        },
+      });
+
+      return {
+        id: `local-participant-${Date.now()}`,
+        challengeId,
+        userId,
+        progress: 0,
+        completed: false,
+        joinedAt: localNow,
+      };
+    }
+
     const client = assertClient();
 
     const { data, error } = await client
@@ -123,7 +230,31 @@ class SocialChallengesService {
       .single();
 
     if (error) {
-      throw new Error(`Erro ao entrar no desafio: ${error.message}`);
+      const message = `Erro ao entrar no desafio: ${error.message}`;
+
+      if (message.toLowerCase().includes('fetch') || message.toLowerCase().includes('network')) {
+        await offlineSyncService.enqueue({
+          action: 'CREATE',
+          table: 'challenge_participants',
+          data: {
+            challenge_id: challengeId,
+            progress: 0,
+            completed: false,
+            local_updated_at: localNow,
+          },
+        });
+
+        return {
+          id: `local-participant-${Date.now()}`,
+          challengeId,
+          userId,
+          progress: 0,
+          completed: false,
+          joinedAt: localNow,
+        };
+      }
+
+      throw new Error(message);
     }
 
     return toChallengeParticipant(data as ChallengeParticipantRow);
@@ -151,6 +282,43 @@ class SocialChallengesService {
     progress: number;
     completed?: boolean;
   }): Promise<ChallengeParticipant> {
+    const localNow = new Date().toISOString();
+
+    if (String(input.challengeId).startsWith('local-')) {
+      const nextProgressLocal = Math.max(0, Number.isFinite(input.progress) ? input.progress : 0);
+      return {
+        id: `local-progress-${Date.now()}`,
+        challengeId: input.challengeId,
+        userId: input.userId,
+        progress: nextProgressLocal,
+        completed: input.completed ?? false,
+        joinedAt: localNow,
+      };
+    }
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const nextProgressLocal = Math.max(0, Number.isFinite(input.progress) ? input.progress : 0);
+      await offlineSyncService.enqueue({
+        action: 'CREATE',
+        table: 'challenge_participants',
+        data: {
+          challenge_id: input.challengeId,
+          progress: nextProgressLocal,
+          completed: input.completed ?? false,
+          local_updated_at: localNow,
+        },
+      });
+
+      return {
+        id: `local-progress-${Date.now()}`,
+        challengeId: input.challengeId,
+        userId: input.userId,
+        progress: nextProgressLocal,
+        completed: input.completed ?? false,
+        joinedAt: localNow,
+      };
+    }
+
     const client = assertClient();
 
     const nextProgress = Math.max(0, Number.isFinite(input.progress) ? input.progress : 0);
@@ -170,7 +338,31 @@ class SocialChallengesService {
       .single();
 
     if (error) {
-      throw new Error(`Erro ao atualizar progresso: ${error.message}`);
+      const message = `Erro ao atualizar progresso: ${error.message}`;
+
+      if (message.toLowerCase().includes('fetch') || message.toLowerCase().includes('network')) {
+        await offlineSyncService.enqueue({
+          action: 'CREATE',
+          table: 'challenge_participants',
+          data: {
+            challenge_id: input.challengeId,
+            progress: nextProgress,
+            completed: input.completed ?? false,
+            local_updated_at: localNow,
+          },
+        });
+
+        return {
+          id: `local-progress-${Date.now()}`,
+          challengeId: input.challengeId,
+          userId: input.userId,
+          progress: nextProgress,
+          completed: input.completed ?? false,
+          joinedAt: localNow,
+        };
+      }
+
+      throw new Error(message);
     }
 
     return toChallengeParticipant(data as ChallengeParticipantRow);
