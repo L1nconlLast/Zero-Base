@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { rankingService } from '../../services/ranking.service';
 import { socialChallengesService } from '../../services/socialChallenges.service';
 import { socialGroupsService } from '../../services/socialGroups.service';
+import { offlineSyncService } from '../../services/offlineSync.service';
 import { isSupabaseConfigured, supabase } from '../../services/supabase.client';
 import type { ChallengeParticipant, GroupChallenge, GroupMessage, RankingPeriod, RankingRow, StudyGroup } from '../../types/social';
 
@@ -321,6 +322,15 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
               },
             ];
           });
+
+          void offlineSyncService.applyRemoteSnapshot('messages', row.id, {
+            id: row.id,
+            group_id: row.group_id,
+            user_id: row.user_id,
+            content: row.content,
+            attachment_url: row.attachment_url,
+            created_at: row.created_at,
+          });
         },
       )
       .subscribe();
@@ -628,11 +638,20 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
 
     setSendingMessage(true);
     try {
-      await socialGroupsService.sendMessage({
+      const sent = await socialGroupsService.sendMessage({
         groupId: selectedGroupId,
         userId,
         content: trimmed,
       });
+
+      if (String(sent.id).startsWith('local-')) {
+        setMessages((previous) => [
+          ...previous,
+          sent,
+        ]);
+        toast.success('Mensagem salva localmente e será sincronizada quando voltar a conexão.');
+      }
+
       setMessageInput('');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao enviar mensagem.');

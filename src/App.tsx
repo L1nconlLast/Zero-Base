@@ -40,6 +40,7 @@ import { studyPreferencesService } from './services/studyPreferences.service';
 import { profilePreferencesService } from './services/profilePreferences.service';
 import { userProfileService } from './services/userProfile.service';
 import { xpEngineService } from './services/xpEngine.service';
+import { offlineSyncService } from './services/offlineSync.service';
 import { STUDY_METHODS } from './data/studyMethods';
 import type { SmartScheduleProfile } from './utils/smartScheduleEngine';
 
@@ -135,6 +136,7 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [quizPrefilter, setQuizPrefilter] = useState<QuizPrefilter | null>(null);
   const [mockExamPrefilter, setMockExamPrefilter] = useState<MockExamPrefilter | null>(null);
+  const [syncUiStatus, setSyncUiStatus] = useState(offlineSyncService.getStatus());
 
   const applyAchievementReward = React.useCallback(
     (achievementId: string, points: number) => {
@@ -226,6 +228,58 @@ function App() {
   );
 
   // supabaseUserId agora é gerenciado pelo useAuth via onAuthStateChange
+
+  useEffect(() => {
+    const unsubscribe = offlineSyncService.subscribe((status) => {
+      setSyncUiStatus(status);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn || !supabaseUserId) {
+      return;
+    }
+
+    void offlineSyncService.start(supabaseUserId);
+  }, [isLoggedIn, supabaseUserId]);
+
+  const handleSyncNow = React.useCallback(async () => {
+    if (!supabaseUserId) {
+      toast.error('Faça login para sincronizar.');
+      return;
+    }
+
+    await offlineSyncService.syncNow(supabaseUserId);
+
+    const status = offlineSyncService.getStatus();
+    if (status.lastError) {
+      toast.error(status.lastError);
+    } else {
+      toast.success('Sincronização concluída.');
+    }
+  }, [supabaseUserId]);
+
+  const syncStatusMeta = React.useMemo(() => {
+    if (!syncUiStatus.isOnline) {
+      return { label: 'Offline', tone: 'warning' as const };
+    }
+
+    if (syncUiStatus.isSyncing) {
+      return { label: 'Sincronizando...', tone: 'neutral' as const };
+    }
+
+    if (syncUiStatus.lastError) {
+      return { label: 'Erro de sync', tone: 'danger' as const };
+    }
+
+    if (syncUiStatus.pendingCount > 0) {
+      return { label: `${syncUiStatus.pendingCount} pendente(s)`, tone: 'warning' as const };
+    }
+
+    return { label: 'Sincronizado', tone: 'success' as const };
+  }, [syncUiStatus]);
 
   useEffect(() => {
     if (!isLoggedIn || !user?.email) {
@@ -1038,6 +1092,10 @@ function App() {
         userAvatar={profileAvatar}
         darkMode={darkMode}
         currentTheme={currentTheme}
+        syncStatusLabel={syncStatusMeta.label}
+        syncStatusTone={syncStatusMeta.tone}
+        onSyncNow={handleSyncNow}
+        disableSyncNow={syncUiStatus.isSyncing}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         onSelectTheme={setCurrentTheme}
         onLogout={handleLogout}

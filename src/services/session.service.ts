@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase.client';
+import { offlineSyncService } from './offlineSync.service';
 import type { StudySession } from '../types';
 
 interface StudySessionInsert {
@@ -77,6 +78,28 @@ class SessionService {
   }
 
   async create(userId: string, session: StudySession): Promise<StudySession> {
+    const offlinePayload = {
+      date: session.date,
+      minutes: session.minutes,
+      points: session.points,
+      subject: session.subject,
+      duration: session.duration,
+      method_id: session.methodId || null,
+      goal_met: typeof session.goalMet === 'boolean' ? session.goalMet : null,
+      timestamp: session.timestamp || null,
+      local_updated_at: new Date().toISOString(),
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await offlineSyncService.enqueue({
+        action: 'CREATE',
+        table: 'study_sessions',
+        data: offlinePayload,
+      });
+
+      return session;
+    }
+
     const client = assertClient();
 
     const payload = toRow(userId, session);
@@ -88,7 +111,19 @@ class SessionService {
       .single();
 
     if (error) {
-      throw new Error(`Erro ao criar sessão: ${error.message}`);
+      const message = `Erro ao criar sessão: ${error.message}`;
+
+      if (message.toLowerCase().includes('fetch') || message.toLowerCase().includes('network')) {
+        await offlineSyncService.enqueue({
+          action: 'CREATE',
+          table: 'study_sessions',
+          data: offlinePayload,
+        });
+
+        return session;
+      }
+
+      throw new Error(message);
     }
 
     return fromRow(data as StudySessionRow);

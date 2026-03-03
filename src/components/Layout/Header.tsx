@@ -8,6 +8,10 @@ interface HeaderProps {
   userAvatar?: string;
   darkMode: boolean;
   currentTheme: string;
+  syncStatusLabel?: string;
+  syncStatusTone?: 'success' | 'warning' | 'danger' | 'neutral';
+  onSyncNow?: () => void;
+  disableSyncNow?: boolean;
   onToggleDarkMode: () => void;
   onSelectTheme: (theme: string) => void;
   onLogout: () => void;
@@ -18,11 +22,23 @@ export const Header: React.FC<HeaderProps> = ({
   userAvatar,
   darkMode,
   currentTheme,
+  syncStatusLabel,
+  syncStatusTone = 'neutral',
+  onSyncNow,
+  disableSyncNow = false,
   onToggleDarkMode,
   onSelectTheme,
   onLogout 
 }) => {
   const avatarIsImage = Boolean(userAvatar && (/^data:image\//i.test(userAvatar) || /^https?:\/\//i.test(userAvatar)));
+  const syncClass =
+    syncStatusTone === 'success'
+      ? 'text-emerald-700 bg-emerald-100 dark:text-emerald-200 dark:bg-emerald-900/30'
+      : syncStatusTone === 'warning'
+        ? 'text-amber-700 bg-amber-100 dark:text-amber-200 dark:bg-amber-900/30'
+        : syncStatusTone === 'danger'
+          ? 'text-rose-700 bg-rose-100 dark:text-rose-200 dark:bg-rose-900/30'
+          : 'text-slate-700 bg-slate-100 dark:text-slate-200 dark:bg-slate-700';
 
   return (
     <header className="bg-white dark:bg-gray-800 shadow-md sticky top-0 z-50">
@@ -50,6 +66,23 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Seletor de Tema */}
           <ThemeSelector currentTheme={currentTheme} onSelectTheme={onSelectTheme} />
+
+          {syncStatusLabel && (
+            <span className={`hidden lg:inline-flex px-2.5 py-1 rounded-md text-xs font-semibold ${syncClass}`}>
+              {syncStatusLabel}
+            </span>
+          )}
+
+          {onSyncNow && (
+            <button
+              onClick={onSyncNow}
+              disabled={disableSyncNow}
+              className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-xs font-semibold disabled:opacity-50"
+              title="Sincronizar agora"
+            >
+              Sincronizar agora
+            </button>
+          )}
 
           {/* Toggle Dark Mode */}
           <button

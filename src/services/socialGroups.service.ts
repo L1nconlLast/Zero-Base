@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from './supabase.client';
+import { offlineSyncService } from './offlineSync.service';
 import type { GroupMember, GroupMessage, StudyGroup } from '../types/social';
 
 interface GroupRow {
@@ -154,6 +155,32 @@ class SocialGroupsService {
     content: string;
     attachmentUrl?: string;
   }): Promise<GroupMessage> {
+    const localNow = new Date().toISOString();
+    const queuePayload = {
+      group_id: payload.groupId,
+      user_id: payload.userId,
+      content: payload.content,
+      attachment_url: payload.attachmentUrl || null,
+      local_updated_at: localNow,
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await offlineSyncService.enqueue({
+        action: 'CREATE',
+        table: 'messages',
+        data: queuePayload,
+      });
+
+      return {
+        id: `local-${Date.now()}`,
+        groupId: payload.groupId,
+        userId: payload.userId,
+        content: payload.content,
+        attachmentUrl: payload.attachmentUrl || null,
+        createdAt: localNow,
+      };
+    }
+
     const client = assertClient();
 
     const { data, error } = await client
@@ -168,7 +195,26 @@ class SocialGroupsService {
       .single();
 
     if (error) {
-      throw new Error(`Erro ao enviar mensagem: ${error.message}`);
+      const message = `Erro ao enviar mensagem: ${error.message}`;
+
+      if (message.toLowerCase().includes('fetch') || message.toLowerCase().includes('network')) {
+        await offlineSyncService.enqueue({
+          action: 'CREATE',
+          table: 'messages',
+          data: queuePayload,
+        });
+
+        return {
+          id: `local-${Date.now()}`,
+          groupId: payload.groupId,
+          userId: payload.userId,
+          content: payload.content,
+          attachmentUrl: payload.attachmentUrl || null,
+          createdAt: localNow,
+        };
+      }
+
+      throw new Error(message);
     }
 
     return toGroupMessage(data as GroupMessageRow);
