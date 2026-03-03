@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ModalidadeSelect from './ModalidadeSelect';
 import DisciplinaSelect from './DisciplinaSelect';
 import CommandPaletteDisciplineSelect from './CommandPaletteDisciplineSelect';
@@ -122,12 +122,18 @@ interface StudyScheduleCalendarProps {
   userId?: string | null;
 }
 
+interface EditableWeeklyRow {
+  time: string;
+  cells: string[];
+}
+
 const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId }) => {
     const today = new Date();
     const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate());
     const userScope = userId || 'default';
     const profileStorageKey = `smartScheduleProfile_${userScope}`;
     const autoGenerateKey = `smartScheduleAutoGenerate_${userScope}`;
+  const initialSmartProfile = useMemo(() => createDefaultSmartProfile(), []);
     // Estados para o calendário
     const [viewYear, setViewYear] = useState<number>(today.getFullYear());
     const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
@@ -143,11 +149,9 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     const [aiSummary, setAiSummary] = useState<string[]>([]);
     const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
     const [swapSubjectInput, setSwapSubjectInput] = useState('Matemática');
-    const [isEditingSmartPanel, setIsEditingSmartPanel] = useState(false);
-    const smartPanelRef = useRef<HTMLDivElement | null>(null);
     const [smartProfile, setSmartProfile] = useLocalStorage<SmartScheduleProfile>(
       profileStorageKey,
-      createDefaultSmartProfile(),
+      initialSmartProfile,
     );
   const {
     entries,
@@ -406,35 +410,17 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     window.localStorage.removeItem(autoGenerateKey);
   }, [entries.length, autoGenerateKey]);
 
-  useEffect(() => {
-    if (entries.length === 0) {
-      return;
-    }
-
-    if (isEditingSmartPanel) {
-      return;
-    }
-
-    const autoAdaptKey = `smartScheduleAutoAdapted_${userScope}_${todayStr}`;
-    const alreadyAdapted = window.localStorage.getItem(autoAdaptKey) === 'true';
-    if (alreadyAdapted) {
-      return;
-    }
-
-    applyAdaptiveSchedule(smartProfile.hoursPerDay);
-    window.localStorage.setItem(autoAdaptKey, 'true');
-    setAiSummary((previous) => [
-      'Cronograma ajustado automaticamente ao abrir (modo adaptativo ativo).',
-      ...previous,
-    ].slice(0, 4));
-  }, [entries.length, userScope, todayStr, applyAdaptiveSchedule, smartProfile.hoursPerDay, isEditingSmartPanel]);
-
   const selectedDateObj = selectedDate ? new Date(`${selectedDate}T12:00:00`) : new Date(`${todayStr}T12:00:00`);
   const weekStart = getWeekStart(selectedDateObj);
-  const weekDates = GRID_WEEK_DAYS.map((day, index) => ({
-    ...day,
-    date: toDateStr(addDays(weekStart, index).getFullYear(), addDays(weekStart, index).getMonth(), addDays(weekStart, index).getDate()),
-  }));
+  const weekDates = useMemo(() =>
+    GRID_WEEK_DAYS.map((day, index) => {
+      const date = addDays(weekStart, index);
+      return {
+        ...day,
+        date: toDateStr(date.getFullYear(), date.getMonth(), date.getDate()),
+      };
+    }),
+  [weekStart]);
 
   const timeSlots = useMemo(() => {
     const all = entries
@@ -452,6 +438,103 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     });
     return map;
   }, [entries]);
+
+  const buildWeeklyGridFromSchedule = (): EditableWeeklyRow[] =>
+    timeSlots.map((slot) => ({
+      time: slot,
+      cells: weekDates.map((day) => weekMap.get(`${day.date}|${slot}`)?.subject || ''),
+    }));
+
+  const [weeklyGrid, setWeeklyGrid] = useState<EditableWeeklyRow[]>([]);
+
+  const weekSignature = useMemo(() => weekDates.map((day) => day.date).join('|'), [weekDates]);
+  const weeklyGridStorageKey = `weeklyGrid_${userScope}_${weekSignature}`;
+
+  const isValidGridPayload = (value: unknown): value is EditableWeeklyRow[] =>
+    Array.isArray(value)
+    && value.every((row) => typeof row?.time === 'string' && Array.isArray(row?.cells));
+
+  useEffect(() => {
+    const initialGrid = buildWeeklyGridFromSchedule();
+
+    try {
+      const stored = window.localStorage.getItem(weeklyGridStorageKey);
+      if (!stored) {
+        setWeeklyGrid(initialGrid);
+        return;
+      }
+
+      const parsed: unknown = JSON.parse(stored);
+      if (isValidGridPayload(parsed)) {
+        setWeeklyGrid(parsed);
+        return;
+      }
+
+      setWeeklyGrid(initialGrid);
+    } catch {
+      setWeeklyGrid(initialGrid);
+    }
+  }, [weeklyGridStorageKey]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(weeklyGridStorageKey, JSON.stringify(weeklyGrid));
+    } catch {
+      // ignore persist failures
+    }
+  }, [weeklyGridStorageKey, weeklyGrid]);
+
+  const updateGridCell = (rowIndex: number, colIndex: number, value: string) => {
+    setWeeklyGrid((previous) =>
+      previous.map((row, currentRowIndex) => {
+        if (currentRowIndex !== rowIndex) return row;
+        return {
+          ...row,
+          cells: row.cells.map((cell, currentColIndex) => (currentColIndex === colIndex ? value : cell)),
+        };
+      }),
+    );
+  };
+
+  const updateGridTime = (rowIndex: number, value: string) => {
+    setWeeklyGrid((previous) =>
+      previous.map((row, currentRowIndex) => (currentRowIndex === rowIndex ? { ...row, time: value } : row)),
+    );
+  };
+
+  const addGridRow = () => {
+    setWeeklyGrid((previous) => [
+      ...previous,
+      {
+        time: '',
+        cells: weekDates.map(() => ''),
+      },
+    ]);
+  };
+
+  const removeLastGridRow = () => {
+    setWeeklyGrid((previous) => (previous.length > 0 ? previous.slice(0, -1) : previous));
+  };
+
+  const clearGrid = () => {
+    setWeeklyGrid((previous) =>
+      previous.map((row) => ({
+        time: '',
+        cells: row.cells.map(() => ''),
+      })),
+    );
+  };
+
+  const restoreOriginalGrid = () => {
+    setWeeklyGrid(buildWeeklyGridFromSchedule());
+  };
+
+  const allDisciplineLabels = useMemo(() => {
+    const values = new Set<string>();
+    disciplinas.enem.forEach((item) => values.add(item.label));
+    disciplinas.concurso.forEach((item) => values.add(item.label));
+    return [...values].sort((a, b) => a.localeCompare(b));
+  }, [disciplinas]);
 
   // Stats
   const totalScheduled = entries.length;
@@ -486,19 +569,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
         </div>
       </div>
 
-      <div
-        ref={smartPanelRef}
-        onFocusCapture={() => setIsEditingSmartPanel(true)}
-        onBlurCapture={() => {
-          window.setTimeout(() => {
-            const active = document.activeElement;
-            if (!smartPanelRef.current?.contains(active)) {
-              setIsEditingSmartPanel(false);
-            }
-          }, 0);
-        }}
-        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4"
-      >
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500" /> Cronograma Inteligente
@@ -590,7 +661,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
         )}
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm overflow-x-auto">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm overflow-x-auto space-y-3">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">Grade semanal</h3>
         <div className="min-w-[700px]">
           <div className="grid grid-cols-6 gap-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -601,30 +672,65 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
           </div>
 
           <div className="space-y-1 mt-1">
-            {timeSlots.map((slot) => (
-              <div key={slot} className="grid grid-cols-6 gap-1">
-                <div className="px-2 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  {slot}
-                </div>
+            {weeklyGrid.map((row, rowIndex) => (
+              <div key={`row-${rowIndex}`} className="grid grid-cols-6 gap-1">
+                <input
+                  value={row.time}
+                  onChange={(event) => updateGridTime(rowIndex, event.target.value)}
+                  placeholder="08:00"
+                  className="px-2 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                />
 
-                {weekDates.map((day) => {
-                  const key = `${day.date}|${slot}`;
-                  const block = weekMap.get(key);
-
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => block && setSelectedEntryId(block.id)}
-                      className={`min-h-[42px] px-2 py-1 rounded-lg text-[11px] font-semibold text-left ${block ? getSubjectCellClass(block.subject) : 'bg-slate-50 dark:bg-slate-800/60 text-slate-400'} ${block ? 'hover:opacity-90' : ''}`}
-                    >
-                      {block ? block.subject.replace('Simulado ', 'SIM ') : '—'}
-                    </button>
-                  );
-                })}
+                {row.cells.map((cell, colIndex) => (
+                  <input
+                    key={`cell-${rowIndex}-${colIndex}`}
+                    value={cell}
+                    onChange={(event) => updateGridCell(rowIndex, colIndex, event.target.value)}
+                    placeholder="Disciplina"
+                    list="weekly-grid-disciplines"
+                    className="min-h-[42px] px-2 py-1 rounded-lg text-[11px] font-semibold bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                  />
+                ))}
               </div>
             ))}
           </div>
+        </div>
+
+        <datalist id="weekly-grid-disciplines">
+          {allDisciplineLabels.map((label) => (
+            <option key={label} value={label} />
+          ))}
+        </datalist>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={addGridRow}
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900"
+          >
+            ➕ Adicionar horário
+          </button>
+          <button
+            type="button"
+            onClick={clearGrid}
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500 text-white"
+          >
+            🧹 Limpar tudo
+          </button>
+          <button
+            type="button"
+            onClick={restoreOriginalGrid}
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-700 text-white"
+          >
+            ↩️ Restaurar original
+          </button>
+          <button
+            type="button"
+            onClick={removeLastGridRow}
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-rose-600 text-white"
+          >
+            ✖️ Remover última linha
+          </button>
         </div>
       </div>
 

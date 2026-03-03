@@ -6,13 +6,16 @@
 import { useEffect, useState } from 'react';
 import { Mail, Lock, LogIn, Stethoscope, KeyRound, Sparkles, ShieldCheck } from 'lucide-react';
 
+type SocialProvider = 'google' | 'facebook';
+
 interface LoginFormProps {
   onLogin: (email: string, password: string) => Promise<void> | void;
+  onSocialLogin?: (provider: SocialProvider) => Promise<void> | void;
   onResetPassword?: (email: string) => Promise<{ success: boolean; message: string }>;
   onSwitchToRegister: () => void;
 }
 
-export const LoginForm = ({ onLogin, onResetPassword, onSwitchToRegister }: LoginFormProps) => {
+export const LoginForm = ({ onLogin, onSocialLogin, onResetPassword, onSwitchToRegister }: LoginFormProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -67,6 +70,19 @@ export const LoginForm = ({ onLogin, onResetPassword, onSwitchToRegister }: Logi
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao enviar email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSocial = async (provider: SocialProvider) => {
+    if (!onSocialLogin) return;
+    setError('');
+    setLoading(true);
+    try {
+      await onSocialLogin(provider);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao iniciar login social.');
     } finally {
       setLoading(false);
     }
@@ -186,6 +202,38 @@ export const LoginForm = ({ onLogin, onResetPassword, onSwitchToRegister }: Logi
             <LogIn size={20} aria-hidden="true" />
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
+
+          {onSocialLogin && (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200 dark:border-gray-600" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-white dark:bg-gray-800 px-2 text-gray-500">ou continuar com</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSocial('google')}
+                  disabled={loading}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                >
+                  Google
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSocial('facebook')}
+                  disabled={loading}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                >
+                  Facebook
+                </button>
+              </div>
+            </>
+          )}
         </form>
 
         <div className="mt-6 text-center">

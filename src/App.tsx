@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Home, GraduationCap, Brain, Clock3, BarChart3, Trophy, Settings, Database, Info, Heart, CalendarDays, HelpCircle, Layers, BookOpen, Zap } from 'lucide-react';
+import { Home, GraduationCap, Brain, Clock3, BarChart3, Trophy, Settings, Database, Info, Heart, CalendarDays, HelpCircle, Layers, BookOpen, Zap, Users } from 'lucide-react';
 import { NotificationSetup } from './components/NotificationSetup';
 
 // static theme definitions (won't change per render)
@@ -88,12 +88,13 @@ const QuizPage = lazy(() => import('./components/Questions/QuizPage'));
 const MockExam = lazy(() => import('./components/Questions/MockExam'));
 const FlashcardsPage = lazy(() => import('./components/Flashcards/FlashcardsPage'));
 const EveOfExamPage = lazy(() => import('./components/ExamPrep/EveOfExamPage'));
+const GroupsPage = lazy(() => import('./components/Social/GroupsPage'));
 const FeedbackButton = lazy(() => import('./components/UI/FeedbackButton'));
 const EmptyState = lazy(() => import('./components/UI/EmptyState'));
 
 function App() {
   // Authentication (Supabase Auth)
-  const { user, isLoggedIn, loading: authLoading, supabaseUserId: authSupabaseUserId, login, register, logout, resetPassword } = useAuth();
+  const { user, isLoggedIn, loading: authLoading, supabaseUserId: authSupabaseUserId, login, register, logout, resetPassword, loginWithOAuth } = useAuth();
   const [showRegister, setShowRegister] = useState(false);
   const userStorageScope = (user?.email || 'default').toLowerCase();
 
@@ -212,6 +213,17 @@ function App() {
     await logout();
     toast.success('Logout realizado com sucesso!');
   }, [logout]);
+
+  const handleSocialLogin = React.useCallback(
+    async (provider: 'google' | 'facebook') => {
+      const result = await loginWithOAuth(provider);
+      if (!result.success) {
+        throw new Error(result.message);
+      }
+      toast.success(result.message);
+    },
+    [loginWithOAuth],
+  );
 
   // supabaseUserId agora é gerenciado pelo useAuth via onAuthStateChange
 
@@ -838,6 +850,7 @@ function App() {
       { id: 'simulado', label: 'Simulado', icon: Layers },
       { id: 'flashcards', label: 'Flashcards', icon: BookOpen },
       { id: 'vespera', label: 'Véspera', icon: Zap },
+      { id: 'grupos', label: 'Grupos', icon: Users },
       { id: 'conquistas', label: 'Conquistas', icon: Trophy },
       { id: 'configuracoes', label: 'Configurações', icon: Settings },
       { id: 'dados', label: 'Dados', icon: Database },
@@ -875,6 +888,13 @@ function App() {
         defaultTab: 'flashcards',
         tabIds: ['flashcards', 'vespera'],
       },
+        {
+          id: 'grupos-domain',
+          label: 'Grupos',
+          icon: Users,
+          defaultTab: 'grupos',
+          tabIds: ['grupos'],
+        },
       {
         id: 'simulados-domain',
         label: 'Simulados',
@@ -940,11 +960,13 @@ function App() {
         {showRegister ? (
           <RegisterForm
             onRegister={handleRegister}
+            onSocialLogin={handleSocialLogin}
             onSwitchToLogin={() => setShowRegister(false)}
           />
         ) : (
           <LoginForm
             onLogin={handleLogin}
+            onSocialLogin={handleSocialLogin}
             onResetPassword={resetPassword}
             onSwitchToRegister={() => setShowRegister(true)}
           />
@@ -1503,6 +1525,13 @@ function App() {
                   setActiveStudyMode('pomodoro');
                 }}
               />
+            </Suspense>
+          )}
+
+          {/* Página Grupos */}
+          {activeTab === 'grupos' && (
+            <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando grupos...</div>}>
+              <GroupsPage userId={supabaseUserId} userName={resolvedDisplayName} />
             </Suspense>
           )}
 

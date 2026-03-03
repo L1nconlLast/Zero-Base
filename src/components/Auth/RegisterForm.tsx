@@ -2,12 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { User, Mail, Lock, UserPlus, Stethoscope, Sparkles, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+type SocialProvider = 'google' | 'facebook';
+
 interface RegisterFormProps {
   onRegister: (name: string, email: string, password: string) => Promise<{ success: boolean; message: string }>;
+  onSocialLogin?: (provider: SocialProvider) => Promise<void> | void;
   onSwitchToLogin: () => void;
 }
 
-export const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister, onSwitchToLogin }) => {
+export const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister, onSocialLogin, onSwitchToLogin }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,6 +60,18 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister, onSwitch
         onSwitchToLogin();
       }
       toast.error(result.message);
+    }
+  };
+
+  const handleSocial = async (provider: SocialProvider) => {
+    if (!onSocialLogin) return;
+    setIsLoading(true);
+    try {
+      await onSocialLogin(provider);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao iniciar cadastro social');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -171,6 +186,38 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister, onSwitch
               </>
             )}
           </button>
+
+          {onSocialLogin && (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200 dark:border-gray-600" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-white dark:bg-gray-800 px-2 text-gray-500">ou continuar com</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSocial('google')}
+                  disabled={isLoading || cooldownSeconds > 0}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                >
+                  Google
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSocial('facebook')}
+                  disabled={isLoading || cooldownSeconds > 0}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                >
+                  Facebook
+                </button>
+              </div>
+            </>
+          )}
         </form>
 
         <div className="mt-6 text-center">

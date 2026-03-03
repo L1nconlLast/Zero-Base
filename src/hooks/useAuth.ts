@@ -11,6 +11,8 @@ import { supabase, isSupabaseConfigured } from '../services/supabase.client';
 import { logger } from '../utils/logger';
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
+type OAuthProvider = 'google' | 'facebook';
+
 // ─── helpers ────────────────────────────────────────────────────
 
 /** Converte o objeto Supabase Auth → tipo local User */
@@ -245,6 +247,32 @@ export const useAuth = () => {
     // No-op: a sessão é gerenciada pelo Supabase (auto-refresh)
   }, []);
 
+  const loginWithOAuth = useCallback(
+    async (provider: OAuthProvider): Promise<{ success: boolean; message: string }> => {
+      if (!supabase) {
+        return { success: false, message: 'Supabase não configurado.' };
+      }
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}`,
+        },
+      });
+
+      if (error) {
+        logger.warn('Falha no OAuth login', 'Auth', { provider, error: error.message });
+        return { success: false, message: error.message };
+      }
+
+      return {
+        success: true,
+        message: `Redirecionando para autenticação com ${provider === 'google' ? 'Google' : 'Facebook'}...`,
+      };
+    },
+    [],
+  );
+
   return {
     user,
     supabaseUserId,
@@ -254,6 +282,7 @@ export const useAuth = () => {
     register,
     logout,
     resetPassword,
+    loginWithOAuth,
     updateActivity,
   };
 };
