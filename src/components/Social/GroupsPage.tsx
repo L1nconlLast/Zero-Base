@@ -532,6 +532,37 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     }
   };
 
+  const syncRankingForCurrentContext = async (params: {
+    period: RankingPeriod;
+    useGroupScope: boolean;
+    showSuccessToast?: boolean;
+  }) => {
+    if (!userId) {
+      throw new Error('Faça login para atualizar ranking.');
+    }
+
+    if (params.useGroupScope && !selectedGroupId) {
+      throw new Error('Selecione um grupo para ranking por grupo.');
+    }
+
+    const { periodStart, periodEnd } = getRankingWindow(params.period);
+
+    await rankingService.upsertUserRanking({
+      userId,
+      period: params.period,
+      periodStart,
+      periodEnd,
+      totalPoints: Number(userTotalPoints || 0),
+      groupId: params.useGroupScope ? selectedGroupId || null : null,
+    });
+
+    if (params.showSuccessToast) {
+      toast.success('Pontuação sincronizada no ranking!');
+    }
+
+    void fetchRanking();
+  };
+
   const handleSyncWeeklyProgressAutomatically = async () => {
     if (!userId || !selectedChallengeId || !selectedChallenge) {
       toast.error('Selecione um desafio para sincronizar o progresso da semana.');
@@ -549,8 +580,14 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
         completed: safeWeeklyProgress >= selectedChallenge.goalValue,
       });
 
+      await syncRankingForCurrentContext({
+        period: 'weekly',
+        useGroupScope: true,
+        showSuccessToast: false,
+      });
+
       setMyChallengeProgressInput(safeWeeklyProgress);
-      toast.success(`Progresso semanal sincronizado: ${safeWeeklyProgress} min`);
+      toast.success(`Progresso semanal sincronizado: ${safeWeeklyProgress} min (ranking atualizado)`);
       void fetchChallengeParticipants(selectedChallengeId);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao sincronizar progresso semanal.');
@@ -560,29 +597,13 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
   };
 
   const handleSyncMyRanking = async () => {
-    if (!userId) {
-      toast.error('Faça login para atualizar ranking.');
-      return;
-    }
-
-    if (rankingScope === 'group' && !selectedGroupId) {
-      toast.error('Selecione um grupo para ranking por grupo.');
-      return;
-    }
-
     setSyncingRanking(true);
     try {
-      const { periodStart, periodEnd } = getRankingWindow(rankingPeriod);
-      await rankingService.upsertUserRanking({
-        userId,
+      await syncRankingForCurrentContext({
         period: rankingPeriod,
-        periodStart,
-        periodEnd,
-        totalPoints: Number(userTotalPoints || 0),
-        groupId: rankingScope === 'group' ? selectedGroupId || null : null,
+        useGroupScope: rankingScope === 'group',
+        showSuccessToast: true,
       });
-      toast.success('Pontuação sincronizada no ranking!');
-      void fetchRanking();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao sincronizar ranking.');
     } finally {
