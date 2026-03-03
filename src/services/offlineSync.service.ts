@@ -32,12 +32,21 @@ interface SyncStatus {
   lastConflict: string | null;
 }
 
+interface ConflictHistoryItem {
+  at: string;
+  table: SyncTable;
+  recordId: string | null;
+  strategy: 'discard-local' | 'apply-local' | 'merge-automatico';
+  detail: string;
+}
+
 type SyncSubscriber = (status: SyncStatus) => void;
 
 const DB_NAME = 'zero-base-offline-sync';
 const DB_VERSION = 1;
 const QUEUE_STORE = 'sync_queue';
 const CACHE_STORE = 'sync_cache';
+const CONFLICT_HISTORY_KEY = 'offlineSyncConflictHistory';
 
 const isBrowser = typeof window !== 'undefined';
 
@@ -81,6 +90,22 @@ class OfflineSyncService {
   private listenersBound = false;
   private processing = false;
   private currentUserId: string | null = null;
+  private conflictHistory: ConflictHistoryItem[] = [];
+
+  constructor() {
+    if (!isBrowser) return;
+
+    try {
+      const raw = window.localStorage.getItem(CONFLICT_HISTORY_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as ConflictHistoryItem[];
+      if (Array.isArray(parsed)) {
+        this.conflictHistory = parsed.slice(0, 20);
+      }
+    } catch {
+      this.conflictHistory = [];
+    }
+  }
 
   private openDb(): Promise<IDBDatabase> {
     if (!isBrowser) {
@@ -165,6 +190,31 @@ class OfflineSyncService {
 
   getStatus(): SyncStatus {
     return { ...this.status };
+  }
+
+  getConflictHistory(): ConflictHistoryItem[] {
+    return [...this.conflictHistory];
+  }
+
+  clearConflictHistory(): void {
+    this.conflictHistory = [];
+    if (!isBrowser) return;
+    try {
+      window.localStorage.removeItem(CONFLICT_HISTORY_KEY);
+    } catch {
+      // ignore
+    }
+  }
+
+  private pushConflictHistory(item: ConflictHistoryItem): void {
+    this.conflictHistory = [item, ...this.conflictHistory].slice(0, 20);
+
+    if (!isBrowser) return;
+    try {
+      window.localStorage.setItem(CONFLICT_HISTORY_KEY, JSON.stringify(this.conflictHistory));
+    } catch {
+      // ignore
+    }
   }
 
   async enqueue(input: {
@@ -308,16 +358,89 @@ class OfflineSyncService {
     const localMs = localUpdatedAt ? new Date(localUpdatedAt).getTime() : 0;
 
     if (remoteMs > localMs) {
+      const detail = `Conflito resolvido automaticamente em ${item.table}:${item.record_id || 'novo'} (remoto mais recente).`;
       this.setStatus({
-        lastConflict: `Conflito resolvido automaticamente em ${item.table}:${item.record_id || 'novo'} (remoto mais recente).`,
+        lastConflict: detail,
+      });
+      this.pushConflictHistory({
+        at: toIso(),
+        table: item.table,
+        recordId: item.record_id || null,
+        strategy: 'discard-local',
+        detail,
       });
       return 'discard-local';
     }
 
+    const detail = `Conflito resolvido automaticamente em ${item.table}:${item.record_id || 'novo'} (local mais recente).`;
     this.setStatus({
-      lastConflict: `Conflito resolvido automaticamente em ${item.table}:${item.record_id || 'novo'} (local mais recente).`,
+      lastConflict: detail,
+    });
+    this.pushConflictHistory({
+      at: toIso(),
+      table: item.table,
+      recordId: item.record_id || null,
+      strategy: 'apply-local',
+      detail,
     });
     return 'apply-local';
+  }
+
+  private mergeStudyBlocksPayload(
+    localPayload: Record<string, unknown>,
+    remotePayload: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const merged = { ...localPayload };
+
+    const localNoteRaw = String(localPayload.note || '').trim();
+    const remoteNoteRaw = String(remotePayload.note || '').trim();
+
+    if (localNoteRaw && remoteNoteRaw && localNoteRaw !== remoteNoteRaw) {
+      const separator = '\n\n---\n';
+      merged.note = `${remoteNoteRaw}${separator}${localNoteRaw}`;
+      this.pushConflictHistory({
+        at: toIso(),
+        table: 'study_blocks',
+        recordId: String(localPayload.id || remotePayload.id || ''),
+        strategy: 'merge-automatico',
+        detail: 'Merge automático aplicado em note de study_blocks (concatenação remoto + local).',
+      });
+      this.setStatus({
+        lastConflict: 'Merge automático aplicado em anotações do cronograma.',
+      });
+    }
+
+    return merged;
+  }
+
+  private mergeChallengeParticipantsPayload(
+    localPayload: Record<string, unknown>,
+    remotePayload: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const merged = { ...localPayload };
+    const localProgress = Number(localPayload.progress || 0);
+    const remoteProgress = Number(remotePayload.progress || 0);
+    const safeProgress = Math.max(localProgress, remoteProgress);
+
+    if (safeProgress !== localProgress) {
+      merged.progress = safeProgress;
+      this.pushConflictHistory({
+        at: toIso(),
+        table: 'challenge_participants',
+        recordId: String(localPayload.id || remotePayload.id || ''),
+        strategy: 'merge-automatico',
+        detail: 'Merge automático aplicado em progress de challenge_participants (máximo entre local/remoto).',
+      });
+      this.setStatus({
+        lastConflict: 'Merge automático aplicado em progresso de desafio.',
+      });
+    }
+
+    const localCompleted = Boolean(localPayload.completed);
+    const remoteCompleted = Boolean(remotePayload.completed);
+    merged.completed = localCompleted || remoteCompleted;
+
+    return merged;
   }
 
   private assertClient() {
@@ -520,7 +643,7 @@ class OfflineSyncService {
     const tableName = item.table;
     const { data: remote, error: remoteError } = await client
       .from(tableName)
-      .select('id, updated_at')
+      .select('*')
       .eq('id', item.record_id)
       .single();
 
@@ -528,16 +651,24 @@ class OfflineSyncService {
       throw new Error(remoteError.message);
     }
 
-    const remoteRow = remote as { id: string; updated_at: string } | null;
+    const remoteRow = remote as ({ id: string; updated_at?: string } & Record<string, unknown>) | null;
     const decision = await this.resolveConflict(item, remoteRow?.updated_at || null);
 
     if (decision === 'discard-local') {
       return;
     }
 
-    const payload = { ...item.data };
+    let payload = { ...item.data };
     delete (payload as Record<string, unknown>).local_updated_at;
     delete (payload as Record<string, unknown>).auto_join_user_id;
+
+    if (remoteRow && tableName === 'study_blocks') {
+      payload = this.mergeStudyBlocksPayload(payload, remoteRow);
+    }
+
+    if (remoteRow && tableName === 'challenge_participants') {
+      payload = this.mergeChallengeParticipantsPayload(payload, remoteRow);
+    }
 
     const ownerColumn = ownerColumnByTable[item.table];
 

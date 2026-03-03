@@ -261,6 +261,21 @@ function App() {
     }
   }, [supabaseUserId]);
 
+  const handleShowConflictHistory = React.useCallback(() => {
+    const history = offlineSyncService.getConflictHistory();
+    if (history.length === 0) {
+      toast('Sem conflitos resolvidos automaticamente até agora.', { icon: 'ℹ️' });
+      return;
+    }
+
+    const preview = history
+      .slice(0, 3)
+      .map((item) => `${new Date(item.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} • ${item.detail}`)
+      .join('\n');
+
+    toast(preview, { duration: 5000, icon: '🧩' });
+  }, []);
+
   const syncStatusMeta = React.useMemo(() => {
     if (!syncUiStatus.isOnline) {
       return { label: 'Offline', tone: 'warning' as const };
@@ -1096,6 +1111,7 @@ function App() {
         syncStatusTone={syncStatusMeta.tone}
         onSyncNow={handleSyncNow}
         disableSyncNow={syncUiStatus.isSyncing}
+        onShowConflictHistory={handleShowConflictHistory}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         onSelectTheme={setCurrentTheme}
         onLogout={handleLogout}
