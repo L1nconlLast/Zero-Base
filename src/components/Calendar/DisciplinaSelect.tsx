@@ -1,20 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface DisciplinaSelectProps {
   modalidade: string | null;
   value: string | null;
-  onChange: (v: string) => void;
+  onChange: (v: string | null) => void;
   disciplinas: Array<{ id: string; label: string }>;
 }
 
 const DisciplinaSelect: React.FC<DisciplinaSelectProps> = ({ modalidade, value, onChange, disciplinas }) => {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handlePointerDownOutside = (event: MouseEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDownOutside);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDownOutside);
+    };
+  }, []);
 
   useEffect(() => {
     setSearch('');
     setOpen(false);
-      onChange('');
+    onChange(null);
   }, [modalidade]);
 
   const filtered = disciplinas.filter(d =>
@@ -22,7 +37,7 @@ const DisciplinaSelect: React.FC<DisciplinaSelectProps> = ({ modalidade, value, 
   );
 
   return (
-    <div className="w-64 relative">
+    <div ref={containerRef} className="w-64 relative">
       <button
         type="button"
         disabled={!modalidade}

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Zap, BookOpen, Brain, Clock, ChevronRight, CheckCircle } from 'lucide-react';
-import { MATERIAS_CONFIG, type MateriaTipo } from '../../types';
 
 interface EveOfExamPageProps {
   onStartQuiz?: (subject?: string) => void;
@@ -9,13 +8,73 @@ interface EveOfExamPageProps {
 }
 
 const TOPICS_REVIEW = [
-  { subject: 'Anatomia', key_points: ['Nervos cranianos (12 pares)', 'Plexo braquial (C5-T1)', 'Válvula mitral — átrio E / ventrículo E', 'Fêmur = maior osso', 'Triângulo femoral: VAN (lat→med)'] },
-  { subject: 'Fisiologia', key_points: ['PA normal: 120/80 mmHg', 'FC normal: 60–100 bpm', 'ADH → reabsorção água', 'Repolarização: effluxo K⁺', 'pH = 6,1 + log(HCO₃/0,03×pCO₂)'] },
-  { subject: 'Farmacologia', key_points: ['Penicilina → inibe parede celular', 'Propranolol → bloqueia β1 e β2', 'Celecoxibe → COX-2 seletivo', 'NAC = antídoto paracetamol', 'Rifampicina → indutor CYP (↓varfarina)'] },
-  { subject: 'Patologia', key_points: ['Infarto = necrose coagulativa', 'TB = granuloma caseoso', 'p53 = guardião do genoma', 'Inflamação aguda: neutrófilos', 'APC → início adenoma-carcinoma colorretal'] },
-  { subject: 'Bioquímica', key_points: ['Glicólise → piruvato (2 ATPs)', 'Oxidação glicose: 36–38 ATPs', 'Glucagon → glicogenólise (via PKA/AMPc)', 'B1 (tiamina) = coenzima piruvato-DH', 'PKU = deficiência fenilalanina-hidroxilase'] },
-  { subject: 'Histologia', key_points: ['Vasos = endotélio (pav. simples)', 'Kupffer = macrófagos hepáticos', 'Oligodendrócitos → mielina no SNC', 'Fibras tipo I = sóleo (resistentes)', 'BHE = tight junctions extensas'] },
-];
+  {
+    subject: 'Linguagens',
+    icon: '📝',
+    key_points: [
+      'Interpretação de texto: identificar tese e argumento central',
+      'Reconhecer função de figuras de linguagem no contexto',
+      'Relacionar linguagem verbal e não verbal em tirinhas/anúncios',
+      'Revisar coesão e coerência em textos dissertativos',
+      'Identificar variação linguística sem julgamento normativo',
+    ],
+  },
+  {
+    subject: 'Ciências Humanas',
+    icon: '🌍',
+    key_points: [
+      'Revisar processos históricos do Brasil (Colônia → República)',
+      'Interpretar temas de geopolítica contemporânea',
+      'Relacionar cidadania, Estado e direitos fundamentais',
+      'Identificar conceitos de sociologia em situações práticas',
+      'Reconhecer correntes filosóficas e suas contribuições',
+    ],
+  },
+  {
+    subject: 'Ciências da Natureza',
+    icon: '🔬',
+    key_points: [
+      'Revisar leitura de gráficos e experimentos em Física',
+      'Identificar funções orgânicas e reações mais cobradas em Química',
+      'Conectar ecologia, genética e fisiologia em Biologia',
+      'Revisar energia, trabalho e potência com foco em aplicação',
+      'Conferir balanceamento e interpretação de equações químicas',
+    ],
+  },
+  {
+    subject: 'Matemática',
+    icon: '📐',
+    key_points: [
+      'Funções (afim e quadrática): leitura e interpretação de gráfico',
+      'Razão, proporção e porcentagem em problemas contextualizados',
+      'Geometria plana: áreas e perímetros mais frequentes',
+      'Probabilidade básica e análise combinatória essencial',
+      'Estatística: média, mediana e desvio com leitura de tabelas',
+    ],
+  },
+  {
+    subject: 'Português',
+    icon: '📚',
+    key_points: [
+      'Concordância verbal e nominal em estruturas frequentes',
+      'Regência e uso de crase em contextos de prova',
+      'Pontuação e efeitos de sentido no período composto',
+      'Classes de palavras e funções sintáticas principais',
+      'Interpretação textual com foco em inferência',
+    ],
+  },
+  {
+    subject: 'Redação',
+    icon: '✍️',
+    key_points: [
+      'Estruturar introdução com tese clara e recorte temático',
+      'Construir repertório sociocultural pertinente ao tema',
+      'Manter progressão argumentativa em cada parágrafo',
+      'Evitar fuga ao tema e garantir coesão textual',
+      'Fechar com proposta de intervenção completa (agente, ação, meio e finalidade)',
+    ],
+  },
+] as const;
 
 const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlashcards, onStartTimer }) => {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -81,7 +140,6 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
       {/* Tópicos por matéria */}
       <div className="space-y-3">
         {TOPICS_REVIEW.map((topic) => {
-          const config = MATERIAS_CONFIG[topic.subject as MateriaTipo];
           const checkedInTopic = topic.key_points.filter((_, i) => checked[`${topic.subject}-${i}`]).length;
           const allDone = checkedInTopic === topic.key_points.length;
 
@@ -92,7 +150,7 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">{config?.icon}</span>
+                  <span className="text-xl">{topic.icon}</span>
                   <h3 className="font-bold text-gray-900 dark:text-white">{topic.subject}</h3>
                 </div>
                 <div className="flex items-center gap-2">

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ModalidadeSelect from './ModalidadeSelect';
 import DisciplinaSelect from './DisciplinaSelect';
 import CommandPaletteDisciplineSelect from './CommandPaletteDisciplineSelect';
@@ -51,6 +51,41 @@ const GRID_WEEK_DAYS = [
 const toDateStr = (y: number, m: number, d: number) =>
   `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
+const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const normalizeDateInputValue = (value?: string | null): string => {
+  if (!value) return '';
+  if (DATE_INPUT_PATTERN.test(value)) return value;
+
+  const brDateMatch = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brDateMatch) {
+    const [, day, month, year] = brDateMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return toDateStr(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+};
+
+const sanitizeSmartProfile = (profile: SmartScheduleProfile): SmartScheduleProfile => {
+  const fallback = createDefaultSmartProfile();
+  const validStudyStyle: SmartScheduleProfile['studyStyle'][] = ['teoria_questoes', 'questoes', 'pomodoro_25_5'];
+
+  return {
+    ...profile,
+    examDate: normalizeDateInputValue(profile.examDate),
+    hoursPerDay: Math.max(1, Math.min(10, Number(profile.hoursPerDay) || fallback.hoursPerDay)),
+    desiredScore: Number(profile.desiredScore) || fallback.desiredScore,
+    availableWeekDays: Array.isArray(profile.availableWeekDays) && profile.availableWeekDays.length > 0
+      ? profile.availableWeekDays
+      : fallback.availableWeekDays,
+    studyStyle: validStudyStyle.includes(profile.studyStyle)
+      ? profile.studyStyle
+      : fallback.studyStyle,
+  };
+};
+
 const getStudyTypeLabel = (studyType?: ScheduleEntry['studyType']): string => {
   if (studyType === 'teoria_questoes') return 'Teoria + Questões';
   if (studyType === 'questoes') return 'Questões';
@@ -98,7 +133,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
     const [selectedDate, setSelectedDate] = useState<string | null>(todayStr);
     // Estados para selects
-    const [modalidade, setModalidade] = useState<'enem' | 'concurso' | null>(null);
+    const [modalidade, setModalidade] = useState<'enem' | 'concurso' | null>('enem');
     const [disciplina, setDisciplina] = useState<string | null>(null);
     // Estados para formulário
     const [formNote, setFormNote] = useState<string>('');
@@ -108,6 +143,8 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     const [aiSummary, setAiSummary] = useState<string[]>([]);
     const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
     const [swapSubjectInput, setSwapSubjectInput] = useState('Matemática');
+    const [isEditingSmartPanel, setIsEditingSmartPanel] = useState(false);
+    const smartPanelRef = useRef<HTMLDivElement | null>(null);
     const [smartProfile, setSmartProfile] = useLocalStorage<SmartScheduleProfile>(
       profileStorageKey,
       createDefaultSmartProfile(),
@@ -124,6 +161,16 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
   } = useStudySchedule(userId);
 
   const selectedEntry = entries.find((entry) => entry.id === selectedEntryId) || null;
+
+  useEffect(() => {
+    setSmartProfile((current: SmartScheduleProfile) => {
+      const sanitized = sanitizeSmartProfile(current);
+      if (JSON.stringify(sanitized) === JSON.stringify(current)) {
+        return current;
+      }
+      return sanitized;
+    });
+  }, [setSmartProfile]);
 
   // já declarado acima
 
@@ -190,7 +237,11 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
 
   const handleAdd = () => {
     if (!selectedDate || !disciplina) return;
-    addEntry(selectedDate, disciplina, formNote, {
+    const selectedDisciplineLabel = modalidade
+      ? disciplinas[modalidade].find((item) => item.id === disciplina)?.label
+      : null;
+
+    addEntry(selectedDate, selectedDisciplineLabel || disciplina, formNote, {
       source: 'manual',
       priority: 'normal',
       status: 'pendente',
@@ -273,10 +324,11 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
         }
 
         setSmartProfile((current: SmartScheduleProfile) => {
-          if (current.examDate) {
-            return current;
+          const sanitizedCurrent = sanitizeSmartProfile(current);
+          if (sanitizedCurrent.examDate) {
+            return sanitizedCurrent;
           }
-          return cloudProfile;
+          return sanitizeSmartProfile(cloudProfile);
         });
       } catch {
         // fallback local
@@ -359,6 +411,10 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
       return;
     }
 
+    if (isEditingSmartPanel) {
+      return;
+    }
+
     const autoAdaptKey = `smartScheduleAutoAdapted_${userScope}_${todayStr}`;
     const alreadyAdapted = window.localStorage.getItem(autoAdaptKey) === 'true';
     if (alreadyAdapted) {
@@ -371,7 +427,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
       'Cronograma ajustado automaticamente ao abrir (modo adaptativo ativo).',
       ...previous,
     ].slice(0, 4));
-  }, [entries.length, userScope, todayStr, applyAdaptiveSchedule, smartProfile.hoursPerDay]);
+  }, [entries.length, userScope, todayStr, applyAdaptiveSchedule, smartProfile.hoursPerDay, isEditingSmartPanel]);
 
   const selectedDateObj = selectedDate ? new Date(`${selectedDate}T12:00:00`) : new Date(`${todayStr}T12:00:00`);
   const weekStart = getWeekStart(selectedDateObj);
@@ -430,7 +486,19 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
+      <div
+        ref={smartPanelRef}
+        onFocusCapture={() => setIsEditingSmartPanel(true)}
+        onBlurCapture={() => {
+          window.setTimeout(() => {
+            const active = document.activeElement;
+            if (!smartPanelRef.current?.contains(active)) {
+              setIsEditingSmartPanel(false);
+            }
+          }, 0);
+        }}
+        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4"
+      >
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500" /> Cronograma Inteligente
@@ -441,7 +509,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <input
             type="date"
-            value={smartProfile.examDate}
+            value={normalizeDateInputValue(smartProfile.examDate)}
             onChange={(event) => setSmartProfile((prev: SmartScheduleProfile) => ({ ...prev, examDate: event.target.value }))}
             className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
             title="Data da prova"
