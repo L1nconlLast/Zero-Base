@@ -93,6 +93,122 @@ class RankingService {
       throw new Error(`Erro ao salvar ranking: ${error.message}`);
     }
   }
+
+  // ============================================================
+  // Category-based Global Ranking Methods
+  // ============================================================
+
+  async getCategoryRanking(
+    category: string,
+    limit = 50
+  ): Promise<Array<{
+    rank_position: number;
+    user_id: string;
+    display_name: string;
+    avatar_url: string | null;
+    total_correct: number;
+    total_answered: number;
+    accuracy: number;
+  }>> {
+    const client = assertClient();
+
+    try {
+      const { data, error } = await client.rpc(
+        'get_category_ranking',
+        {
+          p_category: category,
+          p_limit: limit,
+        }
+      );
+
+      if (error) {
+        console.error('Error fetching category ranking:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (err) {
+      console.error('Unexpected error in getCategoryRanking:', err);
+      return [];
+    }
+  }
+
+  async getUserRankInCategory(
+    userId: string,
+    category: string
+  ): Promise<{
+    rank_position: number;
+    total_correct: number;
+    total_answered: number;
+    accuracy: number;
+    percentile: number;
+  } | null> {
+    const client = assertClient();
+
+    try {
+      const { data, error } = await client.rpc(
+        'get_user_rank_in_category',
+        {
+          p_user_id: userId,
+          p_category: category,
+        }
+      );
+
+      if (error) {
+        console.error('Error fetching user rank:', error);
+        return null;
+      }
+
+      return data && data.length > 0 ? data[0] : null;
+    } catch (err) {
+      console.error('Unexpected error in getUserRankInCategory:', err);
+      return null;
+    }
+  }
+
+  async recalculateRankings(category?: string): Promise<boolean> {
+    const client = assertClient();
+
+    try {
+      const { error } = await client.rpc(
+        'recalc_category_ranking',
+        {
+          p_category: category || null,
+        }
+      );
+
+      if (error) {
+        console.error('Error recalculating rankings:', error);
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Unexpected error in recalculateRankings:', err);
+      return false;
+    }
+  }
+
+  async getAllCategories(): Promise<string[]> {
+    const client = assertClient();
+
+    try {
+      const { data, error } = await client
+        .from('user_ranking_global')
+        .select('category', { count: 'exact' })
+        .distinct();
+
+      if (error) {
+        console.error('Error fetching categories:', error);
+        return [];
+      }
+
+      return data ? data.map((item: { category: string }) => item.category) : [];
+    } catch (err) {
+      console.error('Unexpected error in getAllCategories:', err);
+      return [];
+    }
+  }
 }
 
 export const rankingService = new RankingService();

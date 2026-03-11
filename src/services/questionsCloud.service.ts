@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from './supabase.client';
+import { rankingService } from './ranking.service';
 
 export interface MockExamCloudSession {
   id: string;
@@ -76,6 +77,14 @@ class QuestionsCloudService {
 
       if (categoryError) {
         console.error('Erro ao salvar analytics da categoria:', categoryError);
+      } else {
+        // Recalculate rankings for this category after updating analytics
+        try {
+          await rankingService.recalculateRankings(payload.category);
+        } catch (rankingError) {
+          console.error('Erro ao recalcular rankings:', rankingError);
+          // Don't throw - ranking update is not critical
+        }
       }
     }
   }
