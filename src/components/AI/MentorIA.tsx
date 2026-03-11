@@ -443,21 +443,44 @@ const MentorIA: React.FC<MentorIAProps> = ({
         });
       }
     } catch (error) {
-      const fallback = getLocalFallbackReply(content);
-      setMessages((prev) => prev.map((message) => (
-        message.id === assistantMessage.id
-          ? { ...message, content: fallback }
-          : message
-      )));
+      setTyping(false);
 
-      trackEvent(
-        'mentor_chat_error',
-        {
-          errorMessage: error instanceof Error ? error.message : 'unknown',
-          fallbackUsed: true,
-        },
-        { userEmail },
-      );
+      const errorMessage = error instanceof Error ? error.message : 'unknown';
+
+      if (errorMessage.includes('429')) {
+        const blockMessage = '⚠️ Atingiu o limite diario de uso do Mentor IA. Volte amanha para continuarmos a sua evolucao!';
+        setMessages((prev) => prev.map((message) => (
+          message.id === assistantMessage.id
+            ? { ...message, content: blockMessage }
+            : message
+        )));
+
+        trackEvent(
+          'mentor_circuit_breaker_triggered',
+          {
+            trigger: 'daily_limit_exceeded',
+          },
+          { userEmail },
+        );
+
+        toast.error('Limite diario atingido. Volte amanha!');
+      } else {
+        const fallback = getLocalFallbackReply(content);
+        setMessages((prev) => prev.map((message) => (
+          message.id === assistantMessage.id
+            ? { ...message, content: fallback }
+            : message
+        )));
+
+        trackEvent(
+          'mentor_chat_error',
+          {
+            errorMessage,
+            fallbackUsed: true,
+          },
+          { userEmail },
+        );
+      }
     } finally {
       setTyping(false);
     }

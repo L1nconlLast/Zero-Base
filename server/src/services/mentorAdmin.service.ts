@@ -6,6 +6,16 @@ interface UsageRow {
   created_at: string;
 }
 
+interface RawUsageRow {
+  user_id: string;
+  request_id?: string;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  created_at: string;
+}
+
 export interface MentorAdminMetrics {
   kpis: {
     totalRequests: number;
@@ -49,6 +59,39 @@ const estimateCost = (totalTokens: number): number => {
   return Number(cost.toFixed(6));
 };
 
+export const parsePeriod = (period: string): { startDate: string; trendDays: number } => {
+  const now = new Date();
+  let startDate: Date;
+  let trendDays = 15;
+
+  switch (period) {
+    case '7d':
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 7);
+      trendDays = 7;
+      break;
+    case '15d':
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 15);
+      trendDays = 15;
+      break;
+    case 'current_month':
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      trendDays = daysInMonth;
+      break;
+    case '30d':
+    default:
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 30);
+      trendDays = 30;
+      break;
+  }
+
+  startDate.setHours(0, 0, 0, 0);
+  return { startDate: startDate.toISOString(), trendDays };
+};
+
 class MentorAdminService {
   private ensureClient() {
     if (!supabase) {
@@ -57,43 +100,35 @@ class MentorAdminService {
     return supabase;
   }
 
-  async getMetrics(): Promise<MentorAdminMetrics> {
+  async getMetrics(period: string = '30d'): Promise<MentorAdminMetrics> {
     const client = this.ensureClient();
+    const { startDate, trendDays } = parsePeriod(period);
 
-    const now = new Date();
-    const kpiStart = new Date(now);
-    kpiStart.setDate(now.getDate() - (KPI_DAYS - 1));
-
-    const trendStart = new Date(now);
-    trendStart.setDate(now.getDate() - (TREND_DAYS - 1));
-
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [kpiResult, trendResult, topUsersResult] = await Promise.all([
-      client
-        .from('mentor_token_usage')
-        .select('user_id,total_tokens,created_at')
-        .gte('created_at', startOfDayIso(kpiStart))
-        .order('created_at', { ascending: true }),
-      client
-        .from('mentor_token_usage')
-        .select('user_id,total_tokens,created_at')
-        .gte('created_at', startOfDayIso(trendStart))
-        .order('created_at', { ascending: true }),
-      client
-        .from('mentor_token_usage')
-        .select('user_id,total_tokens,created_at')
-        .gte('created_at', startOfDayIso(monthStart))
-        .order('created_at', { ascending: true }),
-    ]);
+    const kpiResult = await client
+      .from('mentor_token_usage')
+      .select('user_id,total_tokens,created_at')
+      .gte('created_at', startDate)
+      .order('created_at', { ascending: true });
 
     if (kpiResult.error) {
       throw new Error(`Falha ao carregar KPIs: ${kpiResult.error.message}`);
     }
 
+    const trendResult = await client
+      .from('mentor_token_usage')
+      .select('user_id,total_tokens,created_at')
+      .gte('created_at', startDate)
+      .order('created_at', { ascending: true });
+
     if (trendResult.error) {
       throw new Error(`Falha ao carregar tendencia: ${trendResult.error.message}`);
     }
+
+    const topUsersResult = await client
+      .from('mentor_token_usage')
+      .select('user_id,total_tokens,created_at')
+      .gte('created_at', startDate)
+      .order('created_at', { ascending: true });
 
     if (topUsersResult.error) {
       throw new Error(`Falha ao carregar top usuarios: ${topUsersResult.error.message}`);
@@ -106,9 +141,14 @@ class MentorAdminService {
     const totalRequests = kpiRows.length;
     const totalTokens = kpiRows.reduce((sum, row) => sum + (row.total_tokens || 0), 0);
 
+    const now = new Date();
+    const trendStart = new Date(now);
+    trendStart.setDate(now.getDate() - (trendDays - 1));
+    trendStart.setHours(0, 0, 0, 0);
+
     const trendMap = new Map<string, { totalTokens: number; totalRequests: number }>();
 
-    for (let i = 0; i < TREND_DAYS; i += 1) {
+    for (let i = 0; i < trendDays; i += 1) {
       const day = new Date(trendStart);
       day.setDate(trendStart.getDate() + i);
       trendMap.set(formatDay(day), { totalTokens: 0, totalRequests: 0 });
@@ -159,6 +199,32 @@ class MentorAdminService {
       trend,
       topUsers,
     };
+  }
+
+  async getExportCsv(period: string = '30d'): Promise<string> {
+    const client = this.ensureClient();
+    const { startDate } = parsePeriod(period);
+
+    const { data, error } = await client
+      .from('mentor_token_usage')
+      .select('request_id,user_id,model,prompt_tokens,completion_tokens,total_tokens,created_at')
+      .gte('created_at', startDate)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`Falha ao exportar dados: ${error.message}`);
+    }
+
+    const rows = (data || []) as RawUsageRow[];
+
+    const headers = ['Data', 'Request ID', 'User ID', 'Modelo', 'Prompt Tokens', 'Completion Tokens', 'Total Tokens'];
+    const csvRows = rows.map((row) => {
+      const dataFormatada = new Date(row.created_at).toLocaleString('pt-BR');
+      const requestId = row.request_id || 'N/A';
+      return `"${dataFormatada}","${requestId}","${row.user_id}","${row.model}",${row.prompt_tokens},${row.completion_tokens},${row.total_tokens}`;
+    });
+
+    return [headers.join(','), ...csvRows].join('\n');
   }
 }
 

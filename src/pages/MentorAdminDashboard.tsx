@@ -10,7 +10,9 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
+import { Download } from 'lucide-react';
 import { mentorAdminApiService, type MentorAdminMetricsResponse } from '../services/mentorAdminApi.service';
+import toast from 'react-hot-toast';
 
 interface MentorAdminDashboardProps {
   userEmail?: string;
@@ -38,37 +40,40 @@ const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }
   const [data, setData] = useState<MentorAdminMetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<'7d' | '15d' | '30d' | 'current_month'>('30d');
+  const [exporting, setExporting] = useState(false);
+
+  const loadMetrics = async (selectedPeriod: string) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await mentorAdminApiService.getMetrics(selectedPeriod);
+      setData(response);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Nao foi possivel carregar o dashboard.';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
+    void loadMetrics(period);
+  }, [period]);
 
-    const loadMetrics = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await mentorAdminApiService.getMetrics();
-        if (!cancelled) {
-          setData(response);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const message = err instanceof Error ? err.message : 'Nao foi possivel carregar o dashboard.';
-          setError(message);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadMetrics();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      await mentorAdminApiService.exportCsv(period);
+      toast.success(`CSV exportado: mentor_usage_${period}.csv`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao exportar CSV';
+      toast.error(message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const trendData = useMemo(() => {
     return (data?.trend || []).map((item) => ({
@@ -90,6 +95,13 @@ const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }
     );
   }
 
+  const periodLabel = {
+    '7d': 'Últimos 7 Dias',
+    '15d': 'Últimos 15 Dias',
+    '30d': 'Últimos 30 Dias',
+    'current_month': 'Mês Atual',
+  }[period];
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -98,18 +110,42 @@ const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }
           <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">Dashboard Financeiro Mentor IA</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Monitoramento de consumo de tokens e custo estimado da operacao.</p>
         </div>
-        <span className="text-xs px-3 py-1 rounded-full border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300">
-          {userEmail || 'admin'}
-        </span>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <div className="flex-1 flex gap-2">
+          <select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as any)}
+            className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-500"
+          >
+            <option value="7d">Últimos 7 Dias</option>
+            <option value="15d">Últimos 15 Dias</option>
+            <option value="30d">Últimos 30 Dias</option>
+            <option value="current_month">Mês Atual</option>
+          </select>
+          <span className="text-xs px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+            {periodLabel}
+          </span>
+        </div>
+
+        <button
+          onClick={handleExportCsv}
+          disabled={exporting}
+          className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold transition flex items-center gap-2 whitespace-nowrap"
+        >
+          <Download className="w-4 h-4" />
+          {exporting ? 'Exportando...' : 'Exportar CSV'}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className={cardClassName}>
-          <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Total Tokens (30d)</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Total Tokens ({period})</p>
           <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mt-2">{formatNumber(data.kpis.totalTokens)}</p>
         </div>
         <div className={cardClassName}>
-          <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Requisicoes (30d)</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Requisicoes ({period})</p>
           <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mt-2">{formatNumber(data.kpis.totalRequests)}</p>
         </div>
         <div className={cardClassName}>
@@ -142,7 +178,7 @@ const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }
       </div>
 
       <div className={cardClassName}>
-        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Top 5 Heavy Users (mes atual)</p>
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Top 5 Heavy Users ({period})</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -155,7 +191,7 @@ const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }
             <tbody>
               {data.topUsers.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="py-4 text-slate-500 dark:text-slate-400">Sem consumo registrado no mes atual.</td>
+                  <td colSpan={3} className="py-4 text-slate-500 dark:text-slate-400">Sem consumo registrado neste periodo.</td>
                 </tr>
               )}
 

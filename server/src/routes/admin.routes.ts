@@ -9,4 +9,8 @@ router.get('/mentor-metrics', authMiddleware, adminAuthMiddleware, (req, res) =>
   void mentorAdminController.getMentorMetrics(req, res);
 });
 
+router.get('/mentor-metrics/export', authMiddleware, adminAuthMiddleware, (req, res) => {
+  void mentorAdminController.exportMentorMetrics(req, res);
+});
+
 export default router;
