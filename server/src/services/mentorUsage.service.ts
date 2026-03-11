@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 interface TokenUsagePayload {
   userId: string;
+  requestId?: string;
   model: string;
   provider: 'openai';
   promptTokens: number;
@@ -29,6 +30,7 @@ class MentorUsageService {
           .from('mentor_token_usage')
           .insert({
             user_id: payload.userId,
+            request_id: payload.requestId ?? null,
             model: payload.model,
             provider: payload.provider,
             prompt_tokens: payload.promptTokens,

@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { mentorChatService } from '../services/mentorChat.service';
+import { mentorCacheService } from '../services/mentorCache.service';
 import { mentorUsageService } from '../services/mentorUsage.service';
 
 const ChatMessageSchema = z.object({
@@ -38,6 +39,7 @@ export class MentorChatController {
 
     const { message, history, studentContext } = parsed.data;
     const userId = req.auth?.userId;
+    const requestId = req.id;
 
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized: usuario nao autenticado.' });
@@ -51,6 +53,7 @@ export class MentorChatController {
 
     const abortController = new AbortController();
     let closed = false;
+    let streamText = '';
 
     const writeEvent = (event: string, data: unknown) => {
       if (closed || res.writableEnded) return;
@@ -63,11 +66,31 @@ export class MentorChatController {
       abortController.abort();
     });
 
+    const cacheKey = mentorCacheService.buildKey({
+      userId,
+      message,
+      strongArea: studentContext.strongArea,
+      weakArea: studentContext.weakArea,
+      weeklyPct: studentContext.weeklyPct,
+    });
+
+    const cached = mentorCacheService.get(cacheKey);
+    if (cached) {
+      writeEvent('chunk', { text: cached, cached: true });
+      writeEvent('done', {
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        cached: true,
+      });
+      res.end();
+      return;
+    }
+
     try {
       await mentorChatService.streamChat(
         { message, history, studentContext },
         {
           onToken: (token) => {
+            streamText += token;
             writeEvent('chunk', { text: token });
           },
           onComplete: (usage) => {
@@ -77,8 +100,13 @@ export class MentorChatController {
             writeEvent('done', { usage });
             res.end();
 
+            if (streamText.trim()) {
+              mentorCacheService.set(cacheKey, streamText);
+            }
+
             mentorUsageService.trackUsageFireAndForget({
               userId,
+              requestId,
               model: mentorChatService.getModel(),
               provider: 'openai',
               promptTokens: usage.promptTokens,
@@ -92,6 +120,9 @@ export class MentorChatController {
       );
 
       if (!closed && !res.writableEnded) {
+        if (streamText.trim()) {
+          mentorCacheService.set(cacheKey, streamText);
+        }
         writeEvent('done', {
           usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
         });

@@ -33,6 +33,7 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.0",
     "lucide-react": "^0.344.0",
+    "node-cache": "^5.1.2",
     "openai": "^6.27.0",
     "jose": "^5.10.0",
     "react": "^18.2.0",

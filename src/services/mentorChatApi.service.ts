@@ -26,6 +26,9 @@ class MentorChatApiService {
   async sendStream(payload: MentorChatPayload, handlers: StreamHandlers, timeoutMs = 25000): Promise<string> {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    const requestId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : null;
 
     try {
       const session = await supabase?.auth.getSession();
@@ -36,6 +39,7 @@ class MentorChatApiService {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
+          ...(requestId ? { 'x-request-id': requestId } : {}),
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify(payload),
