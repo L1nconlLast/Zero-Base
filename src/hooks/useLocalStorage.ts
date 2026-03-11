@@ -15,10 +15,13 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   const shouldSkipNextSaveRef = useRef(false);
   const [storedValue, setStoredValue] = useState<T>(() => readLocalStorageValue(key, initialValue));
 
+  // Usar JSON.stringify para evitar loops infinitos quando initialValue for objeto
+  const initialValueString = JSON.stringify(initialValue);
+
   useEffect(() => {
     shouldSkipNextSaveRef.current = true;
     setStoredValue(readLocalStorageValue(key, initialValue));
-  }, [key, initialValue]);
+  }, [key, initialValueString]); // Depende da string, não da referência do objeto
 
   // Salvar no localStorage quando o valor mudar
   useEffect(() => {

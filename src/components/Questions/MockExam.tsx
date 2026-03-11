@@ -11,6 +11,7 @@ import {
 } from '../../data/officialExamModels';
 import { questionsCloudService } from '../../services/questionsCloud.service';
 import { getDisplayDiscipline } from '../../utils/disciplineLabels';
+import { shuffleArray, shuffleQuestionOptions } from '../../utils/questionRandomization';
 
 interface MockExamProps {
   onEarnXP?: (xp: number) => void;
@@ -94,13 +95,11 @@ const getSubjectChipClass = (subject: string, selected: boolean) => {
   return 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
 };
 
-const shuffle = <T,>(items: T[]) => [...items].sort(() => Math.random() - 0.5);
-
 const pickWithDistribution = (pool: Question[], total: number, subjects: string[]) => {
-  if (subjects.length === 0) return shuffle(pool).slice(0, Math.min(total, pool.length));
+  if (subjects.length === 0) return shuffleArray(pool).slice(0, Math.min(total, pool.length));
 
   const bySubject = new Map<string, Question[]>();
-  subjects.forEach((subject) => bySubject.set(subject, shuffle(pool.filter((q) => q.subject === subject))));
+  subjects.forEach((subject) => bySubject.set(subject, shuffleArray(pool.filter((q) => q.subject === subject))));
 
   const result: Question[] = [];
   const base = Math.floor(total / subjects.length);
@@ -116,10 +115,10 @@ const pickWithDistribution = (pool: Question[], total: number, subjects: string[
   if (result.length < total) {
     const leftovers = subjects.flatMap((subject) => bySubject.get(subject) ?? []);
     const usedIds = new Set(result.map((q) => q.id));
-    result.push(...shuffle(leftovers).filter((q) => !usedIds.has(q.id)).slice(0, total - result.length));
+    result.push(...shuffleArray(leftovers).filter((q) => !usedIds.has(q.id)).slice(0, total - result.length));
   }
 
-  return shuffle(result).slice(0, Math.min(total, pool.length));
+  return shuffleArray(result).slice(0, Math.min(total, pool.length));
 };
 
 const pickByExactDistribution = (pool: Question[], distribution: Array<{ subject: string; count: number }>) => {
@@ -129,7 +128,7 @@ const pickByExactDistribution = (pool: Question[], distribution: Array<{ subject
   const usedIds = new Set<string>();
 
   distribution.forEach(({ subject, count }) => {
-    const selected = shuffle(pool)
+    const selected = shuffleArray(pool)
       .filter((question) => question.subject === subject && !usedIds.has(question.id))
       .slice(0, count);
     selected.forEach((question) => usedIds.add(question.id));
@@ -137,10 +136,10 @@ const pickByExactDistribution = (pool: Question[], distribution: Array<{ subject
   });
 
   if (result.length < distribution.reduce((sum, item) => sum + item.count, 0)) {
-    result.push(...shuffle(pool).filter((question) => !usedIds.has(question.id)).slice(0, distribution.reduce((sum, item) => sum + item.count, 0) - result.length));
+    result.push(...shuffleArray(pool).filter((question) => !usedIds.has(question.id)).slice(0, distribution.reduce((sum, item) => sum + item.count, 0) - result.length));
   }
 
-  return shuffle(result);
+  return shuffleArray(result);
 };
 
 const ensureQuestionCount = (questions: Question[], pool: Question[], target: number): Question[] => {
@@ -373,7 +372,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
         if (aTopic !== bTopic) return bTopic - aTopic;
         return Math.random() - 0.5;
       })
-      : shuffle(availablePool);
+      : shuffleArray(availablePool);
 
     let qs: Question[];
 
@@ -390,7 +389,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
         const enemTarget = Math.floor(plannedQuestionCount / 2);
         const enemPool = prioritizedPool.filter((q) => enemSubjects.includes(q.subject));
         const concursoPool = prioritizedPool.filter((q) => concursoSubjects.includes(q.subject));
-        qs = shuffle([
+        qs = shuffleArray([
           ...pickWithDistribution(enemPool, enemTarget, enemSubjects),
           ...pickWithDistribution(concursoPool, plannedQuestionCount - enemTarget, concursoSubjects),
         ]).slice(0, plannedQuestionCount);
@@ -400,6 +399,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
     }
 
     qs = ensureQuestionCount(qs, prioritizedPool, plannedQuestionCount);
+    qs = qs.map(shuffleQuestionOptions);
 
     setQuestions(qs);
     setAnswers({});

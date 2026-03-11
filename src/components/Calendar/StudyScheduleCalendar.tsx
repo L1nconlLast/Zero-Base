@@ -128,31 +128,31 @@ interface EditableWeeklyRow {
 }
 
 const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId }) => {
-    const today = new Date();
-    const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate());
-    const userScope = userId || 'default';
-    const profileStorageKey = `smartScheduleProfile_${userScope}`;
-    const autoGenerateKey = `smartScheduleAutoGenerate_${userScope}`;
+  const today = new Date();
+  const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate());
+  const userScope = userId || 'default';
+  const profileStorageKey = `smartScheduleProfile_${userScope}`;
+  const autoGenerateKey = `smartScheduleAutoGenerate_${userScope}`;
   const initialSmartProfile = useMemo(() => createDefaultSmartProfile(), []);
-    // Estados para o calendário
-    const [viewYear, setViewYear] = useState<number>(today.getFullYear());
-    const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
-    const [selectedDate, setSelectedDate] = useState<string | null>(todayStr);
-    // Estados para selects
-    const [modalidade, setModalidade] = useState<'enem' | 'concurso' | null>('enem');
-    const [disciplina, setDisciplina] = useState<string | null>(null);
-    // Estados para formulário
-    const [formNote, setFormNote] = useState<string>('');
-    const [weakTopicInput, setWeakTopicInput] = useState('Funções');
-    const [missedDaysInput, setMissedDaysInput] = useState(0);
-    const [hoursNowInput, setHoursNowInput] = useState(2);
-    const [aiSummary, setAiSummary] = useState<string[]>([]);
-    const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
-    const [swapSubjectInput, setSwapSubjectInput] = useState('Matemática');
-    const [smartProfile, setSmartProfile] = useLocalStorage<SmartScheduleProfile>(
-      profileStorageKey,
-      initialSmartProfile,
-    );
+  // Estados para o calendário
+  const [viewYear, setViewYear] = useState<number>(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState<string | null>(todayStr);
+  // Estados para selects
+  const [modalidade, setModalidade] = useState<'enem' | 'concurso' | null>('enem');
+  const [disciplina, setDisciplina] = useState<string | null>(null);
+  // Estados para formulário
+  const [formNote, setFormNote] = useState<string>('');
+  const [weakTopicInput, setWeakTopicInput] = useState('Funções');
+  const [missedDaysInput, setMissedDaysInput] = useState(0);
+  const [hoursNowInput, setHoursNowInput] = useState(2);
+  const [aiSummary, setAiSummary] = useState<string[]>([]);
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [swapSubjectInput, setSwapSubjectInput] = useState('Matemática');
+  const [smartProfile, setSmartProfile] = useLocalStorage<SmartScheduleProfile>(
+    profileStorageKey,
+    initialSmartProfile,
+  );
   const {
     entries,
     scheduledDates,
@@ -178,45 +178,45 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
 
   // já declarado acima
 
-      const disciplinas: Record<'enem' | 'concurso', { id: string; label: string }[]> = {
-        enem: [
-          { id: 'port', label: 'Português' },
-          { id: 'lit', label: 'Literatura' },
-          { id: 'red', label: 'Redação' },
-          { id: 'ing', label: 'Inglês' },
-          { id: 'esp', label: 'Espanhol' },
-          { id: 'art', label: 'Artes' },
-          { id: 'edf', label: 'Educação Física' },
-          { id: 'hist', label: 'História' },
-          { id: 'geo', label: 'Geografia' },
-          { id: 'fil', label: 'Filosofia' },
-          { id: 'soc', label: 'Sociologia' },
-          { id: 'fis', label: 'Física' },
-          { id: 'qui', label: 'Química' },
-          { id: 'bio', label: 'Biologia' },
-          { id: 'mat', label: 'Matemática' },
-        ],
-        concurso: [
-          { id: 'port', label: 'Português' },
-          { id: 'raci', label: 'Raciocínio Lógico' },
-          { id: 'info', label: 'Informática' },
-          { id: 'admPub', label: 'Administração Pública' },
-          { id: 'atual', label: 'Atualidades' },
-          { id: 'dirConst', label: 'Direito Constitucional' },
-          { id: 'dirAdm', label: 'Direito Administrativo' },
-          { id: 'dirPen', label: 'Direito Penal' },
-          { id: 'dirProcPen', label: 'Direito Processual Penal' },
-          { id: 'dirCivil', label: 'Direito Civil' },
-          { id: 'dirProcCivil', label: 'Direito Processual Civil' },
-          { id: 'dirTrib', label: 'Direito Tributário' },
-          { id: 'dirTrab', label: 'Direito do Trabalho' },
-          { id: 'cont', label: 'Contabilidade' },
-          { id: 'contPub', label: 'Contabilidade Pública' },
-          { id: 'adm', label: 'Administração Geral' },
-          { id: 'gestPes', label: 'Gestão de Pessoas' },
-          { id: 'arquiv', label: 'Arquivologia' },
-        ],
-      };
+  const disciplinas: Record<'enem' | 'concurso', { id: string; label: string }[]> = {
+    enem: [
+      { id: 'port', label: 'Português' },
+      { id: 'lit', label: 'Literatura' },
+      { id: 'red', label: 'Redação' },
+      { id: 'ing', label: 'Inglês' },
+      { id: 'esp', label: 'Espanhol' },
+      { id: 'art', label: 'Artes' },
+      { id: 'edf', label: 'Educação Física' },
+      { id: 'hist', label: 'História' },
+      { id: 'geo', label: 'Geografia' },
+      { id: 'fil', label: 'Filosofia' },
+      { id: 'soc', label: 'Sociologia' },
+      { id: 'fis', label: 'Física' },
+      { id: 'qui', label: 'Química' },
+      { id: 'bio', label: 'Biologia' },
+      { id: 'mat', label: 'Matemática' },
+    ],
+    concurso: [
+      { id: 'port', label: 'Português' },
+      { id: 'raci', label: 'Raciocínio Lógico' },
+      { id: 'info', label: 'Informática' },
+      { id: 'admPub', label: 'Administração Pública' },
+      { id: 'atual', label: 'Atualidades' },
+      { id: 'dirConst', label: 'Direito Constitucional' },
+      { id: 'dirAdm', label: 'Direito Administrativo' },
+      { id: 'dirPen', label: 'Direito Penal' },
+      { id: 'dirProcPen', label: 'Direito Processual Penal' },
+      { id: 'dirCivil', label: 'Direito Civil' },
+      { id: 'dirProcCivil', label: 'Direito Processual Civil' },
+      { id: 'dirTrib', label: 'Direito Tributário' },
+      { id: 'dirTrab', label: 'Direito do Trabalho' },
+      { id: 'cont', label: 'Contabilidade' },
+      { id: 'contPub', label: 'Contabilidade Pública' },
+      { id: 'adm', label: 'Administração Geral' },
+      { id: 'gestPes', label: 'Gestão de Pessoas' },
+      { id: 'arquiv', label: 'Arquivologia' },
+    ],
+  };
 
   // Calendar grid
   const calendarDays = useMemo(() => {
@@ -420,7 +420,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
         date: toDateStr(date.getFullYear(), date.getMonth(), date.getDate()),
       };
     }),
-  [weekStart]);
+    [weekStart]);
 
   const timeSlots = useMemo(() => {
     const all = entries
@@ -439,94 +439,69 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     return map;
   }, [entries]);
 
-  const buildWeeklyGridFromSchedule = (): EditableWeeklyRow[] =>
-    timeSlots.map((slot) => ({
+  const weeklyGrid = useMemo((): EditableWeeklyRow[] => {
+    return timeSlots.map((slot) => ({
       time: slot,
       cells: weekDates.map((day) => weekMap.get(`${day.date}|${slot}`)?.subject || ''),
     }));
+  }, [timeSlots, weekDates, weekMap]);
 
-  const [weeklyGrid, setWeeklyGrid] = useState<EditableWeeklyRow[]>([]);
-
-  const weekSignature = useMemo(() => weekDates.map((day) => day.date).join('|'), [weekDates]);
-  const weeklyGridStorageKey = `weeklyGrid_${userScope}_${weekSignature}`;
-
-  const isValidGridPayload = (value: unknown): value is EditableWeeklyRow[] =>
-    Array.isArray(value)
-    && value.every((row) => typeof row?.time === 'string' && Array.isArray(row?.cells));
-
-  useEffect(() => {
-    const initialGrid = buildWeeklyGridFromSchedule();
-
-    try {
-      const stored = window.localStorage.getItem(weeklyGridStorageKey);
-      if (!stored) {
-        setWeeklyGrid(initialGrid);
-        return;
-      }
-
-      const parsed: unknown = JSON.parse(stored);
-      if (isValidGridPayload(parsed)) {
-        setWeeklyGrid(parsed);
-        return;
-      }
-
-      setWeeklyGrid(initialGrid);
-    } catch {
-      setWeeklyGrid(initialGrid);
-    }
-  }, [weeklyGridStorageKey]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(weeklyGridStorageKey, JSON.stringify(weeklyGrid));
-    } catch {
-      // ignore persist failures
-    }
-  }, [weeklyGridStorageKey, weeklyGrid]);
+  const toNextHour = (time: string): string => {
+    const [hourRaw, minuteRaw] = time.split(':').map((part) => Number(part));
+    const hour = Number.isFinite(hourRaw) ? hourRaw : 8;
+    const minute = Number.isFinite(minuteRaw) ? minuteRaw : 0;
+    const nextHour = (hour + 1) % 24;
+    return `${String(nextHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  };
 
   const updateGridCell = (rowIndex: number, colIndex: number, value: string) => {
-    setWeeklyGrid((previous) =>
-      previous.map((row, currentRowIndex) => {
-        if (currentRowIndex !== rowIndex) return row;
-        return {
-          ...row,
-          cells: row.cells.map((cell, currentColIndex) => (currentColIndex === colIndex ? value : cell)),
-        };
-      }),
-    );
+    const slot = timeSlots[rowIndex];
+    const day = weekDates[colIndex];
+    if (!slot || !day) return;
+
+    const normalizedValue = value.trim();
+    const existingEntry = weekMap.get(`${day.date}|${slot}`);
+    if (existingEntry) {
+      if (!normalizedValue) {
+        removeEntry(existingEntry.id);
+      } else {
+        updateEntry(existingEntry.id, { subject: normalizedValue, source: 'manual' });
+      }
+    } else if (normalizedValue) {
+      addEntry(day.date, normalizedValue, undefined, {
+        startTime: slot,
+        endTime: toNextHour(slot),
+        priority: 'normal',
+        status: 'pendente',
+        source: 'manual',
+      });
+    }
   };
 
   const updateGridTime = (rowIndex: number, value: string) => {
-    setWeeklyGrid((previous) =>
-      previous.map((row, currentRowIndex) => (currentRowIndex === rowIndex ? { ...row, time: value } : row)),
-    );
-  };
+    const oldSlot = timeSlots[rowIndex];
+    const normalizedValue = value.trim();
+    if (!oldSlot || !normalizedValue) return;
 
-  const addGridRow = () => {
-    setWeeklyGrid((previous) => [
-      ...previous,
-      {
-        time: '',
-        cells: weekDates.map(() => ''),
-      },
-    ]);
-  };
-
-  const removeLastGridRow = () => {
-    setWeeklyGrid((previous) => (previous.length > 0 ? previous.slice(0, -1) : previous));
+    weekDates.forEach((day) => {
+      const entry = weekMap.get(`${day.date}|${oldSlot}`);
+      if (entry) {
+        updateEntry(entry.id, {
+          startTime: normalizedValue,
+          endTime: toNextHour(normalizedValue),
+          source: 'manual',
+        });
+      }
+    });
   };
 
   const clearGrid = () => {
-    setWeeklyGrid((previous) =>
-      previous.map((row) => ({
-        time: '',
-        cells: row.cells.map(() => ''),
-      })),
-    );
-  };
-
-  const restoreOriginalGrid = () => {
-    setWeeklyGrid(buildWeeklyGridFromSchedule());
+    weekDates.forEach((day) => {
+      const dayEntries = getEntriesForDate(day.date);
+      dayEntries
+        .filter((entry) => Boolean(entry.startTime))
+        .forEach((entry) => removeEntry(entry.id));
+    });
   };
 
   const allDisciplineLabels = useMemo(() => {
@@ -705,31 +680,10 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={addGridRow}
-            className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900"
-          >
-            ➕ Adicionar horário
-          </button>
-          <button
-            type="button"
             onClick={clearGrid}
             className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500 text-white"
           >
             🧹 Limpar tudo
-          </button>
-          <button
-            type="button"
-            onClick={restoreOriginalGrid}
-            className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-700 text-white"
-          >
-            ↩️ Restaurar original
-          </button>
-          <button
-            type="button"
-            onClick={removeLastGridRow}
-            className="px-3 py-2 rounded-lg text-xs font-semibold bg-rose-600 text-white"
-          >
-            ✖️ Remover última linha
           </button>
         </div>
       </div>
@@ -953,11 +907,10 @@ const ScheduleEntryCard: React.FC<ScheduleEntryCardProps> = ({ entry, onToggle, 
 
   return (
     <div
-      className={`flex items-center gap-3 p-3 rounded-xl border transition ${
-        entry.done
+      className={`flex items-center gap-3 p-3 rounded-xl border transition ${entry.done
           ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
           : `${cfg.bgColor} dark:bg-slate-800/70 ${cfg.borderColor} dark:border-slate-700`
-      }`}
+        }`}
     >
       {/* Toggle */}
       <button onClick={onToggle} className="flex-shrink-0 transition">

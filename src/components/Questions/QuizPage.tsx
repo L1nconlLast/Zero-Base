@@ -4,6 +4,7 @@ import { QUESTIONS_BANK, type Question, type Difficulty, type QuestionTrack } fr
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { questionsCloudService } from '../../services/questionsCloud.service';
 import { getDisplayDiscipline } from '../../utils/disciplineLabels';
+import { shuffleArray, shuffleQuestionOptions } from '../../utils/questionRandomization';
 import QuizErrorReview from './QuizErrorReview';
 
 interface QuizPageProps {
@@ -251,17 +252,19 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
         // Prefer unanswered questions
         const fresh = pool.filter((q) => !recentlyAnsweredSet.has(q.id));
         const source = fresh.length >= Math.min(baseCount, pool.length) ? fresh : pool;
-        selectedQuestions = [...source]
-          .sort((a, b) => getQuestionPriority(b) - getQuestionPriority(a) || Math.random() - 0.5)
-          .slice(0, Math.min(baseCount, source.length));
+        const prioritized = [...source].sort((a, b) => getQuestionPriority(b) - getQuestionPriority(a));
+        const candidatePool = prioritized.slice(0, Math.min(prioritized.length, baseCount * 3));
+        selectedQuestions = shuffleArray(candidatePool).slice(0, Math.min(baseCount, source.length));
         window.localStorage.setItem('daily_quiz_question_date', todayKey);
         window.localStorage.setItem('daily_quiz_question_ids', JSON.stringify(selectedQuestions.map((question) => question.id)));
       }
     } else {
       const fresh = pool.filter((q) => !recentlyAnsweredSet.has(q.id));
       const source = fresh.length >= Math.min(baseCount, pool.length) ? fresh : pool;
-      selectedQuestions = [...source].sort(() => Math.random() - 0.5).slice(0, Math.min(baseCount, source.length));
+      selectedQuestions = shuffleArray(source).slice(0, Math.min(baseCount, source.length));
     }
+
+    selectedQuestions = selectedQuestions.map(shuffleQuestionOptions);
 
     setQuestions(selectedQuestions);
     setCurrentIdx(0);
