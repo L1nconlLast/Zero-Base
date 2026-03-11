@@ -97,6 +97,7 @@ const GroupsPage = lazy(() => import('./components/Social/GroupsPage'));
 const GlobalRankingPage = lazy(() => import('./components/Social/GlobalRankingPage'));
 const FeedbackButton = lazy(() => import('./components/UI/FeedbackButton'));
 const EmptyState = lazy(() => import('./components/UI/EmptyState'));
+const MentorAdminDashboard = lazy(() => import('./pages/MentorAdminDashboard'));
 
 function App() {
   // Authentication (Supabase Auth)
@@ -1024,6 +1025,7 @@ function App() {
       { id: 'inicio', label: 'Início', icon: Home },
       { id: 'departamento', label: 'Departamento', icon: GraduationCap },
       { id: 'mentor', label: 'Mentor IA', icon: Brain },
+      { id: 'mentor-admin', label: 'Mentor Admin', icon: BarChart3 },
       { id: 'cronograma', label: 'Cronograma', icon: CalendarDays },
       { id: 'metodos', label: 'Métodos', icon: Brain },
       { id: 'foco', label: 'Foco', icon: Clock3 },
@@ -1097,7 +1099,7 @@ function App() {
         label: 'Mentor IA',
         icon: Brain,
         defaultTab: 'mentor',
-        tabIds: ['mentor'],
+        tabIds: ['mentor', 'mentor-admin'],
       },
     ],
     []
@@ -1391,6 +1393,12 @@ function App() {
                   setActiveTab('departamento');
                 }}
               />
+            </Suspense>
+          )}
+
+          {activeTab === 'mentor-admin' && (
+            <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando dashboard admin...</div>}>
+              <MentorAdminDashboard userEmail={user?.email} />
             </Suspense>
           )}
 

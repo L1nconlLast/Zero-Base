@@ -1,0 +1,165 @@
+import { createClient } from '@supabase/supabase-js';
+
+interface UsageRow {
+  user_id: string;
+  total_tokens: number;
+  created_at: string;
+}
+
+export interface MentorAdminMetrics {
+  kpis: {
+    totalRequests: number;
+    totalTokens: number;
+    estimatedCostUsd: number;
+    costPerMillionTokensUsd: number;
+  };
+  trend: Array<{
+    date: string;
+    totalTokens: number;
+    totalRequests: number;
+  }>;
+  topUsers: Array<{
+    userId: string;
+    totalTokens: number;
+    totalRequests: number;
+  }>;
+}
+
+const COST_PER_MILLION_TOKENS_USD = 0.15;
+const TREND_DAYS = 15;
+const KPI_DAYS = 30;
+
+const supabaseUrl = process.env.SUPABASE_URL?.trim();
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+const supabase = supabaseUrl && serviceRoleKey
+  ? createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+  : null;
+
+const startOfDayIso = (date: Date): string => {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy.toISOString();
+};
+
+const formatDay = (date: Date): string => date.toISOString().slice(0, 10);
+
+const estimateCost = (totalTokens: number): number => {
+  const cost = (totalTokens / 1_000_000) * COST_PER_MILLION_TOKENS_USD;
+  return Number(cost.toFixed(6));
+};
+
+class MentorAdminService {
+  private ensureClient() {
+    if (!supabase) {
+      throw new Error('SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY nao configurados.');
+    }
+    return supabase;
+  }
+
+  async getMetrics(): Promise<MentorAdminMetrics> {
+    const client = this.ensureClient();
+
+    const now = new Date();
+    const kpiStart = new Date(now);
+    kpiStart.setDate(now.getDate() - (KPI_DAYS - 1));
+
+    const trendStart = new Date(now);
+    trendStart.setDate(now.getDate() - (TREND_DAYS - 1));
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [kpiResult, trendResult, topUsersResult] = await Promise.all([
+      client
+        .from('mentor_token_usage')
+        .select('user_id,total_tokens,created_at')
+        .gte('created_at', startOfDayIso(kpiStart))
+        .order('created_at', { ascending: true }),
+      client
+        .from('mentor_token_usage')
+        .select('user_id,total_tokens,created_at')
+        .gte('created_at', startOfDayIso(trendStart))
+        .order('created_at', { ascending: true }),
+      client
+        .from('mentor_token_usage')
+        .select('user_id,total_tokens,created_at')
+        .gte('created_at', startOfDayIso(monthStart))
+        .order('created_at', { ascending: true }),
+    ]);
+
+    if (kpiResult.error) {
+      throw new Error(`Falha ao carregar KPIs: ${kpiResult.error.message}`);
+    }
+
+    if (trendResult.error) {
+      throw new Error(`Falha ao carregar tendencia: ${trendResult.error.message}`);
+    }
+
+    if (topUsersResult.error) {
+      throw new Error(`Falha ao carregar top usuarios: ${topUsersResult.error.message}`);
+    }
+
+    const kpiRows = (kpiResult.data || []) as UsageRow[];
+    const trendRows = (trendResult.data || []) as UsageRow[];
+    const topRows = (topUsersResult.data || []) as UsageRow[];
+
+    const totalRequests = kpiRows.length;
+    const totalTokens = kpiRows.reduce((sum, row) => sum + (row.total_tokens || 0), 0);
+
+    const trendMap = new Map<string, { totalTokens: number; totalRequests: number }>();
+
+    for (let i = 0; i < TREND_DAYS; i += 1) {
+      const day = new Date(trendStart);
+      day.setDate(trendStart.getDate() + i);
+      trendMap.set(formatDay(day), { totalTokens: 0, totalRequests: 0 });
+    }
+
+    trendRows.forEach((row) => {
+      const day = row.created_at.slice(0, 10);
+      const current = trendMap.get(day);
+      if (!current) return;
+
+      current.totalTokens += row.total_tokens || 0;
+      current.totalRequests += 1;
+      trendMap.set(day, current);
+    });
+
+    const trend = Array.from(trendMap.entries()).map(([date, data]) => ({
+      date,
+      totalTokens: data.totalTokens,
+      totalRequests: data.totalRequests,
+    }));
+
+    const byUser = new Map<string, { totalTokens: number; totalRequests: number }>();
+
+    topRows.forEach((row) => {
+      const key = row.user_id;
+      const current = byUser.get(key) || { totalTokens: 0, totalRequests: 0 };
+      current.totalTokens += row.total_tokens || 0;
+      current.totalRequests += 1;
+      byUser.set(key, current);
+    });
+
+    const topUsers = Array.from(byUser.entries())
+      .map(([userId, data]) => ({
+        userId,
+        totalTokens: data.totalTokens,
+        totalRequests: data.totalRequests,
+      }))
+      .sort((a, b) => b.totalTokens - a.totalTokens)
+      .slice(0, 5);
+
+    return {
+      kpis: {
+        totalRequests,
+        totalTokens,
+        estimatedCostUsd: estimateCost(totalTokens),
+        costPerMillionTokensUsd: COST_PER_MILLION_TOKENS_USD,
+      },
+      trend,
+      topUsers,
+    };
+  }
+}
+
+export const mentorAdminService = new MentorAdminService();

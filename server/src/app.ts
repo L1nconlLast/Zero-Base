@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import mentorRoutes from './routes/mentor.routes';
+import adminRoutes from './routes/admin.routes';
 
 export const app = express();
 
@@ -12,3 +13,4 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/mentor', mentorRoutes);
+app.use('/api/admin', adminRoutes);

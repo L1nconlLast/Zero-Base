@@ -5,6 +5,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   server: {
     proxy: {
+      '/api/admin': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
       '/api/mentor': {
         target: 'http://localhost:3001',
         changeOrigin: true,
