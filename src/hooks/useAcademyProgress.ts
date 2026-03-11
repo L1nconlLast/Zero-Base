@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { academyService } from '../services/academy.service';
+import { logger } from '../utils/logger';
 
 type CompleteStatus = 'saved' | 'already_completed' | 'blocked' | 'saved_offline';
 
@@ -78,7 +79,7 @@ export function useAcademyProgress(userId: string | null) {
           newTotalXp: result.newTotalXp,
         };
       } catch (error) {
-        console.warn(' Falha ao sincronizar com Supabase. Acionando fallback local.', error);
+        logger.warn('Falha ao sincronizar com Supabase. Acionando fallback local.', 'AcademyProgress', error);
 
         try {
           saveToLocalFallback(contentId);
@@ -89,7 +90,7 @@ export function useAcademyProgress(userId: string | null) {
             newTotalXp: 0,
           };
         } catch (localError) {
-          console.error(' Erro crítico no fallback local:', localError);
+          logger.error('Erro crítico no fallback local', 'AcademyProgress', localError);
           onRevert();
           throw new Error('Erro ao salvar progresso. Verifique sua conexão ou espaço em disco.');
         }

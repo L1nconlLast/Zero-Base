@@ -7,6 +7,7 @@ export interface MockExamCloudSession {
   modelId?: string | null;
   modelName?: string | null;
   banca?: string | null;
+  category?: string | null;
   totalQuestions: number;
   correctCount: number;
   xpEarned: number;
@@ -60,6 +61,22 @@ class QuestionsCloudService {
 
     if (error) {
       throw new Error(`Erro ao salvar simulado na nuvem: ${error.message}`);
+    }
+
+    // Save aggregated category analytics if a category is provided
+    if (payload.category) {
+      const timeSpentSec = Math.max(0, payload.avgTimePerQuestionSec * payload.totalQuestions);
+      const { error: categoryError } = await client.rpc('update_category_analytics', {
+        p_user_id: userId,
+        p_category: payload.category,
+        p_correct_count: payload.correctCount,
+        p_total_questions: payload.totalQuestions,
+        p_time_spent_sec: timeSpentSec,
+      });
+
+      if (categoryError) {
+        console.error('Erro ao salvar analytics da categoria:', categoryError);
+      }
     }
   }
 

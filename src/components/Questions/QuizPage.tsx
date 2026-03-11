@@ -4,6 +4,7 @@ import { QUESTIONS_BANK, type Question, type Difficulty, type QuestionTrack } fr
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { questionsCloudService } from '../../services/questionsCloud.service';
 import { getDisplayDiscipline } from '../../utils/disciplineLabels';
+import QuizErrorReview from './QuizErrorReview';
 
 interface QuizPageProps {
   onEarnXP?: (xp: number) => void;
@@ -135,6 +136,8 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
   const [dailyLastDoneDate, setDailyLastDoneDate] = useLocalStorage<string | null>('daily_quiz_last_done_date', null);
   const [dailyQuizHistory, setDailyQuizHistory] = useLocalStorage<DailyQuizHistoryEntry[]>('daily_quiz_history', []);
   const [errorHistoryByTopic] = useLocalStorage<Record<string, number>>('mock_exam_error_history_by_topic', {});
+  const [answeredIds, setAnsweredIds] = useLocalStorage<string[]>('quiz_answered_ids', []);
+  const [showResultDetails, setShowResultDetails] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
@@ -203,6 +206,16 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
 
   const getTodayKey = () => new Date().toISOString().slice(0, 10);
 
+  // Filter already-answered questions from pool (keep last 50 to allow cycling)
+  const recentlyAnsweredSet = new Set(answeredIds.slice(-50));
+
+  // Handler called by QuizErrorReview to launch a targeted session (Fix #1)
+  const handleStartReview = useCallback((topicFilter: string, subjectFilter: string) => {
+    setSelectedSubject(subjectFilter !== 'Todos' ? subjectFilter : 'Todas');
+    setSelectedTopic(topicFilter !== 'Todos' ? topicFilter : 'Todos');
+    setSelectedDifficulty('todas');
+  }, []);
+
   const getQuestionPriority = useCallback(
     (question: Question) => {
       const topicKey = `${question.subject}::${question.tags[0] || question.subject}`;
@@ -235,14 +248,19 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
       }
 
       if (selectedQuestions.length === 0) {
-        selectedQuestions = [...pool]
+        // Prefer unanswered questions
+        const fresh = pool.filter((q) => !recentlyAnsweredSet.has(q.id));
+        const source = fresh.length >= Math.min(baseCount, pool.length) ? fresh : pool;
+        selectedQuestions = [...source]
           .sort((a, b) => getQuestionPriority(b) - getQuestionPriority(a) || Math.random() - 0.5)
-          .slice(0, Math.min(baseCount, pool.length));
+          .slice(0, Math.min(baseCount, source.length));
         window.localStorage.setItem('daily_quiz_question_date', todayKey);
         window.localStorage.setItem('daily_quiz_question_ids', JSON.stringify(selectedQuestions.map((question) => question.id)));
       }
     } else {
-      selectedQuestions = [...pool].sort(() => Math.random() - 0.5).slice(0, Math.min(baseCount, pool.length));
+      const fresh = pool.filter((q) => !recentlyAnsweredSet.has(q.id));
+      const source = fresh.length >= Math.min(baseCount, pool.length) ? fresh : pool;
+      selectedQuestions = [...source].sort(() => Math.random() - 0.5).slice(0, Math.min(baseCount, source.length));
     }
 
     setQuestions(selectedQuestions);
@@ -251,6 +269,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
     setShowExplanation(false);
     setAnswers([]);
     setStartedAt(Date.now());
+    setShowResultDetails(false);
     setState('answering');
   }, [dailyMode, getQuestionPriority, selectedDifficulty, selectedSubject, selectedTopic, selectedTrack]);
 
@@ -269,6 +288,9 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
     if (isLastQuestion) {
       const totalXP = newAnswers.reduce((sum, a) => sum + a.xp, 0);
       onEarnXP?.(totalXP);
+
+      // Track answered IDs (Fix #5)
+      setAnsweredIds((prev) => [...new Set([...prev, ...questions.map((q) => q.id)])].slice(-200));
 
       if (dailyMode) {
         const todayKey = getTodayKey();
@@ -357,19 +379,18 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
                 <button
                   key={track}
                   onClick={() => setSelectedTrack(track)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
-                    selectedTrack === track
-                      ? track === 'enem'
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : track === 'concurso'
-                          ? 'bg-violet-600 text-white border-violet-600'
-                            : 'bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
-                      : track === 'enem'
-                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
-                        : track === 'concurso'
-                          ? 'bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800'
-                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                  }`}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${selectedTrack === track
+                    ? track === 'enem'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : track === 'concurso'
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
+                    : track === 'enem'
+                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                      : track === 'concurso'
+                        ? 'bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                    }`}
                 >
                   {TRACK_LABEL[track]}
                 </button>
@@ -399,13 +420,12 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
                   <button
                     key={s}
                     onClick={() => setSelectedSubject(s)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
-                      s === 'Todas'
-                        ? selectedSubject === s
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-400'
-                        : getSubjectChipClass(s, selectedSubject === s)
-                    }`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${s === 'Todas'
+                      ? selectedSubject === s
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                      : getSubjectChipClass(s, selectedSubject === s)
+                      }`}
                   >
                     {s === 'Todas' ? 'Todas' : `${discipline.icon} ${discipline.label}`}
                   </button>
@@ -423,11 +443,10 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
                 <button
                   key={topic}
                   onClick={() => setSelectedTopic(topic)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${
-                    selectedTopic === topic
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                  }`}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${selectedTopic === topic
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                    }`}
                 >
                   {topic}
                 </button>
@@ -444,11 +463,10 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
                 <button
                   key={d}
                   onClick={() => setSelectedDifficulty(d)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition capitalize ${
-                    selectedDifficulty === d
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                  }`}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition capitalize ${selectedDifficulty === d
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                    }`}
                 >
                   {d === 'todas' ? 'Todas' : DIFFICULTY_LABEL[d as Difficulty]}
                 </button>
@@ -469,6 +487,11 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
               Iniciar Quiz
             </button>
           </div>
+        </div>
+
+        {/* Pontos fracos — Fix #1 */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+          <QuizErrorReview onStartReview={handleStartReview} />
         </div>
       </div>
     );
@@ -516,18 +539,41 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
             </div>
           )}
 
-          {/* Revisão de respostas */}
-          <div className="text-left space-y-2 mb-6">
+          {/* Review list */}
+          <div className="text-left space-y-3 mb-6">
             {questions.map((q, i) => {
               const answer = answers[i];
+              const isCorrect = answer?.correct;
               return (
-                <div key={q.id} className={`flex items-center gap-2 p-2 rounded-lg text-sm ${answer?.correct ? 'bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-400'}`}>
-                  {answer?.correct ? <CheckCircle className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
-                  <span className="truncate">{q.question.slice(0, 55)}…</span>
+                <div key={q.id} className={`rounded-xl border p-3 text-sm ${isCorrect ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'}`}>
+                  <div className="flex items-start gap-2">
+                    {isCorrect ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" /> : <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />}
+                    <span className={`font-medium leading-snug ${isCorrect ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                      {q.question}
+                    </span>
+                  </div>
+                  {!isCorrect && showResultDetails && (
+                    <div className="mt-2 ml-6 space-y-1">
+                      <p className="text-xs text-red-600 dark:text-red-400">Resposta correta: <strong>{q.correctAnswer}</strong></p>
+                      {q.explanation && (
+                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{q.explanation}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
+
+          {/* Toggle details */}
+          {answers.some((a) => !a.correct) && (
+            <button
+              onClick={() => setShowResultDetails((v) => !v)}
+              className="w-full mb-3 py-2 rounded-xl text-sm font-semibold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+            >
+              {showResultDetails ? 'Ocultar explicações' : '📖 Ver explicações dos erros'}
+            </button>
+          )}
 
           <button
             onClick={handleRestart}
@@ -601,6 +647,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
                 key={opt.letter}
                 onClick={() => handleAnswer(opt.letter)}
                 disabled={!!selectedAnswer}
+                aria-label={`Alternativa ${opt.letter}: ${opt.text}`}
                 className={`w-full text-left flex items-start gap-3 p-3.5 rounded-xl border-2 transition font-medium text-sm ${btnClass} ${!selectedAnswer ? 'hover:border-blue-400 cursor-pointer' : 'cursor-default'}`}
               >
                 <span className="font-bold w-5 shrink-0">{opt.letter}.</span>

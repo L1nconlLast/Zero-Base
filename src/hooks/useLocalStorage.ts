@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { logger } from '../utils/logger';
 
 function readLocalStorageValue<T>(key: string, initialValue: T): T {
   try {
     const item = window.localStorage.getItem(key);
     return item ? JSON.parse(item) : initialValue;
   } catch (error) {
-    console.error(`Erro ao carregar ${key}:`, error);
+    logger.error(`Erro ao carregar ${key}`, 'LocalStorage', error);
     return initialValue;
   }
 }
@@ -29,7 +30,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     try {
       window.localStorage.setItem(key, JSON.stringify(storedValue));
     } catch (error) {
-      console.error(`Erro ao salvar ${key}:`, error);
+      logger.error(`Erro ao salvar ${key}`, 'LocalStorage', error);
     }
   }, [key, storedValue]);
 

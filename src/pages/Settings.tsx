@@ -1,42 +1,51 @@
-import React from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Settings as SettingsIcon,
-  Palette,
-  Download,
-  Upload,
-  Link2,
-  X,
-  Moon,
-  Sun,
-  Info,
-  Trophy,
-  Clock,
-  Star,
-  Flame,
-  Target,
-  UserCircle2,
-  Medal,
-  CheckCircle2,
-  AlertTriangle,
-  Loader2,
-  HardDrive,
   Brain,
-  TrendingUp,
+  BookOpen,
+  Target,
+  Zap,
+  Flame,
+  Crown,
+  Rocket,
+  Lightbulb,
+  GraduationCap,
+  Star,
+  Award,
+  Trophy,
+  Bell,
+  Palette,
+  Clock,
+  Shield,
+  Trash2,
+  Download,
   Camera,
+  Upload,
+  Check,
+  Lock,
+  Sun,
+  Moon,
+  Globe,
+  AlignJustify,
+  TrendingUp,
+  Timer,
+  FileText,
+  BarChart2,
+  User,
+  Settings,
+  Sparkles,
+  CalendarDays,
+  Pencil,
+  Save,
+  CheckCircle,
+  BellRing,
+  LayoutDashboard,
+  Sunset,
+  Sunrise,
+  Minus,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ThemeSelector } from '../components/Layout/ThemeSelector';
-import ExportSection from '../components/Settings/ExportSection';
-import { UserData } from '../types';
-import { MATERIAS_CONFIG, MateriaTipo } from '../types';
-import { ACHIEVEMENTS } from '../data/achievements';
-import { getLevelByPoints, getProgressToNextLevel } from '../data/levels';
-
-const ringThemeStyle = {
-  '--tw-ring-color': 'var(--color-primary)',
-} as unknown as React.CSSProperties;
-
-const isImageAvatar = (avatar?: string) => Boolean(avatar && (/^data:image\//i.test(avatar) || /^https?:\/\//i.test(avatar)));
+import type { UserData } from '../types';
 
 interface SettingsPageProps {
   userData: UserData;
@@ -65,7 +74,328 @@ interface SettingsPageProps {
   onImportData: (data: UserData) => void;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({
+/* ─── PALETTE ─────────────────────────────────────────────── */
+const L = {
+  bg: '#f8f9fc',
+  surface: '#ffffff',
+  card: '#ffffff',
+  border: '#e8ecf3',
+  border2: '#d1d9e6',
+  accent: '#f97316',
+  indigo: '#6366f1',
+  green: '#16a34a',
+  amber: '#d97706',
+  red: '#dc2626',
+  blue: '#2563eb',
+  text: '#0f172a',
+  sub: '#475569',
+  muted: '#94a3b8',
+  soft: '#f1f5f9',
+  soft2: '#e2e8f0',
+};
+
+/* ─── DATA ────────────────────────────────────────────────── */
+const AVATAR_ICONS = [
+  { id: 'brain', Icon: Brain, color: '#6366f1' },
+  { id: 'book', Icon: BookOpen, color: '#2563eb' },
+  { id: 'target', Icon: Target, color: '#dc2626' },
+  { id: 'zap', Icon: Zap, color: '#d97706' },
+  { id: 'flame', Icon: Flame, color: '#f97316' },
+  { id: 'crown', Icon: Crown, color: '#b45309' },
+  { id: 'rocket', Icon: Rocket, color: '#7c3aed' },
+  { id: 'lightbulb', Icon: Lightbulb, color: '#ca8a04' },
+  { id: 'grad', Icon: GraduationCap, color: '#0891b2' },
+  { id: 'star', Icon: Star, color: '#f59e0b' },
+  { id: 'award', Icon: Award, color: '#16a34a' },
+  { id: 'trophy', Icon: Trophy, color: '#d97706' },
+];
+
+const ACHIEVEMENTS = [
+  { id: 1, Icon: Flame, name: 'Primeira Chama', desc: 'Complete sua primeira sessão', xp: 50, done: true, date: '12 Jan', color: '#f97316' },
+  { id: 2, Icon: CalendarDays, name: '7 Dias Seguidos', desc: 'Streak de uma semana completa', xp: 150, done: true, date: '19 Jan', color: '#6366f1' },
+  { id: 3, Icon: Trophy, name: 'Top 100', desc: 'Entre no top 100 do ranking', xp: 300, done: true, date: '25 Jan', color: '#d97706' },
+  { id: 4, Icon: Lightbulb, name: 'Mestre das Questões', desc: 'Responda 500 questões', xp: 400, done: false, need: '247 / 500 questões', color: '#6366f1' },
+  { id: 5, Icon: Rocket, name: 'Maratona', desc: 'Estude 10h em um único dia', xp: 500, done: false, need: 'Recorde: 4h 12min', color: '#7c3aed' },
+  { id: 6, Icon: Star, name: 'Lenda', desc: 'Alcance o nível 10', xp: 1000, done: false, need: 'Nível 2 / 10', color: '#d97706' },
+];
+
+const PROVAS = ['ENEM', 'FUVEST', 'UNICAMP', 'PUC', 'ITA', 'IME', 'Medicina', 'Direito', 'Engenharia'];
+const TRILHAS = ['ENEM', 'Ciências da Natureza', 'Matemática', 'Linguagens', 'Ciências Humanas', 'Medicina', 'Direito', 'Engenharia'];
+
+/* ─── UTILS ──────────────────────────────────────────────── */
+function Counter({ to, duration = 1000 }: { to: number; duration?: number }) {
+  const [val, setVal] = useState(0);
+
+  useEffect(() => {
+    let cur = 0;
+    const step = to / (duration / 16);
+    const id = setInterval(() => {
+      cur = Math.min(cur + step, to);
+      setVal(Math.floor(cur));
+      if (cur >= to) {
+        clearInterval(id);
+      }
+    }, 16);
+
+    return () => clearInterval(id);
+  }, [to, duration]);
+
+  return <>{val}</>;
+}
+
+/* ─── XP RING ─────────────────────────────────────────────── */
+function XPRing({ current = 555, max = 2000, color = L.accent, size = 116 }: { current?: number; max?: number; color?: string; size?: number }) {
+  const [prog, setProg] = useState(0);
+  const pct = max > 0 ? current / max : 0;
+  const r = 46;
+  const circ = 2 * Math.PI * r;
+
+  useEffect(() => {
+    const t = setTimeout(() => setProg(pct), 400);
+    return () => clearTimeout(t);
+  }, [pct]);
+
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="50" cy="50" r={r} fill="none" stroke={L.soft2} strokeWidth="6" />
+        <circle
+          cx="50"
+          cy="50"
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={circ * (1 - prog)}
+          style={{ transition: 'stroke-dashoffset 1.3s cubic-bezier(.4,0,.2,1)', filter: `drop-shadow(0 0 6px ${color}66)` }}
+        />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+        <div style={{ fontSize: 9, color: L.muted, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Nível</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: L.text, lineHeight: 1, fontFamily: "'Syne',sans-serif" }}>2</div>
+        <div style={{ fontSize: 9, color, fontWeight: 700 }}>{Math.round(pct * 100)}%</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── AVATAR DISPLAY ─────────────────────────────────────── */
+function AvatarDisplay({ iconId, photo, size = 72, color = L.accent }: { iconId: string; photo: string | null; size?: number; color?: string }) {
+  const found = AVATAR_ICONS.find((a) => a.id === iconId);
+  const Ic = found?.Icon || Brain;
+  const c = found?.color || color;
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        flexShrink: 0,
+        background: `${c}14`,
+        border: `2.5px solid ${c}33`,
+        boxShadow: `0 0 0 4px ${c}0e, 0 4px 20px ${c}22`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        position: 'relative',
+      }}
+    >
+      {photo ? <img src={photo} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Ic size={size * 0.42} color={c} strokeWidth={1.8} />}
+    </div>
+  );
+}
+
+function Card({ children, style = {}, accentTop, variant = "default" }: { children: React.ReactNode; style?: React.CSSProperties; accentTop?: string; variant?: "default" | "hero" }) {
+  const baseStyle: React.CSSProperties = {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 20,
+    boxShadow: '0 1px 4px rgba(0,0,0,.04), 0 4px 24px rgba(0,0,0,.04)',
+  };
+
+  const variants = {
+    default: {
+      background: L.surface,
+      border: `1px solid ${L.border}`,
+      color: L.text,
+    },
+    hero: {
+      background: `linear-gradient(135deg, #1e293b, #0f172a)`,
+      border: `1px solid #334155`,
+      color: '#ffffff',
+      boxShadow: '0 8px 32px rgba(0,0,0,.15)',
+    }
+  };
+
+  return (
+    <div style={{ ...baseStyle, ...variants[variant as keyof typeof variants], ...style }}>
+      {accentTop && <div style={{ height: 3, background: `linear-gradient(90deg,${accentTop},${accentTop}88)`, borderRadius: '20px 20px 0 0' }} />}
+      {children}
+    </div>
+  );
+}
+
+/* ─── SECTION LABEL ──────────────────────────────────────── */
+function SLabel({ color = L.accent, icon: Icon, children }: { color?: string; icon: LucideIcon; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 18 }}>
+      <div
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 8,
+          background: `${color}14`,
+          border: `1px solid ${color}28`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Icon size={13} color={color} strokeWidth={2.2} />
+      </div>
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color }}>{children}</span>
+    </div>
+  );
+}
+
+/* ─── FIELD WRAPPER ──────────────────────────────────────── */
+function Field({ label, children, mb = 16 }: { label: React.ReactNode; children: React.ReactNode; mb?: number }) {
+  return (
+    <div style={{ marginBottom: mb }}>
+      <label style={{ fontSize: 12, fontWeight: 600, color: L.sub, display: 'block', marginBottom: 6 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+/* ─── INPUT ──────────────────────────────────────────────── */
+function Input({
+  value,
+  onChange,
+  readOnly,
+  placeholder,
+  type = 'text',
+  style = {},
+}: {
+  value: string | number;
+  onChange?: React.ChangeEventHandler<HTMLInputElement>;
+  readOnly?: boolean;
+  placeholder?: string;
+  type?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={onChange}
+      readOnly={readOnly}
+      placeholder={placeholder}
+      className="pf-input"
+      style={{
+        width: '100%',
+        background: readOnly ? L.soft : L.surface,
+        border: `1px solid ${L.border2}`,
+        borderRadius: 12,
+        padding: '10px 14px',
+        color: readOnly ? L.muted : L.text,
+        fontSize: 13.5,
+        cursor: readOnly ? 'not-allowed' : 'text',
+        ...style,
+      }}
+    />
+  );
+}
+
+/* ─── SELECT ─────────────────────────────────────────────── */
+function Select({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: React.ChangeEventHandler<HTMLSelectElement>;
+  options: string[];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={onChange}
+      className="pf-input"
+      style={{
+        width: '100%',
+        background: L.surface,
+        border: `1px solid ${L.border2}`,
+        borderRadius: 12,
+        padding: '10px 14px',
+        color: L.text,
+        fontSize: 13.5,
+        appearance: 'none',
+        cursor: 'pointer',
+      }}
+    >
+      {options.map((o) => (
+        <option key={o}>{o}</option>
+      ))}
+    </select>
+  );
+}
+
+/* ─── TOGGLE ──────────────────────────────────────────────── */
+function Toggle({ on, color = L.indigo }: { on: boolean; color?: string }) {
+  const [state, setState] = useState(on);
+
+  return (
+    <div
+      onClick={() => setState((p) => !p)}
+      style={{
+        width: 40,
+        height: 22,
+        borderRadius: 11,
+        background: state ? color : L.border2,
+        position: 'relative',
+        cursor: 'pointer',
+        transition: 'background .2s',
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: 3,
+          left: state ? 20 : 3,
+          width: 16,
+          height: 16,
+          borderRadius: '50%',
+          background: '#fff',
+          transition: 'left .2s',
+          boxShadow: '0 1px 4px rgba(0,0,0,.2)',
+        }}
+      />
+    </div>
+  );
+}
+
+function mapTrackFromTrilha(value: string): 'enem' | 'concursos' | 'hibrido' {
+  if (value.toLowerCase().includes('enem')) {
+    return 'enem';
+  }
+
+  if (value.toLowerCase().includes('direito') || value.toLowerCase().includes('engenharia') || value.toLowerCase().includes('medicina')) {
+    return 'hibrido';
+  }
+
+  return 'concursos';
+}
+
+/* ══════════════════════════════════════════════════════════
+   MAIN
+══════════════════════════════════════════════════════════ */
+export default function SettingsPage({
   userData,
   userName,
   userEmail,
@@ -73,715 +403,967 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   profileExamGoal,
   profileExamDate,
   preferredStudyTrack,
-  darkMode,
-  currentTheme,
   weeklyGoalMinutes,
-  onToggleDarkMode,
-  onSelectTheme,
-  profileSyncStatus,
-  lastProfileSyncAt,
-  lastProfileSavedAt,
-  profileChangeHistory = [],
   onSaveProfile,
-  onImportData,
-}) => {
-  const [draftName, setDraftName] = React.useState(userName || '');
-  const [draftAvatar, setDraftAvatar] = React.useState(profileAvatar || '🧑‍⚕️');
-  const [avatarUrlInput, setAvatarUrlInput] = React.useState('');
-  const [draftExamGoal, setDraftExamGoal] = React.useState(profileExamGoal || '');
-  const [draftExamDate, setDraftExamDate] = React.useState(profileExamDate || '');
-  const [draftPreferredTrack, setDraftPreferredTrack] = React.useState<'enem' | 'concursos' | 'hibrido'>(preferredStudyTrack);
-  const [isSavingProfile, setIsSavingProfile] = React.useState(false);
-  const avatarFileInputRef = React.useRef<HTMLInputElement | null>(null);
+}: SettingsPageProps) {
+  const initialAvatar = useMemo(
+    () => AVATAR_ICONS.find((item) => item.id === profileAvatar)?.id || 'brain',
+    [profileAvatar],
+  );
+  const initialPhoto = useMemo(
+    () => (profileAvatar && (/^data:image\//i.test(profileAvatar) || /^https?:\/\//i.test(profileAvatar)) ? profileAvatar : null),
+    [profileAvatar],
+  );
 
-  React.useEffect(() => setDraftName(userName || ''), [userName]);
-  React.useEffect(() => setDraftAvatar(profileAvatar || '🧑‍⚕️'), [profileAvatar]);
-  React.useEffect(() => {
-    if (profileAvatar && /^https?:\/\//i.test(profileAvatar)) {
-      setAvatarUrlInput(profileAvatar);
-      return;
-    }
-    setAvatarUrlInput('');
-  }, [profileAvatar]);
-  React.useEffect(() => setDraftExamGoal(profileExamGoal || ''), [profileExamGoal]);
-  React.useEffect(() => setDraftExamDate(profileExamDate || ''), [profileExamDate]);
-  React.useEffect(() => setDraftPreferredTrack(preferredStudyTrack), [preferredStudyTrack]);
+  const [avatarId, setAvatarId] = useState(initialAvatar);
+  const [photo, setPhoto] = useState<string | null>(initialPhoto);
+  const [name, setName] = useState(userName || 'Lin');
+  const [prova, setProva] = useState(profileExamGoal || 'ENEM');
+  const [trilha, setTrilha] = useState(preferredStudyTrack === 'enem' ? 'ENEM' : preferredStudyTrack === 'hibrido' ? 'Medicina' : 'Direito');
+  const [dataProva, setData] = useState(profileExamDate || '');
+  const [metaMin, setMeta] = useState(weeklyGoalMinutes || 1230);
+  const [editMeta, setEditMeta] = useState(false);
+  const [metaTmp, setMetaTmp] = useState(String(weeklyGoalMinutes || 1230));
+  const [dirty, setDirty] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [tab, setTab] = useState('perfil');
+  const [mounted, setMounted] = useState(false);
+  const [hoverAch, setHoverAch] = useState<number | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const sessions = userData.sessions || userData.studyHistory || [];
-  const levelInfo = getLevelByPoints(userData.totalPoints);
-  const levelProgress = getProgressToNextLevel(userData.totalPoints);
-  const weeklyStudiedMinutes = Object.values(userData.weekProgress || {}).reduce((sum, day) => sum + (day?.minutes || 0), 0);
-  const weeklyGoalProgress = weeklyGoalMinutes > 0 ? Math.min(100, Math.round((weeklyStudiedMinutes / weeklyGoalMinutes) * 100)) : 0;
+  const accent = L.accent;
+  const studiedMin = useMemo(
+    () => Object.values(userData.weekProgress || {}).reduce((acc, day) => acc + (day?.minutes || 0), 0),
+    [userData.weekProgress],
+  );
+  const sessionsCount = (userData.sessions || userData.studyHistory || []).length;
+  const metaPct = metaMin > 0 ? Math.min(100, (studiedMin / metaMin) * 100) : 0;
 
-  const recentAchievements = React.useMemo(() => {
-    return userData.achievements
-      .slice(-3)
-      .reverse()
-      .map((id) => ACHIEVEMENTS.find((achievement) => achievement.id === id))
-      .filter((achievement): achievement is NonNullable<typeof achievement> => Boolean(achievement));
-  }, [userData.achievements]);
+  const stats = useMemo(
+    () => [
+      { label: 'Streak', val: userData.currentStreak || userData.streak || 0, unit: 'dias', Icon: Flame, color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
+      { label: 'Horas Estudadas', val: Math.floor((userData.totalPoints || 0) / 10), unit: 'horas', Icon: Timer, color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
+      { label: 'Simulados', val: sessionsCount, unit: 'sessões', Icon: FileText, color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+      { label: 'Ranking', val: Math.max(1, 120 - (userData.level || 1) * 3), unit: 'global', Icon: BarChart2, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+    ],
+    [sessionsCount, userData.currentStreak, userData.level, userData.streak, userData.totalPoints],
+  );
 
-  const displayName = draftName || userName || 'Estudante';
-  const displayEmail = userEmail || 'conta@medicina-do-zero.app';
-  const avatarInitial = displayName.charAt(0).toUpperCase();
-  const avatarValue = draftAvatar || avatarInitial;
-  const avatarIsImage = isImageAvatar(avatarValue);
+  useEffect(() => {
+    setTimeout(() => setMounted(true), 80);
+  }, []);
 
-  const avatarOptions = ['🧑‍⚕️', '👩‍⚕️', '👨‍⚕️', '🧠', '📚', '🎯', '⚡', '🔥'];
+  useEffect(() => {
+    setName(userName || 'Lin');
+  }, [userName]);
 
-  const hasProfileChanges =
-    draftName !== (userName || '') ||
-    draftAvatar !== (profileAvatar || '🧑‍⚕️') ||
-    draftExamGoal !== (profileExamGoal || '') ||
-    draftExamDate !== (profileExamDate || '') ||
-    draftPreferredTrack !== preferredStudyTrack;
+  useEffect(() => {
+    setProva(profileExamGoal || 'ENEM');
+  }, [profileExamGoal]);
 
-  const handleDiscardProfileChanges = () => {
-    setDraftName(userName || '');
-    setDraftAvatar(profileAvatar || '🧑‍⚕️');
-    setDraftExamGoal(profileExamGoal || '');
-    setDraftExamDate(profileExamDate || '');
-    setDraftPreferredTrack(preferredStudyTrack);
-    toast('Alterações descartadas.');
-  };
+  useEffect(() => {
+    setData(profileExamDate || '');
+  }, [profileExamDate]);
 
-  const handleSaveProfileChanges = async () => {
-    const normalizedName = draftName.trim();
-    if (normalizedName.length < 3) {
-      toast.error('Nome deve ter no mínimo 3 caracteres.');
-      return;
-    }
+  useEffect(() => {
+    setMeta(weeklyGoalMinutes || 1230);
+    setMetaTmp(String(weeklyGoalMinutes || 1230));
+  }, [weeklyGoalMinutes]);
 
-    if (draftExamDate) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const selectedDate = new Date(`${draftExamDate}T00:00:00`);
-      if (selectedDate < today) {
-        toast.error('A data da prova deve ser hoje ou futura.');
-        return;
-      }
-    }
+  useEffect(() => {
+    setAvatarId(initialAvatar);
+    setPhoto(initialPhoto);
+  }, [initialAvatar, initialPhoto]);
 
-    setIsSavingProfile(true);
+  const mark = () => setDirty(true);
+
+  async function handleSave() {
+    const payload = {
+      name: name.trim() || 'Estudante',
+      avatar: photo || avatarId,
+      examGoal: prova,
+      examDate: dataProva,
+      preferredTrack: mapTrackFromTrilha(trilha),
+    };
+
     try {
-      const result = await onSaveProfile({
-        name: normalizedName,
-        avatar: draftAvatar,
-        examGoal: draftExamGoal.trim(),
-        examDate: draftExamDate,
-        preferredTrack: draftPreferredTrack,
-      });
-
+      const result = await onSaveProfile(payload);
       if (result.success) {
-        toast.success(result.message);
+        setDirty(false);
+        setSaved(true);
+        toast.success(result.message || 'Perfil salvo com sucesso!');
+        setTimeout(() => setSaved(false), 2500);
       } else {
-        toast.error(result.message);
+        toast.error(result.message || 'Não foi possível salvar o perfil.');
       }
-    } finally {
-      setIsSavingProfile(false);
+    } catch {
+      toast.error('Erro ao salvar perfil.');
     }
-  };
+  }
 
-  const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
-    event.target.value = '';
-
-    if (!selectedFile) {
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) {
       return;
     }
 
-    if (!selectedFile.type.startsWith('image/')) {
+    if (!f.type.startsWith('image/')) {
       toast.error('Selecione um arquivo de imagem válido.');
       return;
     }
 
-    if (selectedFile.size > 2 * 1024 * 1024) {
+    if (f.size > 2 * 1024 * 1024) {
       toast.error('A imagem deve ter no máximo 2MB.');
       return;
     }
 
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(new Error('Falha ao ler imagem.'));
-        reader.readAsDataURL(selectedFile);
-      });
-
-      if (!dataUrl.startsWith('data:image/')) {
-        toast.error('Formato de imagem não suportado.');
-        return;
-      }
-
-      setDraftAvatar(dataUrl);
-      setAvatarUrlInput('');
-      toast.success('Foto de perfil selecionada.');
-    } catch {
-      toast.error('Não foi possível processar a imagem.');
-    }
-  };
-
-  const handleApplyAvatarUrl = () => {
-    const normalizedUrl = avatarUrlInput.trim();
-
-    if (!normalizedUrl) {
-      toast.error('Cole a URL da imagem antes de aplicar.');
-      return;
+    if (photo && photo.startsWith('blob:')) {
+      URL.revokeObjectURL(photo);
     }
 
-    if (!/^https?:\/\//i.test(normalizedUrl)) {
-      toast.error('A URL precisa começar com http:// ou https://');
-      return;
-    }
+    setPhoto(URL.createObjectURL(f));
+    mark();
+    e.target.value = '';
+  }
 
-    setDraftAvatar(normalizedUrl);
-    toast.success('URL de foto aplicada.');
-  };
+  const daysLeft = dataProva
+    ? Math.max(0, Math.round((new Date(dataProva).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+    : null;
 
-  const profileSyncMeta =
-    profileSyncStatus === 'syncing'
-      ? {
-          label: 'Sincronizando perfil...',
-          className: 'text-amber-600 dark:text-amber-300',
-          icon: Loader2,
-          spin: true,
-        }
-      : profileSyncStatus === 'synced'
-        ? {
-            label: `Perfil sincronizado${lastProfileSyncAt ? ` em ${new Date(lastProfileSyncAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}`,
-            className: 'text-emerald-600 dark:text-emerald-300',
-            icon: CheckCircle2,
-            spin: false,
-          }
-        : profileSyncStatus === 'error'
-          ? {
-              label: 'Erro ao sincronizar perfil',
-              className: 'text-rose-600 dark:text-rose-300',
-              icon: AlertTriangle,
-              spin: false,
-            }
-          : {
-              label: 'Perfil salvo localmente',
-              className: 'text-slate-600 dark:text-slate-300',
-              icon: HardDrive,
-              spin: false,
-            };
-
-  const ProfileSyncIcon = profileSyncMeta.icon;
-
-  const stats = [
-    {
-      label: 'Pontos Totais',
-      value: userData.totalPoints.toLocaleString(),
-      icon: Star,
-      color: 'text-yellow-500',
-      bg: 'bg-yellow-50 dark:bg-yellow-900/20',
-    },
-    {
-      label: 'Nível Atual',
-      value: `Nível ${userData.level}`,
-      icon: Trophy,
-      color: 'text-purple-500',
-      bg: 'bg-purple-50 dark:bg-purple-900/20',
-    },
-    {
-      label: 'Conquistas',
-      value: userData.achievements.length,
-      icon: Medal,
-      color: 'text-blue-500',
-      bg: 'bg-blue-50 dark:bg-blue-900/20',
-    },
-    {
-      label: 'Sequência',
-      value: `${userData.currentStreak || userData.streak || 0} dias`,
-      icon: Flame,
-      color: 'text-orange-500',
-      bg: 'bg-orange-50 dark:bg-orange-900/20',
-    },
-    {
-      label: 'Sessões',
-      value: sessions.length,
-      icon: Clock,
-      color: 'text-green-500',
-      bg: 'bg-green-50 dark:bg-green-900/20',
-    },
+  const TABS = [
+    { key: 'perfil', label: 'Perfil', Icon: User },
+    { key: 'estatísticas', label: 'Estatísticas', Icon: BarChart2 },
+    { key: 'conquistas', label: 'Conquistas', Icon: Trophy },
+    { key: 'preferências', label: 'Preferências', Icon: Settings },
   ];
 
-  const subjectMinutes = React.useMemo(() => {
-    const base = Object.keys(MATERIAS_CONFIG).reduce<Record<string, number>>((acc, subject) => {
-      acc[subject] = 0;
-      return acc;
-    }, {});
-
-    sessions.forEach((session) => {
-      const subject = session.subject || 'Outra';
-      base[subject] = (base[subject] || 0) + (session.minutes || session.duration || 0);
-    });
-
-    return base;
-  }, [sessions]);
-
-  const cognitiveDiagnosis = React.useMemo(() => {
-    const entries = Object.entries(subjectMinutes)
-      .filter(([subject]) => subject !== 'Outra')
-      .sort((a, b) => b[1] - a[1]);
-
-    return {
-      strengths: entries.filter(([, minutes]) => minutes > 0).slice(0, 2),
-      weaknesses: [...entries].reverse().slice(0, 2),
-    };
-  }, [subjectMinutes]);
-
-  const weeklyEvolution = React.useMemo(() => {
-    const dayOrder: Array<{ key: keyof UserData['weekProgress']; label: string }> = [
-      { key: 'segunda', label: 'Seg' },
-      { key: 'terca', label: 'Ter' },
-      { key: 'quarta', label: 'Qua' },
-      { key: 'quinta', label: 'Qui' },
-      { key: 'sexta', label: 'Sex' },
-      { key: 'sabado', label: 'Sáb' },
-      { key: 'domingo', label: 'Dom' },
-    ];
-
-    const maxMinutes = Math.max(
-      1,
-      ...dayOrder.map((day) => userData.weekProgress?.[day.key]?.minutes || 0)
-    );
-
-    return dayOrder.map((day) => {
-      const minutes = userData.weekProgress?.[day.key]?.minutes || 0;
-      return {
-        label: day.label,
-        minutes,
-        percentage: Math.round((minutes / maxMinutes) * 100),
-      };
-    });
-  }, [userData.weekProgress]);
-
-  const aiRecommendation = React.useMemo(() => {
-    const weakSubject = cognitiveDiagnosis.weaknesses[0]?.[0] as MateriaTipo | undefined;
-    const topicBySubject: Record<MateriaTipo, string> = {
-      Anatomia: 'Sistema Osteomuscular',
-      Fisiologia: 'Regulação Hormonal',
-      Farmacologia: 'Farmacocinética',
-      Patologia: 'Processo Inflamatório',
-      Bioquímica: 'Metabolismo Energético',
-      Histologia: 'Tecido Epitelial',
-      Outra: 'Revisão de base geral',
-    };
-
-    const fallbackSubject: MateriaTipo = 'Bioquímica';
-    const subject = weakSubject || fallbackSubject;
-
-    return {
-      subject,
-      topic: topicBySubject[subject],
-    };
-  }, [cognitiveDiagnosis.weaknesses]);
-
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-          <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-xl">
-            <SettingsIcon className="w-7 h-7 text-gray-600 dark:text-gray-300" />
+    <div style={{ fontFamily: "'DM Sans',sans-serif", background: L.bg, minHeight: '100vh', color: L.text }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        ::-webkit-scrollbar{width:5px;} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px;}
+        input,select,button,textarea{font-family:'DM Sans',sans-serif;outline:none;}
+        select option{background:#fff;color:#0f172a;}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+        @keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes badgePop{0%{opacity:0;transform:scale(.9) translateY(8px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+        .pf-input{transition:border-color .2s,box-shadow .2s;}
+        .pf-input:focus{border-color:${accent}!important;box-shadow:0 0 0 3px ${accent}18!important;}
+        .tab-btn{transition:all .18s;} .tab-btn:hover{background:${L.soft}!important;}
+        .av-chip{transition:all .15s;cursor:pointer;} .av-chip:hover{transform:scale(1.1);}
+        .ach-card{transition:all .22s;cursor:default;} .ach-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(0,0,0,.1)!important;}
+        .stat-card{transition:transform .2s,box-shadow .2s;} .stat-card:hover{transform:translateY(-4px);box-shadow:0 12px 36px rgba(0,0,0,.09)!important;}
+        .btn{transition:all .18s;cursor:pointer;} .btn:hover{filter:brightness(.96);}
+        .btn-primary{transition:all .18s;cursor:pointer;} .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px ${accent}44!important;}
+        .save-float{animation:slideUp .3s ease;}
+        .toast{animation:slideUp .3s ease;}
+        @media(max-width:780px){
+          .hero-inner{flex-direction:column!important;align-items:flex-start!important;}
+          .two-col{grid-template-columns:1fr!important;}
+          .four-col{grid-template-columns:1fr 1fr!important;}
+        }
+      `}</style>
+
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          pointerEvents: 'none',
+          zIndex: 0,
+          backgroundImage: 'radial-gradient(#94a3b820 1px,transparent 1px)',
+          backgroundSize: '28px 28px',
+        }}
+      />
+
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1080, margin: '0 auto', padding: '36px 24px 100px' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'space-between',
+            marginBottom: 32,
+            opacity: mounted ? 1 : 0,
+            animation: mounted ? 'fadeUp .5s ease both' : '',
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: accent, animation: 'pulse 2s infinite' }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: L.muted, letterSpacing: 1.6, textTransform: 'uppercase' }}>Zero Base · Meu Perfil</span>
+            </div>
+            <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 30, fontWeight: 800, color: L.text, letterSpacing: '-0.8px', lineHeight: 1.1 }}>
+              Configurações de perfil
+            </h1>
+            <p style={{ fontSize: 13.5, color: L.sub, marginTop: 5 }}>Gerencie sua identidade, metas e preferências de estudo</p>
           </div>
-          Configurações
-        </h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-2 ml-1">
-          Personalize sua experiência de estudos
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white flex items-center justify-center text-xl font-bold">
-                {avatarIsImage ? (
-                  <img src={avatarValue} alt={displayName} className="h-full w-full rounded-2xl object-cover" />
-                ) : (
-                  avatarValue
-                )}
-              </div>
-              <div>
-                <p className="text-lg font-bold text-gray-900 dark:text-white">{displayName}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{displayEmail}</p>
-                <p className="text-xs text-indigo-600 dark:text-indigo-300 mt-1 inline-flex items-center gap-1">
-                  <UserCircle2 className="w-3.5 h-3.5" /> {levelInfo.title} • Nível {levelInfo.level}
-                </p>
-                <p className={`text-[11px] mt-1 inline-flex items-center gap-1 ${profileSyncMeta.className}`}>
-                  <ProfileSyncIcon className={`w-3.5 h-3.5 ${profileSyncMeta.spin ? 'animate-spin' : ''}`} />
-                  {profileSyncMeta.label}
-                </p>
-                {lastProfileSavedAt && (
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                    Última alteração salva em {new Date(lastProfileSavedAt).toLocaleString('pt-BR')}
-                  </p>
-                )}
-              </div>
+          {dirty && (
+            <div style={{ display: 'flex', gap: 8, animation: 'fadeIn .2s ease' }}>
+              <button
+                className="btn"
+                onClick={() => setDirty(false)}
+                style={{ padding: '9px 18px', borderRadius: 12, border: `1px solid ${L.border2}`, background: L.surface, color: L.sub, fontSize: 13, fontWeight: 600 }}
+              >
+                Descartar
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleSave}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: 12,
+                  border: 'none',
+                  background: accent,
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  boxShadow: `0 4px 14px ${accent}44`,
+                }}
+              >
+                <Save size={14} />Salvar perfil
+              </button>
             </div>
+          )}
+        </div>
 
-            <div className="min-w-[220px]">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Progresso para próximo nível</p>
-              <div className="mt-2 h-2.5 w-full rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${Math.max(0, Math.min(100, Math.round(levelProgress.percentage)))}%`, backgroundColor: 'var(--color-primary)' }}
-                />
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {levelProgress.current}/{levelProgress.required} XP nesta faixa
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 space-y-2">
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Nome exibido</label>
-              <input
-                type="text"
-                value={draftName}
-                onChange={(event) => setDraftName(event.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
-                placeholder="Como deseja ser chamado(a)"
-              />
-            </div>
-
-            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 space-y-2">
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Avatar</label>
-              <div className="flex flex-wrap gap-2">
-                {avatarOptions.map((avatar) => (
-                  <button
-                    key={avatar}
-                    type="button"
-                    onClick={() => setDraftAvatar(avatar)}
-                    className={`h-9 w-9 rounded-lg border text-lg flex items-center justify-center transition ${
-                      avatarValue === avatar
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
-                    }`}
-                  >
-                    {avatar}
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-2 pt-1">
-                <input
-                  ref={avatarFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleAvatarFileChange}
-                />
-
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => avatarFileInputRef.current?.click()}
-                    className="relative h-12 w-12 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 overflow-hidden"
-                    title="Escolher foto"
-                  >
-                    {avatarIsImage ? (
-                      <img src={avatarValue} alt={displayName} className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="h-full w-full flex items-center justify-center text-lg">{avatarValue}</span>
-                    )}
-                    <span className="absolute bottom-0 right-0 h-5 w-5 rounded-full bg-indigo-600 text-white flex items-center justify-center">
-                      <Camera className="w-3 h-3" />
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => avatarFileInputRef.current?.click()}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    Escolher foto (máx. 2MB)
-                  </button>
+        <div style={{ opacity: mounted ? 1 : 0, animation: mounted ? 'fadeUp .5s .08s ease both' : '', marginBottom: 24 }}>
+          <Card accentTop={accent}>
+            <div className="hero-inner" style={{ display: 'flex', alignItems: 'center', gap: 28, padding: '28px 32px', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <XPRing current={userData.totalPoints || 555} max={Math.max((userData.level || 2) * 1000, 2000)} color={accent} size={108} />
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AvatarDisplay iconId={avatarId} photo={photo} size={66} />
                 </div>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    position: 'absolute',
+                    bottom: 2,
+                    right: 2,
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    background: accent,
+                    border: '2px solid #fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(0,0,0,.2)',
+                  }}
+                >
+                  <Camera size={11} color="#fff" strokeWidth={2.5} />
+                </button>
+              </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Link2 className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="url"
-                      value={avatarUrlInput}
-                      onChange={(event) => setAvatarUrlInput(event.target.value)}
-                      className="w-full pl-8 pr-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white"
-                      placeholder="https://..."
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 26, fontWeight: 800, color: L.text, letterSpacing: '-0.5px' }}>{name}</h2>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: `${accent}12`, color: accent, border: `1px solid ${accent}28` }}>
+                    NÍV. {userData.level || 1}
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0' }}>
+                    Estudante
+                  </span>
+                  <span
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: '3px 10px',
+                      borderRadius: 20,
+                      background: '#fef3c7',
+                      color: '#d97706',
+                      border: '1px solid #fde68a',
+                    }}
+                  >
+                    <Sparkles size={10} />Sincronizado
+                  </span>
+                </div>
+                <p style={{ fontSize: 13, color: L.muted, marginBottom: 14 }}>{userEmail || 'conta@zero-base.app'}</p>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11.5, color: L.sub, fontWeight: 600 }}>Progresso para próximo nível</span>
+                    <span style={{ fontSize: 11.5, color: accent, fontWeight: 700 }}>{userData.totalPoints || 0} XP</span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 20, background: L.soft2, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        borderRadius: 20,
+                        width: `${Math.min(100, (((userData.totalPoints || 0) % 1000) / 1000) * 100)}%`,
+                        background: `linear-gradient(90deg,${accent},#f59e0b)`,
+                        boxShadow: `0 0 10px ${accent}44`,
+                        transition: 'width 1.2s cubic-bezier(.4,0,.2,1)',
+                      }}
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleApplyAvatarUrl}
-                    className="px-2.5 py-2 rounded-lg text-xs font-semibold text-white"
-                    style={{ backgroundColor: 'var(--color-primary)' }}
-                  >
-                    Aplicar
-                  </button>
                 </div>
-
-                {avatarIsImage && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDraftAvatar('🧑‍⚕️');
-                      setAvatarUrlInput('');
-                    }}
-                    className="inline-flex items-center gap-1 text-xs text-rose-600 dark:text-rose-300"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    Remover foto
-                  </button>
-                )}
-
-                <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  Para alterar nome e foto: edite acima e clique em <strong>Salvar perfil</strong> no fim do card.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-            <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3">
-              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
-                <Target className="w-3.5 h-3.5" /> Meta semanal
-              </p>
-              <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">
-                {weeklyStudiedMinutes}/{weeklyGoalMinutes} min • {weeklyGoalProgress}%
-              </p>
-              <div className="mt-2 h-2 rounded-full bg-emerald-100 dark:bg-emerald-900/40 overflow-hidden">
-                <div className="h-full bg-emerald-500" style={{ width: `${weeklyGoalProgress}%` }} />
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
-              <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Preferências da prova</p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={draftExamGoal}
-                  onChange={(event) => setDraftExamGoal(event.target.value)}
-                  className="px-3 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 text-xs text-gray-900 dark:text-white"
-                  placeholder="Objetivo (ex: ENEM Medicina)"
-                />
-                <input
-                  type="date"
-                  value={draftExamDate}
-                  onChange={(event) => setDraftExamDate(event.target.value)}
-                  className="px-3 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 text-xs text-gray-900 dark:text-white"
-                />
               </div>
 
-              <select
-                value={draftPreferredTrack}
-                onChange={(event) => setDraftPreferredTrack(event.target.value as 'enem' | 'concursos' | 'hibrido')}
-                className="w-full px-3 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 text-xs text-gray-900 dark:text-white"
-              >
-                <option value="enem">Trilha principal: ENEM</option>
-                <option value="concursos">Trilha principal: Concursos</option>
-                <option value="hibrido">Trilha principal: Híbrido</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20 p-3 mt-4">
-            <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">Conquistas recentes</p>
-            {recentAchievements.length === 0 ? (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Conclua sessões para desbloquear conquistas.</p>
-            ) : (
-              <div className="mt-2 space-y-1.5">
-                {recentAchievements.map((achievement) => (
-                  <div key={achievement.id} className="text-xs text-gray-700 dark:text-gray-200">
-                    🏆 {achievement.title}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {stats.map((s) => (
+                  <div key={s.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: s.bg, border: `1px solid ${s.border}`, borderRadius: 14, padding: '12px 16px', minWidth: 76 }}>
+                    <s.Icon size={18} color={s.color} strokeWidth={2} style={{ marginBottom: 5 }} />
+                    <div style={{ fontSize: 18, fontWeight: 800, color: s.color, fontFamily: "'Syne',sans-serif", lineHeight: 1 }}>{s.val}</div>
+                    <div style={{ fontSize: 10, color: s.color, fontWeight: 600, marginTop: 2, opacity: 0.8 }}>{s.unit}</div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          </Card>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-            <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
-              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 inline-flex items-center gap-1">
-                <Brain className="w-3.5 h-3.5" /> Diagnóstico cognitivo
-              </p>
+        <div
+          style={{
+            display: 'flex',
+            gap: 3,
+            marginBottom: 26,
+            background: L.surface,
+            borderRadius: 14,
+            padding: 5,
+            border: `1px solid ${L.border}`,
+            width: 'fit-content',
+            opacity: mounted ? 1 : 0,
+            animation: mounted ? 'fadeUp .5s .16s ease both' : '',
+          }}
+        >
+          {TABS.map(({ key, label, Icon: TabIcon }) => {
+            const active = tab === key;
+            return (
+              <button
+                key={key}
+                className="tab-btn"
+                onClick={() => setTab(key)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  padding: '8px 18px',
+                  borderRadius: 10,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  background: active ? L.surface : 'transparent',
+                  color: active ? L.text : L.muted,
+                  boxShadow: active ? '0 1px 4px rgba(0,0,0,.08), 0 0 0 1px rgba(0,0,0,.06)' : 'none',
+                }}
+              >
+                <TabIcon size={14} strokeWidth={active ? 2.4 : 2} color={active ? accent : L.muted} />
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
-              <div className="mt-2 space-y-2 text-xs">
+        {tab === 'perfil' && (
+          <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, animation: 'fadeUp .3s ease' }}>
+            <Card accentTop={L.indigo} style={{ padding: '26px 28px' }}>
+              <SLabel color={L.indigo} icon={User}>Identidade</SLabel>
+              <Field label="Nome exibido">
+                <Input
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    mark();
+                  }}
+                />
+              </Field>
+              <Field label="Email" mb={0}>
+                <Input value={userEmail || 'conta@zero-base.app'} readOnly />
+              </Field>
+              <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CheckCircle size={13} />Email verificado e sincronizado com a conta
+                </div>
+              </div>
+            </Card>
+
+            <Card accentTop={accent} style={{ padding: '26px 28px' }}>
+              <SLabel color={accent} icon={Palette}>Avatar</SLabel>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
+                <AvatarDisplay iconId={avatarId} photo={photo} size={58} />
                 <div>
-                  <p className="font-semibold text-emerald-700 dark:text-emerald-300">Forças</p>
-                  {cognitiveDiagnosis.strengths.length === 0 ? (
-                    <p className="text-gray-500 dark:text-gray-400 mt-1">Complete mais sessões para mapear forças.</p>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: L.text, marginBottom: 2 }}>{AVATAR_ICONS.find((a) => a.id === avatarId)?.id || 'brain'}</div>
+                  <div style={{ fontSize: 12, color: L.muted }}>Selecione um ícone abaixo ou envie uma foto</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, marginBottom: 14 }}>
+                {AVATAR_ICONS.map((a) => {
+                  const sel = avatarId === a.id && !photo;
+                  return (
+                    <div
+                      key={a.id}
+                      className="av-chip"
+                      onClick={() => {
+                        setAvatarId(a.id);
+                        setPhoto(null);
+                        mark();
+                      }}
+                      style={{
+                        aspectRatio: '1',
+                        borderRadius: 12,
+                        background: sel ? `${a.color}14` : L.soft,
+                        border: `1.5px solid ${sel ? a.color : L.border}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: sel ? `0 0 0 3px ${a.color}22` : 'none',
+                      }}
+                    >
+                      <a.Icon size={18} color={sel ? a.color : L.muted} strokeWidth={1.8} />
+                    </div>
+                  );
+                })}
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+              <button
+                className="btn"
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  width: '100%',
+                  background: L.soft,
+                  border: `1px solid ${L.border2}`,
+                  borderRadius: 11,
+                  padding: '10px',
+                  color: L.sub,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                <Upload size={14} />Enviar foto (máx. 2MB)
+              </button>
+            </Card>
+
+            <Card accentTop={L.green} style={{ padding: '26px 28px' }}>
+              <SLabel color={L.green} icon={Target}>Meta Semanal</SLabel>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+                <div style={{ position: 'relative', width: 86, height: 86, flexShrink: 0 }}>
+                  <svg width={86} height={86} viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
+                    <circle cx="50" cy="50" r="40" fill="none" stroke={L.soft2} strokeWidth="8" />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="40"
+                      fill="none"
+                      stroke={L.green}
+                      strokeWidth="8"
+                      strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 40}`}
+                      strokeDashoffset={`${2 * Math.PI * 40 * (1 - metaPct / 100)}`}
+                      style={{ transition: 'stroke-dashoffset 1s ease', filter: `drop-shadow(0 0 5px ${L.green}55)` }}
+                    />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: L.green, fontFamily: "'Syne',sans-serif" }}>{Math.round(metaPct)}%</div>
+                  </div>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: L.text, fontFamily: "'Syne',sans-serif", marginBottom: 2 }}>
+                    {studiedMin}
+                    <span style={{ fontSize: 13, fontWeight: 500, color: L.muted }}>/ {metaMin} min</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: L.muted, marginBottom: 14 }}>{studiedMin === 0 ? 'Nenhuma sessão esta semana' : 'Ótimo progresso!'}</div>
+                  {editMeta ? (
+                    <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                      <input
+                        type="number"
+                        value={metaTmp}
+                        autoFocus
+                        onChange={(e) => setMetaTmp(e.target.value)}
+                        className="pf-input"
+                        style={{ width: 80, border: `1px solid ${L.green}`, borderRadius: 10, padding: '7px 10px', color: L.text, fontSize: 13, background: L.surface }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setMeta(Number(metaTmp) || 1230);
+                            setEditMeta(false);
+                            mark();
+                          }
+
+                          if (e.key === 'Escape') {
+                            setEditMeta(false);
+                          }
+                        }}
+                      />
+                      <span style={{ fontSize: 12, color: L.muted }}>min</span>
+                      <button
+                        onClick={() => {
+                          setMeta(Number(metaTmp) || 1230);
+                          setEditMeta(false);
+                          mark();
+                        }}
+                        style={{
+                          background: L.green,
+                          border: 'none',
+                          borderRadius: 9,
+                          padding: '7px 14px',
+                          color: '#fff',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 5,
+                        }}
+                      >
+                        <Check size={13} />OK
+                      </button>
+                    </div>
                   ) : (
-                    cognitiveDiagnosis.strengths.map(([subject, minutes]) => (
-                      <p key={subject} className="text-gray-700 dark:text-gray-200">✔ {subject} ({minutes} min)</p>
-                    ))
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        setMetaTmp(String(metaMin));
+                        setEditMeta(true);
+                      }}
+                      style={{
+                        background: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        borderRadius: 10,
+                        padding: '7px 16px',
+                        color: L.green,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <Pencil size={12} />Editar meta
+                    </button>
                   )}
                 </div>
-
-                <div>
-                  <p className="font-semibold text-rose-700 dark:text-rose-300">Fragilidades</p>
-                  {cognitiveDiagnosis.weaknesses.map(([subject, minutes]) => (
-                    <p key={subject} className="text-gray-700 dark:text-gray-200">⚠ {subject} ({minutes} min)</p>
-                  ))}
-                </div>
               </div>
-            </div>
+            </Card>
 
-            <div className="rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20 p-3">
-              <p className="text-xs font-semibold text-sky-700 dark:text-sky-300 inline-flex items-center gap-1">
-                <TrendingUp className="w-3.5 h-3.5" /> Evolução semanal
-              </p>
-              <div className="mt-2 space-y-1.5">
-                {weeklyEvolution.map((day) => (
-                  <div key={day.label} className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
-                    <span className="w-8">{day.label}</span>
-                    <div className="h-2 flex-1 rounded bg-sky-100 dark:bg-sky-900/40 overflow-hidden">
-                      <div className="h-full bg-sky-500" style={{ width: `${day.percentage}%` }} />
-                    </div>
-                    <span className="w-12 text-right">{day.minutes}m</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-3 mt-4">
-            <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">🧠 Mentor IA — próxima recomendação</p>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">{aiRecommendation.subject}</p>
-            <p className="text-xs text-gray-600 dark:text-gray-300">→ {aiRecommendation.topic}</p>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-3 mt-4">
-            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Histórico de alterações de perfil</p>
-            {profileChangeHistory.length === 0 ? (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Nenhuma alteração registrada ainda.</p>
-            ) : (
-              <div className="mt-2 space-y-1.5">
-                {profileChangeHistory.slice(0, 5).map((item) => (
-                  <p key={`${item.at}-${item.summary}`} className="text-xs text-slate-600 dark:text-slate-300">
-                    {new Date(item.at).toLocaleString('pt-BR')} • {item.summary}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-2 pt-3">
-            <button
-              type="button"
-              onClick={handleDiscardProfileChanges}
-              disabled={!hasProfileChanges || isSavingProfile}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Descartar
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveProfileChanges}
-              disabled={!hasProfileChanges || isSavingProfile}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ backgroundColor: 'var(--color-primary)' }}
-            >
-              {isSavingProfile ? 'Salvando...' : 'Salvar perfil'}
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${darkMode ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'bg-amber-50 dark:bg-amber-900/30'}`}>
-                {darkMode
-                  ? <Moon className="w-5 h-5 text-indigo-500" />
-                  : <Sun className="w-5 h-5 text-amber-500" />
+            <Card accentTop={L.amber} style={{ padding: '26px 28px' }}>
+              <SLabel color={L.amber} icon={CalendarDays}>Preferências da Prova</SLabel>
+              <Field label="Prova alvo">
+                <Select
+                  value={prova}
+                  onChange={(e) => {
+                    setProva(e.target.value);
+                    mark();
+                  }}
+                  options={PROVAS}
+                />
+              </Field>
+              <Field
+                label={
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Data da prova
+                    {daysLeft !== null && daysLeft > 0 && <span style={{ color: L.amber, fontWeight: 700, fontSize: 11 }}>· {daysLeft} dias restantes</span>}
+                    {daysLeft === 0 && <span style={{ color: L.red, fontWeight: 700, fontSize: 11 }}>· É hoje!</span>}
+                  </span>
                 }
-              </div>
-              <div>
-                <h2 className="font-semibold text-gray-900 dark:text-white">Modo Escuro</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Reduz o cansaço visual em ambientes escuros</p>
-              </div>
-            </div>
-            <button
-              onClick={onToggleDarkMode}
-              aria-label={darkMode ? 'Desativar modo escuro' : 'Ativar modo escuro'}
-              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                darkMode ? '' : 'bg-gray-200 dark:bg-gray-600'
-              }`}
-              style={
-                darkMode
-                  ? {
-                      ...ringThemeStyle,
-                      backgroundColor: 'var(--color-primary)',
-                    }
-                  : ringThemeStyle
-              }
-            >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                  darkMode ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-          <div className="flex items-center gap-4 mb-5">
-            <div className="p-3 bg-pink-50 dark:bg-pink-900/30 rounded-xl">
-              <Palette className="w-5 h-5 text-pink-500" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">Tema de Cores</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Escolha a cor principal da interface</p>
-            </div>
-          </div>
-          <ThemeSelector currentTheme={currentTheme} onSelectTheme={onSelectTheme} />
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-          <div className="flex items-center gap-4 mb-5">
-            <div className="p-3 bg-green-50 dark:bg-green-900/30 rounded-xl">
-              <Download className="w-5 h-5 text-green-500" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">Backup de Dados</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Exporte ou importe seus dados de estudo</p>
-            </div>
-          </div>
-          <ExportSection userData={userData} onImport={onImportData} />
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-          <div className="flex items-center gap-4 mb-5">
-            <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
-              <Info className="w-5 h-5 text-gray-500" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">Informações</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Versão 2.0.0</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {stats.map((stat) => (
-              <div
-                key={stat.label}
-                className={`${stat.bg} rounded-xl p-4 flex flex-col gap-1`}
               >
-                <stat.icon className={`w-4 h-4 ${stat.color}`} />
-                <p className="text-lg font-bold text-gray-900 dark:text-white">{stat.value}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{stat.label}</p>
+                <Input
+                  type="date"
+                  value={dataProva}
+                  onChange={(e) => {
+                    setData(e.target.value);
+                    mark();
+                  }}
+                  style={{ colorScheme: 'light' }}
+                />
+              </Field>
+              <Field label="Trilha principal" mb={0}>
+                <Select
+                  value={trilha}
+                  onChange={(e) => {
+                    setTrilha(e.target.value);
+                    mark();
+                  }}
+                  options={TRILHAS}
+                />
+              </Field>
+            </Card>
+          </div>
+        )}
+
+        {tab === 'estatísticas' && (
+          <div style={{ animation: 'fadeUp .3s ease' }}>
+            <div className="four-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
+              {stats.map((s, i) => (
+                <div
+                  key={s.label}
+                  className="stat-card"
+                  style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 18, padding: '22px 20px', animation: `badgePop .4s ${i * 0.07}s ease both`, boxShadow: '0 2px 12px rgba(0,0,0,.05)' }}
+                >
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: '#fff', border: `1px solid ${s.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+                    <s.Icon size={18} color={s.color} strokeWidth={2} />
+                  </div>
+                  <div style={{ fontSize: 32, fontWeight: 800, color: s.color, fontFamily: "'Syne',sans-serif", lineHeight: 1, marginBottom: 3 }}>
+                    <Counter to={s.val} duration={800 + i * 120} />
+                  </div>
+                  <div style={{ fontSize: 12, color: s.color, opacity: 0.8, fontWeight: 600 }}>{s.unit}</div>
+                  <div style={{ fontSize: 11.5, color: L.sub, marginTop: 4 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <Card style={{ padding: '28px 32px', marginBottom: 20 }}>
+              <SLabel color={accent} icon={TrendingUp}>Atividade — Últimas 4 Semanas</SLabel>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                {Array.from({ length: 28 }, (_, i) => {
+                  const n = Math.random();
+                  const bg = n > 0.8 ? accent : n > 0.55 ? `${accent}99` : n > 0.3 ? `${accent}44` : L.soft2;
+                  const glow = n > 0.8 ? `0 0 8px ${accent}55` : 'none';
+                  return (
+                    <div
+                      key={i}
+                      style={{ width: 28, height: 28, borderRadius: 7, background: bg, boxShadow: glow, cursor: 'default', transition: 'transform .12s' }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.2)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: L.muted }}>Menos</span>
+                {[L.soft2, `${accent}44`, `${accent}99`, accent].map((c) => (
+                  <div key={c} style={{ width: 16, height: 16, borderRadius: 4, background: c }} />
+                ))}
+                <span style={{ fontSize: 11, color: L.muted }}>Mais</span>
+              </div>
+            </Card>
+
+            <Card style={{ padding: '28px 32px' }}>
+              <SLabel color={L.indigo} icon={Clock}>Horas por Dia — Esta Semana</SLabel>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 100 }}>
+                {[
+                  ['Seg', 2.5],
+                  ['Ter', 4.1],
+                  ['Qua', 1.8],
+                  ['Qui', 5.2],
+                  ['Sex', 3.6],
+                  ['Sáb', 0.5],
+                  ['Dom', 0],
+                ].map(([d, h]) => {
+                  const hours = Number(h);
+                  const pct = hours / 6;
+                  return (
+                    <div key={String(d)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: L.indigo }}>{hours > 0 ? `${hours}h` : ''}</div>
+                      <div style={{ width: '100%', height: 70, display: 'flex', alignItems: 'flex-end' }}>
+                        <div
+                          style={{
+                            width: '100%',
+                            height: `${Math.max(pct * 100, hours > 0 ? 6 : 0)}%`,
+                            borderRadius: 6,
+                            background: hours > 0 ? `${L.indigo}` : L.soft2,
+                            transition: 'height 1s ease',
+                            boxShadow: hours > 0 ? `0 0 10px ${L.indigo}33` : 'none',
+                          }}
+                        />
+                      </div>
+                      <div style={{ fontSize: 11, color: L.muted, fontWeight: 600 }}>{String(d)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === 'conquistas' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16, animation: 'fadeUp .3s ease' }}>
+            {ACHIEVEMENTS.map((a, i) => (
+              <div
+                key={a.id}
+                className="ach-card"
+                onMouseEnter={() => setHoverAch(a.id)}
+                onMouseLeave={() => setHoverAch(null)}
+                style={{
+                  background: a.done ? L.surface : L.soft,
+                  border: `1.5px solid ${a.done ? `${a.color}33` : L.border}`,
+                  borderRadius: 18,
+                  padding: '20px 22px',
+                  opacity: a.done ? 1 : 0.75,
+                  boxShadow: a.done && hoverAch === a.id ? `0 12px 40px ${a.color}18` : '0 2px 12px rgba(0,0,0,.05)',
+                  animation: `badgePop .4s ${i * 0.06}s ease both`,
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
+                {a.done && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${a.color},${a.color}66)` }} />}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                  <div
+                    style={{
+                      width: 50,
+                      height: 50,
+                      borderRadius: 14,
+                      flexShrink: 0,
+                      background: a.done ? `${a.color}14` : L.soft2,
+                      border: `1.5px solid ${a.done ? `${a.color}33` : L.border}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: a.done ? `0 0 16px ${a.color}22` : 'none',
+                      position: 'relative',
+                    }}
+                  >
+                    <a.Icon size={22} color={a.done ? a.color : L.muted} strokeWidth={1.8} />
+                    {!a.done && (
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.7)', borderRadius: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Lock size={13} color={L.muted} />
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: a.done ? L.text : L.sub }}>{a.name}</div>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: a.done ? a.color : L.muted,
+                          background: a.done ? `${a.color}14` : L.soft2,
+                          borderRadius: 20,
+                          padding: '2px 9px',
+                          border: `1px solid ${a.done ? `${a.color}28` : L.border}`,
+                        }}
+                      >
+                        +{a.xp} XP
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: L.muted, marginBottom: a.done ? 6 : 8, lineHeight: 1.5 }}>{a.desc}</div>
+                    {a.done ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: L.green, fontWeight: 600 }}>
+                        <CheckCircle size={12} />Desbloqueado em {a.date}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: L.muted }}>
+                        <Lock size={11} />{a.need}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        )}
+
+        {tab === 'preferências' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, animation: 'fadeUp .3s ease' }} className="two-col">
+            <Card accentTop={L.indigo} style={{ padding: '26px 28px' }}>
+              <SLabel color={L.indigo} icon={Bell}>Notificações</SLabel>
+              {[
+                { label: 'Lembretes de estudo', desc: 'Aviso diário na hora configurada', Icon: BellRing, on: true },
+                { label: 'Conquistas desbloqueadas', desc: 'Notifique ao ganhar badges', Icon: Award, on: true },
+                { label: 'Atividade do grupo', desc: 'Mensagens e novidades nos grupos', Icon: Bell, on: false },
+                { label: 'Relatório semanal', desc: 'Resumo de desempenho todo domingo', Icon: FileText, on: true },
+              ].map((n, i) => (
+                <div key={n.label} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 0', borderBottom: i < 3 ? `1px solid ${L.border}` : 'none' }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: n.on ? '#eef2ff' : L.soft, border: `1px solid ${n.on ? '#c7d2fe' : L.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <n.Icon size={15} color={n.on ? L.indigo : L.muted} strokeWidth={1.8} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: L.text }}>{n.label}</div>
+                    <div style={{ fontSize: 11.5, color: L.muted }}>{n.desc}</div>
+                  </div>
+                  <Toggle on={n.on} color={L.indigo} />
+                </div>
+              ))}
+            </Card>
+
+            <Card accentTop={accent} style={{ padding: '26px 28px' }}>
+              <SLabel color={accent} icon={Palette}>Aparência</SLabel>
+              {[
+                { label: 'Tema', opts: [{ l: 'Claro', Icon: Sun }, { l: 'Escuro', Icon: Moon }, { l: 'Sistema', Icon: Globe }], sel: 0 },
+                { label: 'Idioma', opts: [{ l: 'Português', Icon: Globe }, { l: 'English', Icon: Globe }, { l: 'Español', Icon: Globe }], sel: 0 },
+                { label: 'Densidade', opts: [{ l: 'Compacto', Icon: Minus }, { l: 'Normal', Icon: AlignJustify }, { l: 'Espaçoso', Icon: LayoutDashboard }], sel: 1 },
+              ].map((f) => (
+                <Field key={f.label} label={f.label}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {f.opts.map((o, j) => (
+                      <button
+                        key={o.l}
+                        style={{
+                          flex: 1,
+                          padding: '8px 4px',
+                          borderRadius: 10,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          border: `1.5px solid ${f.sel === j ? `${accent}55` : L.border}`,
+                          background: f.sel === j ? `${accent}0e` : L.soft,
+                          color: f.sel === j ? accent : L.sub,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 5,
+                          transition: 'all .15s',
+                        }}
+                      >
+                        <o.Icon size={12} strokeWidth={2} />
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              ))}
+              <div style={{ borderTop: `1px solid ${L.border}`, paddingTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: L.sub, marginBottom: 9 }}>Horário preferido</div>
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                  {[
+                    { l: 'Manhã', Icon: Sunrise },
+                    { l: 'Tarde', Icon: Sun },
+                    { l: 'Noite', Icon: Sunset },
+                    { l: 'Madrugada', Icon: Moon },
+                  ].map(({ l, Icon: HIcon }, i) => (
+                    <button
+                      key={l}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '7px 14px',
+                        borderRadius: 10,
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        border: `1.5px solid ${i === 2 ? `${accent}55` : L.border}`,
+                        background: i === 2 ? `${accent}0e` : L.soft,
+                        color: i === 2 ? accent : L.sub,
+                        transition: 'all .15s',
+                      }}
+                    >
+                      <HIcon size={12} strokeWidth={2} />
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            <Card accentTop={L.red} style={{ padding: '26px 28px', gridColumn: '1 / -1' }}>
+              <SLabel color={L.red} icon={Shield}>Segurança & Conta</SLabel>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Exportar meus dados', Icon: Download, color: L.indigo, bg: '#eef2ff', border: '#c7d2fe' },
+                  { label: 'Redefinir progresso', Icon: Timer, color: L.amber, bg: '#fffbeb', border: '#fde68a' },
+                  { label: 'Excluir conta', Icon: Trash2, color: L.red, bg: '#fef2f2', border: '#fecaca' },
+                ].map((b) => (
+                  <button
+                    key={b.label}
+                    className="btn"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '10px 20px',
+                      borderRadius: 12,
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      border: `1.5px solid ${b.border}`,
+                      background: b.bg,
+                      color: b.color,
+                    }}
+                  >
+                    <b.Icon size={15} strokeWidth={2} />
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {dirty && !saved && (
+          <div
+            className="save-float"
+            style={{
+              position: 'fixed',
+              bottom: 28,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: L.surface,
+              border: `1.5px solid ${L.border}`,
+              borderRadius: 18,
+              padding: '14px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              boxShadow: '0 8px 40px rgba(0,0,0,.14), 0 2px 10px rgba(0,0,0,.06)',
+              zIndex: 100,
+            }}
+          >
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: accent, animation: 'pulse 1.5s infinite' }} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: L.text }}>Alterações não salvas</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="btn"
+                onClick={() => setDirty(false)}
+                style={{ padding: '8px 16px', borderRadius: 10, border: `1px solid ${L.border2}`, background: L.soft, color: L.sub, fontSize: 13, fontWeight: 600 }}
+              >
+                Descartar
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleSave}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: accent,
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  boxShadow: `0 4px 14px ${accent}44`,
+                }}
+              >
+                <Save size={14} />Salvar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {saved && (
+          <div
+            className="toast"
+            style={{
+              position: 'fixed',
+              bottom: 28,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: '#f0fdf4',
+              border: '1.5px solid #bbf7d0',
+              borderRadius: 14,
+              padding: '12px 22px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              boxShadow: '0 8px 32px rgba(0,0,0,.1)',
+              zIndex: 100,
+            }}
+          >
+            <CheckCircle size={16} color={L.green} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: L.green }}>Perfil salvo com sucesso!</span>
+          </div>
+        )}
       </div>
     </div>
   );
-};
-
-export default SettingsPage;
+}

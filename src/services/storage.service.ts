@@ -50,11 +50,11 @@ const STORAGE_KEYS = {
 // ═══════════════════════════════════════════════════════════════
 
 class SecureStorageService {
-  
+
   // ─────────────────────────────────────────────────────────────
   //  MÉTODOS DE USUÁRIO
   // ─────────────────────────────────────────────────────────────
-  
+
   /**
    * Salva dados do usuário de forma segura
    */
@@ -62,12 +62,12 @@ class SecureStorageService {
     try {
       // Valida antes de salvar
       const validated = validateData(schemas.User, user);
-      
+
       if (!validated.success) {
         logger.error('Erro ao validar usuário', 'Storage', validated.errors);
         throw new Error('Dados de usuário inválidos');
       }
-      
+
       secureStorage.set(STORAGE_KEYS.USER, validated.data);
       logger.debug('Usuário salvo com segurança', 'Storage');
     } catch (error) {
@@ -75,59 +75,59 @@ class SecureStorageService {
       throw error;
     }
   }
-  
+
   /**
    * Recupera dados do usuário
    */
   getUser(): User | null {
     try {
       const data = secureStorage.get(STORAGE_KEYS.USER);
-      
+
       if (!data) {
         return null;
       }
-      
+
       // Valida dados recuperados
       const validated = validateData(schemas.User, data);
-      
+
       if (!validated.success) {
         logger.error('Dados de usuário corrompidos', 'Storage', validated.errors);
         this.removeUser(); // Limpa dados corrompidos
         return null;
       }
-      
+
       return validated.data;
     } catch (error) {
       logger.error('Erro ao recuperar usuário', 'Storage', error);
       return null;
     }
   }
-  
+
   /**
    * Remove usuário do storage
    */
   removeUser(): void {
     secureStorage.remove(STORAGE_KEYS.USER);
   }
-  
+
   /**
    * Atualiza dados parciais do usuário
    */
   updateUser(updates: Partial<User>): void {
     const currentUser = this.getUser();
-    
+
     if (!currentUser) {
       throw new Error('Usuário não encontrado');
     }
-    
+
     const updatedUser = { ...currentUser, ...updates };
     this.setUser(updatedUser);
   }
-  
+
   // ─────────────────────────────────────────────────────────────
   //  MÉTODOS DE SESSÕES
   // ─────────────────────────────────────────────────────────────
-  
+
   /**
    * Salva array de sessões
    */
@@ -142,7 +142,7 @@ class SecureStorageService {
         }
         return result.data;
       });
-      
+
       secureStorage.set(STORAGE_KEYS.SESSIONS, validatedSessions);
       logger.debug('Sessões salvas', 'Storage', { count: validatedSessions.length });
     } catch (error) {
@@ -150,37 +150,37 @@ class SecureStorageService {
       throw error;
     }
   }
-  
+
   /**
    * Recupera todas as sessões
    */
   getSessions(): Session[] {
     try {
       const data = secureStorage.get(STORAGE_KEYS.SESSIONS);
-      
+
       if (!data || !Array.isArray(data)) {
         return [];
       }
-      
+
       // Valida e filtra sessões válidas
       const validSessions: Session[] = [];
-      
+
       for (const session of data) {
         const validated = validateData(schemas.SessionWithDateValidation, session);
         if (validated.success) {
           validSessions.push(validated.data);
         } else {
-          console.warn(' Sessão inválida ignorada:', session);
+          logger.warn('Sessão inválida ignorada', 'Storage', session);
         }
       }
-      
+
       return validSessions;
     } catch (error) {
-      console.error(' Erro ao recuperar sessões:', error);
+      logger.error('Erro ao recuperar sessões', 'Storage', error);
       return [];
     }
   }
-  
+
   /**
    * Adiciona uma nova sessão
    */
@@ -189,7 +189,7 @@ class SecureStorageService {
     sessions.push(session);
     this.setSessions(sessions);
   }
-  
+
   /**
    * Remove uma sessão por ID
    */
@@ -198,26 +198,26 @@ class SecureStorageService {
     const filtered = sessions.filter(s => s.id !== sessionId);
     this.setSessions(filtered);
   }
-  
+
   /**
    * Atualiza uma sessão existente
    */
   updateSession(sessionId: string, updates: Partial<Session>): void {
     const sessions = this.getSessions();
     const index = sessions.findIndex(s => s.id === sessionId);
-    
+
     if (index === -1) {
       throw new Error('Sessão não encontrada');
     }
-    
+
     sessions[index] = { ...sessions[index], ...updates };
     this.setSessions(sessions);
   }
-  
+
   // ─────────────────────────────────────────────────────────────
   //  MÉTODOS DE CONQUISTAS
   // ─────────────────────────────────────────────────────────────
-  
+
   /**
    * Salva conquistas desbloqueadas
    */
@@ -230,71 +230,71 @@ class SecureStorageService {
         }
         return result.data;
       });
-      
+
       secureStorage.set(STORAGE_KEYS.ACHIEVEMENTS, validated);
     } catch (error) {
-      console.error(' Erro ao salvar conquistas:', error);
+      logger.error('Erro ao salvar conquistas', 'Storage', error);
       throw error;
     }
   }
-  
+
   /**
    * Recupera conquistas
    */
   getAchievements(): UserAchievement[] {
     try {
       const data = secureStorage.get(STORAGE_KEYS.ACHIEVEMENTS);
-      
+
       if (!data || !Array.isArray(data)) {
         return [];
       }
-      
+
       const valid: UserAchievement[] = [];
-      
+
       for (const ach of data) {
         const validated = validateData(schemas.UserAchievement, ach);
         if (validated.success) {
           valid.push(validated.data);
         }
       }
-      
+
       return valid;
     } catch (error) {
-      console.error(' Erro ao recuperar conquistas:', error);
+      logger.error('Erro ao recuperar conquistas', 'Storage', error);
       return [];
     }
   }
-  
+
   /**
    * Adiciona uma conquista desbloqueada
    */
   addAchievement(achievement: UserAchievement): void {
     const achievements = this.getAchievements();
-    
+
     // Evita duplicatas
     if (achievements.some(a => a.achievementId === achievement.achievementId)) {
-      console.warn(' Conquista já desbloqueada:', achievement.achievementId);
+      logger.warn('Conquista já desbloqueada', 'Storage', achievement.achievementId);
       return;
     }
-    
+
     achievements.push(achievement);
     this.setAchievements(achievements);
   }
-  
+
   // ─────────────────────────────────────────────────────────────
   //  MÉTODOS DE EXPORT/IMPORT
   // ─────────────────────────────────────────────────────────────
-  
+
   /**
    * Exporta todos os dados do usuário
    */
   exportAllData(): ExportData {
     const user = this.getUser();
-    
+
     if (!user) {
       throw new Error('Nenhum usuário logado');
     }
-    
+
     const exportData: ExportData = {
       version: '2.0.0',
       exportDate: new Date(),
@@ -302,18 +302,18 @@ class SecureStorageService {
       sessions: this.getSessions(),
       achievements: this.getAchievements(),
     };
-    
+
     // Valida antes de exportar
     const validated = validateData(schemas.ExportData, exportData);
-    
+
     if (!validated.success) {
-      console.error(' Erro ao validar export:', validated.errors);
+      logger.error('Erro ao validar export', 'Storage', validated.errors);
       throw new Error('Erro ao preparar dados para export');
     }
-    
+
     return validated.data;
   }
-  
+
   /**
    * Importa dados validados
    */
@@ -321,30 +321,30 @@ class SecureStorageService {
     try {
       // Valida dados importados
       const validated = validateData(schemas.ImportData, data);
-      
+
       if (!validated.success) {
-        console.error(' Dados de import inválidos:', validated.errors);
+        logger.error('Dados de import inválidos', 'Storage', validated.errors);
         throw new Error('Dados importados são inválidos');
       }
-      
+
       const importData = validated.data as ExportData;
-      
+
       // Salva dados validados
       this.setUser(importData.user);
       this.setSessions(importData.sessions);
       this.setAchievements(importData.achievements);
-      
-      console.log(' Dados importados com sucesso');
+
+      logger.info('Dados importados com sucesso', 'Storage');
     } catch (error) {
-      console.error(' Erro ao importar dados:', error);
+      logger.error('Erro ao importar dados', 'Storage', error);
       throw error;
     }
   }
-  
+
   // ─────────────────────────────────────────────────────────────
   //  MÉTODOS DE LIMPEZA
   // ─────────────────────────────────────────────────────────────
-  
+
   /**
    * Limpa todos os dados do storage
    */
@@ -352,22 +352,22 @@ class SecureStorageService {
     Object.values(STORAGE_KEYS).forEach(key => {
       secureStorage.remove(key);
     });
-    console.log(' Todos os dados foram removidos');
+    logger.info('Todos os dados foram removidos', 'Storage');
   }
-  
+
   /**
    * Verifica se há dados salvos
    */
   hasData(): boolean {
     return this.getUser() !== null;
   }
-  
+
   /**
    * Retorna tamanho estimado do storage (em KB)
    */
   getStorageSize(): number {
     let totalSize = 0;
-    
+
     Object.values(STORAGE_KEYS).forEach(key => {
       try {
         const data = secureStorage.get(key);
@@ -378,7 +378,7 @@ class SecureStorageService {
         // Ignora erros
       }
     });
-    
+
     return Math.round(totalSize / 1024); // Retorna em KB
   }
 }
@@ -405,38 +405,38 @@ export default secureStorageService;
  * Migra dados do localStorage padrão para secure storage
  */
 export function migrateToSecureStorage(): void {
-  console.log(' Iniciando migração para storage seguro...');
-  
+  logger.info('Iniciando migração para storage seguro', 'Storage');
+
   try {
     // Tenta recuperar dados antigos
     const oldUser = localStorage.getItem('user');
     const oldSessions = localStorage.getItem('sessions');
     const oldAchievements = localStorage.getItem('achievements');
-    
+
     if (oldUser) {
       const user = JSON.parse(oldUser);
       secureStorageService.setUser(user);
       localStorage.removeItem('user');
-      console.log(' Usuário migrado');
+      logger.info('Usuário migrado', 'Storage');
     }
-    
+
     if (oldSessions) {
       const sessions = JSON.parse(oldSessions);
       secureStorageService.setSessions(sessions);
       localStorage.removeItem('sessions');
-      console.log(' Sessões migradas');
+      logger.info('Sessões migradas', 'Storage');
     }
-    
+
     if (oldAchievements) {
       const achievements = JSON.parse(oldAchievements);
       secureStorageService.setAchievements(achievements);
       localStorage.removeItem('achievements');
-      console.log(' Conquistas migradas');
+      logger.info('Conquistas migradas', 'Storage');
     }
-    
-    console.log(' Migração concluída');
+
+    logger.info('Migração concluída', 'Storage');
   } catch (error) {
-    console.error(' Erro na migração:', error);
+    logger.error('Erro na migração', 'Storage', error);
   }
 }
 
@@ -448,22 +448,22 @@ export function verifyDataIntegrity(): {
   errors: string[];
 } {
   const errors: string[] = [];
-  
+
   try {
     const user = secureStorageService.getUser();
     if (!user) {
       errors.push('Usuário não encontrado');
     }
-    
+
     const sessions = secureStorageService.getSessions();
     const achievements = secureStorageService.getAchievements();
-    
-    console.log(` Verificação concluída: ${sessions.length} sessões, ${achievements.length} conquistas`);
-    
+
+    logger.info(`Verificação concluída: ${sessions.length} sessões, ${achievements.length} conquistas`, 'Storage');
+
   } catch (error) {
     errors.push(`Erro na verificação: ${error}`);
   }
-  
+
   return {
     isValid: errors.length === 0,
     errors,

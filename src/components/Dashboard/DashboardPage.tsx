@@ -267,52 +267,62 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-2xl p-6 sm:p-7 shadow-sm bg-slate-900 border border-slate-800 text-slate-100">
+      <section
+        className="rounded-[20px] p-6 sm:p-8"
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e8ecf3',
+          boxShadow: '0 1px 4px rgba(0,0,0,.04), 0 4px 24px rgba(0,0,0,.04)',
+          color: '#0f172a'
+        }}
+      >
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight flex items-center gap-2">
-              <Hand className="w-5 h-5 sm:w-6 sm:h-6 text-slate-300" />
+            <h1 className="text-2xl sm:text-[28px] font-extrabold tracking-tight flex items-center gap-2 mb-1" style={{ fontFamily: "'Syne', sans-serif" }}>
+              <Hand className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500" />
               Bom te ver de novo, {userName || 'Estudante'}.
             </h1>
-            <p className="mt-1 text-sm sm:text-base text-slate-300 leading-relaxed">Seu foco agora é simples: voltar para a próxima sessão.</p>
+            <p className="text-[13.5px] sm:text-[14.5px] text-slate-500 font-medium">Seu foco agora é simples: voltar para a próxima sessão.</p>
           </div>
           <div className="text-right">
-            <p className="text-xs uppercase tracking-[0.12em] text-slate-400 font-semibold">Hoje</p>
-            <p className="text-2xl font-bold">{todayMinutes}min</p>
+            <p className="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold mb-0.5">Hoje</p>
+            <p className="text-[26px] font-extrabold text-indigo-600 leading-none" style={{ fontFamily: "'Syne', sans-serif" }}>{todayMinutes}min</p>
           </div>
         </div>
 
-        <div className="mt-5 rounded-xl bg-slate-950/70 border border-slate-800 p-4 sm:p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Target className="w-5 h-5 text-blue-400" />
-            <h2 className="text-lg font-bold">Retomar estudo</h2>
+        <div className="mt-6 rounded-[16px] border border-slate-200 bg-slate-50/80 p-5 sm:p-6" style={{ boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 border border-blue-200">
+              <Target className="w-4 h-4 text-blue-600" />
+            </div>
+            <h2 className="text-[15px] font-bold text-slate-800">Retomar estudo</h2>
           </div>
 
           {nextContentInfo ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5 text-blue-400" />
-                <span className="text-xs text-blue-400 font-semibold uppercase tracking-wider">{nextContentInfo.content.subDepartment}</span>
-                <span className="text-xs text-slate-400 ml-auto">{nextContentInfo.position}/{nextContentInfo.total}</span>
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                <span className="text-[11px] text-blue-600 font-bold uppercase tracking-wider">{nextContentInfo.content.subDepartment}</span>
+                <span className="text-[11px] font-semibold text-slate-400 ml-auto bg-white px-2 py-0.5 rounded border border-slate-200">{nextContentInfo.position}/{nextContentInfo.total}</span>
               </div>
-              <p className="font-medium text-slate-100">{nextContentInfo.content.title}</p>
-              <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-blue-500" style={{ width: `${((nextContentInfo.position - 1) / nextContentInfo.total) * 100}%` }} />
+              <p className="text-[14px] font-semibold text-slate-800">{nextContentInfo.content.title}</p>
+              <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden my-2">
+                <div className="h-full rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" style={{ width: `${((nextContentInfo.position - 1) / nextContentInfo.total) * 100}%` }} />
               </div>
-              <p className="text-xs text-slate-400">+{nextContentInfo.content.xpReward} XP · {nextContentInfo.content.estimatedMinutes} min</p>
+              <p className="text-[12px] font-medium text-slate-500">+{nextContentInfo.content.xpReward} XP <span className="mx-1.5 text-slate-300">•</span> {nextContentInfo.content.estimatedMinutes} min</p>
             </div>
           ) : (
             <div>
-              <p className="font-medium text-slate-100 inline-flex items-center gap-2">
-                <PartyPopper className="w-4 h-4" /> Tudo em dia!
+              <p className="text-[14px] font-semibold text-slate-800 inline-flex items-center gap-2">
+                <PartyPopper className="w-4 h-4 text-orange-500" /> Tudo em dia!
               </p>
-              <p className="text-xs text-slate-400 mt-1">Você pode revisar, simular prova ou avançar para conteúdos premium.</p>
+              <p className="text-[12.5px] text-slate-500 mt-1.5">Você pode revisar, simular prova ou avançar para conteúdos premium.</p>
             </div>
           )}
 
           <button
             onClick={onContinueNow}
-            className="mt-4 w-full sm:w-auto min-w-[260px] text-white font-semibold py-3.5 px-6 rounded-xl flex justify-center items-center gap-2 transition-opacity hover:opacity-90"
+            className="mt-5 w-full sm:w-auto min-w-[260px] text-white font-bold text-[14px] py-3.5 px-6 rounded-xl flex justify-center items-center gap-2 transition-all hover:translate-y-[-1px] hover:shadow-lg shadow-[0_4px_14px_rgba(37,99,235,0.3)]"
             style={{ backgroundColor: 'var(--color-primary)' }}
           >
             ▶ Começar sessão de estudo
@@ -346,11 +356,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
             return (
               <div
                 key={label}
-                className={`rounded-lg border p-2 text-center ${
-                  studied
+                className={`rounded-lg border p-2 text-center ${studied
                     ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-100 dark:bg-emerald-900/30'
                     : 'border-indigo-200 dark:border-indigo-800 bg-white/80 dark:bg-slate-900/40'
-                }`}
+                  }`}
               >
                 <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">{label}</p>
                 <p className="text-sm mt-1">{studied ? '●' : '○'}</p>
@@ -493,28 +502,27 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
 
           <div className="w-full sm:w-auto sm:ml-auto">
             <div className="inline-flex items-center gap-1 p-1.5 rounded-2xl border border-slate-300/80 dark:border-slate-600 bg-slate-100/90 dark:bg-slate-800/80 shadow-sm sm:float-right">
-            {([
-              { key: 'enem', label: 'ENEM' },
-              { key: 'concursos', label: 'Concurso' },
-              { key: 'hibrido', label: 'Híbrido' },
-            ] as const).map((option) => {
-              const selected = hierarchyTrack === option.key;
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => setHierarchyTrack(option.key)}
-                  className={`min-w-[92px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:focus-visible:ring-slate-500 ${
-                    selected
-                      ? 'text-white shadow-md border border-transparent'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/80 dark:hover:bg-slate-700/70'
-                  }`}
-                  style={selected ? { backgroundColor: 'var(--color-primary)', boxShadow: '0 6px 18px -10px var(--color-primary)' } : undefined}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
+              {([
+                { key: 'enem', label: 'ENEM' },
+                { key: 'concursos', label: 'Concurso' },
+                { key: 'hibrido', label: 'Híbrido' },
+              ] as const).map((option) => {
+                const selected = hierarchyTrack === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setHierarchyTrack(option.key)}
+                    className={`min-w-[92px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:focus-visible:ring-slate-500 ${selected
+                        ? 'text-white shadow-md border border-transparent'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/80 dark:hover:bg-slate-700/70'
+                      }`}
+                    style={selected ? { backgroundColor: 'var(--color-primary)', boxShadow: '0 6px 18px -10px var(--color-primary)' } : undefined}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

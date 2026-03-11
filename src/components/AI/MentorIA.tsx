@@ -431,11 +431,10 @@ const MentorIA: React.FC<MentorIAProps> = ({
             <button
               key={item.id}
               onClick={() => setTab(item.id)}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${
-                tab === item.id
+              className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${tab === item.id
                   ? 'text-white'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
-              }`}
+                }`}
               style={tab === item.id ? { backgroundColor: 'var(--color-primary)' } : undefined}
             >
               {item.label}
@@ -460,11 +459,10 @@ const MentorIA: React.FC<MentorIAProps> = ({
               <button
                 key={action}
                 onClick={() => handleFollowWeekAction(action)}
-                className={`w-full text-left text-xs rounded-md px-2 py-1 transition border ${
-                  followedAction === action
+                className={`w-full text-left text-xs rounded-md px-2 py-1 transition border ${followedAction === action
                     ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                     : 'border-transparent text-gray-700 dark:text-gray-200 hover:border-indigo-200 dark:hover:border-indigo-700 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/20'
-                }`}
+                  }`}
               >
                 • {action}
               </button>
@@ -481,7 +479,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
             <div key={alert.id} className={`rounded-xl border p-4 ${colorByLevel[alert.level]}`}>
               <p className="text-lg mb-1">{alert.icon}</p>
               <h3 className="font-bold text-sm mb-1">{alert.title}</h3>
-              <p className="text-xs leading-relaxed text-gray-300">{alert.body}</p>
+              <p className="text-xs leading-relaxed opacity-80">{alert.body}</p>
               <button
                 onClick={() => handleAlertAction(alert)}
                 className="mt-3 text-xs font-bold underline underline-offset-2"
@@ -536,11 +534,10 @@ const MentorIA: React.FC<MentorIAProps> = ({
             {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                    message.role === 'user'
+                  className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${message.role === 'user'
                       ? 'text-white'
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
-                  }`}
+                    }`}
                   style={message.role === 'user' ? { backgroundColor: 'var(--color-primary)' } : undefined}
                 >
                   {message.content}

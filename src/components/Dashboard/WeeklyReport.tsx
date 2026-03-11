@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, Download, Clock3, BarChart3, Calendar, Target, Lightbulb } from 'lucide-react';
 import { StudySession } from '../../types';
@@ -14,13 +14,40 @@ const COLORS = ['#60a5fa', '#22d3ee', '#34d399', '#818cf8', '#a78bfa', '#38bdf8'
 
 const WeeklyReport: React.FC<WeeklyReportProps> = ({ sessions }) => {
   const stats = calculateWeeklyStats(sessions);
-  
-  const exportPDF = () => {
-    toast('Exportação de PDF será implementada em breve!', { icon: '📄' });
+  const [exporting, setExporting] = useState(false);
+
+  const exportPDF = async () => {
+    setExporting(true);
+    try {
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ]);
+
+      const element = document.getElementById('weekly-report-container');
+      if (!element) {
+        toast.error('Elemento do relatório não encontrado.');
+        return;
+      }
+
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#0f172a' });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`relatorio-semanal-${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast.success('PDF exportado com sucesso!');
+    } catch {
+      toast.error('Erro ao gerar PDF. Tente novamente.');
+    } finally {
+      setExporting(false);
+    }
   };
-  
+
+
   return (
-    <div className="weekly-report bg-slate-900 rounded-lg border border-slate-700/70 shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] p-6">
+    <div id="weekly-report-container" className="weekly-report bg-slate-900 rounded-lg border border-slate-700/70 shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-100">Relatório Semanal</h2>
@@ -28,16 +55,17 @@ const WeeklyReport: React.FC<WeeklyReportProps> = ({ sessions }) => {
             {formatDateBR(stats.weekStart)} - {formatDateBR(stats.weekEnd)}
           </p>
         </div>
-        
+
         <button
-          onClick={exportPDF}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          onClick={() => { void exportPDF(); }}
+          disabled={exporting}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-60"
         >
           <Download className="w-4 h-4" />
-          Exportar PDF
+          {exporting ? 'Gerando...' : 'Exportar PDF'}
         </button>
       </div>
-      
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
           title="Total Estudado"
@@ -60,7 +88,7 @@ const WeeklyReport: React.FC<WeeklyReportProps> = ({ sessions }) => {
           icon={Target}
         />
       </div>
-      
+
       <div className={`
         flex items-center gap-2 p-4 rounded-lg mb-6
         ${stats.comparison.trend === 'up' ? 'bg-emerald-950/25 border border-emerald-700/40' : ''}
@@ -70,20 +98,20 @@ const WeeklyReport: React.FC<WeeklyReportProps> = ({ sessions }) => {
         {stats.comparison.trend === 'up' && <TrendingUp className="w-5 h-5 text-green-600" />}
         {stats.comparison.trend === 'down' && <TrendingDown className="w-5 h-5 text-red-600" />}
         {stats.comparison.trend === 'stable' && <Minus className="w-5 h-5 text-gray-600" />}
-        
+
         <span className="font-semibold text-slate-100">
-          {Math.abs(stats.comparison.percentageChange).toFixed(1)}% 
+          {Math.abs(stats.comparison.percentageChange).toFixed(1)}%
           {stats.comparison.trend === 'up' ? ' a mais' : stats.comparison.trend === 'down' ? ' a menos' : ' igual'}
           {' '}que a semana passada
         </span>
       </div>
-      
+
       <div className="mb-6">
         <h3 className="font-semibold mb-3 text-slate-100">Minutos por Dia</h3>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={stats.dailyBreakdown}>
-            <XAxis 
-              dataKey="date" 
+            <XAxis
+              dataKey="date"
               tickFormatter={(date) => formatDayShort(date)}
               tick={{ fill: '#94a3b8', fontSize: 12 }}
               axisLine={{ stroke: '#334155' }}
@@ -94,7 +122,7 @@ const WeeklyReport: React.FC<WeeklyReportProps> = ({ sessions }) => {
               axisLine={{ stroke: '#334155' }}
               tickLine={{ stroke: '#334155' }}
             />
-            <Tooltip 
+            <Tooltip
               labelFormatter={(date) => formatDateBR(date)}
               formatter={(value: number | string) => [`${value} min`, 'Estudado']}
               cursor={{ fill: 'rgba(148,163,184,0.12)' }}
@@ -117,7 +145,7 @@ const WeeklyReport: React.FC<WeeklyReportProps> = ({ sessions }) => {
           </BarChart>
         </ResponsiveContainer>
       </div>
-      
+
       {stats.subjectDistribution.length > 0 && (
         <div className="mb-6">
           <h3 className="font-semibold mb-3 text-slate-100">Distribuição por Matéria</h3>
@@ -152,7 +180,7 @@ const WeeklyReport: React.FC<WeeklyReportProps> = ({ sessions }) => {
           </ResponsiveContainer>
         </div>
       )}
-      
+
       <div className="bg-slate-800/65 border border-slate-700 rounded-lg p-4">
         <h3 className="font-semibold mb-3 flex items-center gap-2">
           <Lightbulb className="w-4 h-4" /> Insights da Semana

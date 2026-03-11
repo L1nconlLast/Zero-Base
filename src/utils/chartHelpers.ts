@@ -1,4 +1,5 @@
 import type { StudySession } from '../types';
+import { logger } from './logger';
 
 type ChartDayData = {
   name: string;
@@ -44,7 +45,7 @@ export const processarDadosSemanais = (
         const materia = sessao.subject || 'Outra';
         diaEncontrado.detalhes[materia] = (diaEncontrado.detalhes[materia] || 0) + duracao;
       } catch (error) {
-        console.warn('Erro ao processar sessão semanal:', error);
+        logger.warn('Erro ao processar sessão semanal', 'ChartHelpers', error);
       }
     });
   }

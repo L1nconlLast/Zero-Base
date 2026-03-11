@@ -364,15 +364,15 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
     const adaptiveSet = new Set(adaptivePriorityTopics);
     const prioritizedPool = adaptiveMode
       ? [...availablePool].sort((a, b) => {
-          const aTopic = adaptiveSet.has(getQuestionTopicKey(a)) ? 1 : 0;
-          const bTopic = adaptiveSet.has(getQuestionTopicKey(b)) ? 1 : 0;
-          const modelWeight = selectedModel
-            ? scoreQuestionForModel(b, selectedModel, errorHistoryByTopic) - scoreQuestionForModel(a, selectedModel, errorHistoryByTopic)
-            : 0;
-          if (modelWeight !== 0) return modelWeight;
-          if (aTopic !== bTopic) return bTopic - aTopic;
-          return Math.random() - 0.5;
-        })
+        const aTopic = adaptiveSet.has(getQuestionTopicKey(a)) ? 1 : 0;
+        const bTopic = adaptiveSet.has(getQuestionTopicKey(b)) ? 1 : 0;
+        const modelWeight = selectedModel
+          ? scoreQuestionForModel(b, selectedModel, errorHistoryByTopic) - scoreQuestionForModel(a, selectedModel, errorHistoryByTopic)
+          : 0;
+        if (modelWeight !== 0) return modelWeight;
+        if (aTopic !== bTopic) return bTopic - aTopic;
+        return Math.random() - 0.5;
+      })
       : shuffle(availablePool);
 
     let qs: Question[];
@@ -479,6 +479,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
         modelId: selectedModel?.id,
         modelName: selectedModel?.nome,
         banca: selectedModel?.banca,
+        category: selectedModel?.category,
         totalQuestions: historyEntry.totalQuestions,
         correctCount: historyEntry.correctCount,
         xpEarned: xp,
@@ -523,11 +524,10 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
               <button
                 key={track}
                 onClick={() => setSelectedTrack(track)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                  selectedTrack === track
-                    ? 'bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
-                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                }`}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${selectedTrack === track
+                  ? 'bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                  }`}
               >
                 {TRACK_LABEL[track]}
               </button>
@@ -544,10 +544,21 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
               className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm px-3 py-2"
             >
               <option value="none">Sem modelo específico</option>
-              {officialModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.nome} · {model.banca}
-                </option>
+              {Object.entries(
+                officialModels.reduce((acc, model) => {
+                  const cat = model.category || 'Outros';
+                  if (!acc[cat]) acc[cat] = [];
+                  acc[cat].push(model);
+                  return acc;
+                }, {} as Record<string, typeof officialModels>)
+              ).map(([category, models]) => (
+                <optgroup key={category} label={category}>
+                  {models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.nome} · {model.banca}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             {selectedModel && (
@@ -563,13 +574,12 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
               <button
                 key={subject}
                 onClick={() => setSelectedSubject(subject)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                  subject === 'Todas'
-                    ? selectedSubject === subject
-                      ? 'bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
-                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                    : getSubjectChipClass(subject, selectedSubject === subject)
-                }`}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${subject === 'Todas'
+                  ? selectedSubject === subject
+                    ? 'bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                  : getSubjectChipClass(subject, selectedSubject === subject)
+                  }`}
               >
                 {subject === 'Todas' ? 'Todas' : `${getDisplayDiscipline(subject).icon} ${getDisplayDiscipline(subject).label}`}
               </button>
@@ -582,11 +592,10 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
               <button
                 key={topic}
                 onClick={() => setSelectedTopic(topic)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                  selectedTopic === topic
-                    ? 'bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
-                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                }`}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${selectedTopic === topic
+                  ? 'bg-slate-700 text-white border-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                  }`}
               >
                 {topic}
               </button>
@@ -639,11 +648,10 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
               <button
                 key={cfg.label}
                 onClick={() => setSelectedConfig(i)}
-                className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 ${
-                  selectedConfig === i
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
-                }`}
+                className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 ${selectedConfig === i
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                  }`}
               >
                 <span className="text-3xl">{cfg.icon}</span>
                 <div className="text-left flex-1">
@@ -786,11 +794,10 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
             <button
               key={option.letter}
               onClick={() => handleAnswer(option.letter)}
-              className={`w-full text-left flex items-start gap-3 p-3.5 rounded-xl border-2 transition text-sm font-medium ${
-                userAnswer === option.letter
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-200'
-                  : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 hover:border-blue-300'
-              }`}
+              className={`w-full text-left flex items-start gap-3 p-3.5 rounded-xl border-2 transition text-sm font-medium ${userAnswer === option.letter
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-200'
+                : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 hover:border-blue-300'
+                }`}
             >
               <span className="font-bold w-5 shrink-0">{option.letter}.</span>
               <span>{option.text}</span>
@@ -830,13 +837,12 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
           <button
             key={question.id}
             onClick={() => setCurrentIdx(i)}
-            className={`w-8 h-8 rounded-lg text-xs font-bold border transition ${
-              i === currentIdx
-                ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                : answers[question.id]
-                  ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700'
-                  : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-blue-300'
-            }`}
+            className={`w-8 h-8 rounded-lg text-xs font-bold border transition ${i === currentIdx
+              ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/20'
+              : answers[question.id]
+                ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700'
+                : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-blue-300'
+              }`}
           >
             {i + 1}
           </button>

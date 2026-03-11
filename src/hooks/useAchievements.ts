@@ -3,6 +3,7 @@ import { ACHIEVEMENTS } from '../data/achievements';
 import { Achievement, UserData } from '../types';
 import { achievementsService } from '../services/achievements.service';
 import { isSupabaseConfigured } from '../services/supabase.client';
+import { logger } from '../utils/logger';
 
 type ApplyAchievementReward = (achievementId: string, points: number) => void;
 
@@ -36,7 +37,7 @@ export const useAchievements = (
         const cloudSet = new Set(cloudIds);
         const localOnly = localIds.filter((id) => !cloudSet.has(id));
         if (localOnly.length > 0) {
-          void achievementsService.unlockBatch(userId, localOnly).catch(() => {});
+          void achievementsService.unlockBatch(userId, localOnly).catch(() => { });
         }
 
         syncedRef.current = true;
@@ -53,13 +54,13 @@ export const useAchievements = (
   useEffect(() => {
     const checkAchievements = () => {
       const currentUnlocked = userData.achievements || [];
-      
+
       ACHIEVEMENTS.forEach(achievement => {
         const isUnlocked = currentUnlocked.includes(achievement.id);
-        
+
         try {
           const meetsCondition = achievement.condition(userData);
-          
+
           if (!isUnlocked && meetsCondition && !processingRef.current.has(achievement.id)) {
             processingRef.current.add(achievement.id);
             setUnlockedAchievements(prev => [...new Set([...prev, achievement.id])]);
@@ -69,22 +70,22 @@ export const useAchievements = (
 
             // Push to cloud
             if (userId && isSupabaseConfigured) {
-              void achievementsService.unlock(userId, achievement.id).catch(() => {});
+              void achievementsService.unlock(userId, achievement.id).catch(() => { });
             }
-            
+
             setTimeout(() => setNewlyUnlocked(null), 5000);
           }
         } catch (error) {
-          console.error(`Error checking achievement ${achievement.id}:`, error);
+          logger.error(`Erro ao verificar conquista ${achievement.id}`, 'Achievements', error);
         } finally {
           processingRef.current.delete(achievement.id);
         }
       });
     };
-    
+
     checkAchievements();
   }, [userData, userId, onApplyReward]);
-  
+
   return {
     unlockedAchievements,
     newlyUnlocked,
