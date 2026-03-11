@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UserData } from '../../types';
 import { mentorIAService, type MentorMessage } from '../../services/mentorIA.service';
 import { mentorBriefingService } from '../../services/mentorBriefing.service';
+import { mentorChatApiService, type MentorChatPayload } from '../../services/mentorChatApi.service';
 import { isSupabaseConfigured } from '../../services/supabase.client';
 import { trackEvent } from '../../utils/analytics';
 import type { EngineDecision, MentorOutput, MentorTrigger } from '../../types/mentor';
@@ -279,7 +280,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
     }
   }, [messages, typing]);
 
-  const respond = (text: string): string => {
+  const getLocalFallbackReply = (text: string): string => {
     if (containsBlockedIntent(text)) {
       return 'Não posso orientar atalhos ou previsões de prova. Posso te orientar em estratégia real com base no seu plano atual.';
     }
@@ -366,9 +367,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
 
   const sendMessage = async (raw?: string) => {
     const content = (raw ?? input).trim();
-    if (!content) {
-      return;
-    }
+    if (!content) return;
 
     const userMessage = mentorIAService.createMessage('user', content);
 
@@ -385,20 +384,56 @@ const MentorIA: React.FC<MentorIAProps> = ({
       { userEmail }
     );
 
-    await new Promise((resolve) => window.setTimeout(resolve, 700));
+    const recentHistory = messages
+      .slice(-10)
+      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      .map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
 
-    const assistantMessage = mentorIAService.createMessage('assistant', respond(content));
+    const payload: MentorChatPayload = {
+      message: content,
+      history: recentHistory,
+      studentContext: {
+        userName: userName ?? 'estudante',
+        daysToExam,
+        strongArea,
+        weakArea,
+        weeklyPct,
+        streak: userData.currentStreak ?? userData.streak ?? 0,
+        trigger,
+      },
+    };
 
-    setTyping(false);
-    setMessages((prev) => [...prev, assistantMessage]);
+    try {
+      const reply = await mentorChatApiService.send(payload);
+      const assistantMessage = mentorIAService.createMessage('assistant', reply);
+      setMessages((prev) => [...prev, assistantMessage]);
 
-    if (cloudUserId && isSupabaseConfigured) {
-      void Promise.all([
-        mentorIAService.pushCloudMessage(cloudUserId, userMessage),
-        mentorIAService.pushCloudMessage(cloudUserId, assistantMessage),
-      ]).catch(() => {
-        toast('Resposta salva localmente. A nuvem será sincronizada depois.');
-      });
+      if (cloudUserId && isSupabaseConfigured) {
+        void Promise.all([
+          mentorIAService.pushCloudMessage(cloudUserId, userMessage),
+          mentorIAService.pushCloudMessage(cloudUserId, assistantMessage),
+        ]).catch(() => {
+          toast('Resposta salva localmente. A nuvem será sincronizada depois.');
+        });
+      }
+    } catch (error) {
+      const fallback = getLocalFallbackReply(content);
+      const assistantMessage = mentorIAService.createMessage('assistant', fallback);
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      trackEvent(
+        'mentor_chat_error',
+        {
+          errorMessage: error instanceof Error ? error.message : 'unknown',
+          fallbackUsed: true,
+        },
+        { userEmail },
+      );
+    } finally {
+      setTyping(false);
     }
   };
 
