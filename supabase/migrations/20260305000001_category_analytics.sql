@@ -2,6 +2,21 @@
 -- Analytics by Exam Category
 -- ============================================================
 
+-- ============================================================
+-- Create the standard Supabase handle_updated_at function if missing
+-- ============================================================
+create or replace function public.handle_updated_at()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 -- Create the tracking table
 create table if not exists public.user_category_analytics (
   id uuid primary key default gen_random_uuid(),
