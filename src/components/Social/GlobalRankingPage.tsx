@@ -12,7 +12,7 @@ interface CategoryStats {
 }
 
 export function GlobalRankingPage() {
-  const { user } = useAuth();
+  const { user, supabaseUserId } = useAuth();
   const [categoryStats, setCategoryStats] = useState<Map<string, CategoryStats>>(new Map());
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
@@ -44,7 +44,9 @@ export function GlobalRankingPage() {
 
       for (const cat of cats) {
         const ranking = await rankingService.getCategoryRanking(cat, 100);
-        const userRank = user ? await rankingService.getUserRankInCategory(user.id, cat) : null;
+        const userRank = supabaseUserId
+          ? await rankingService.getUserRankInCategory(supabaseUserId, cat)
+          : null;
 
         statsMap.set(cat, {
           category: cat,
@@ -145,7 +147,7 @@ export function GlobalRankingPage() {
                       currentStats.ranking.map((entry, idx) => (
                         <tr
                           key={entry.user_id}
-                          className={user?.id === entry.user_id ? 'current-user' : ''}
+                          className={supabaseUserId === entry.user_id ? 'current-user' : ''}
                         >
                           <td className="rank-col">
                             <span className="rank-badge">

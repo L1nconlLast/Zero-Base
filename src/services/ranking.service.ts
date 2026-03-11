@@ -195,15 +195,15 @@ class RankingService {
     try {
       const { data, error } = await client
         .from('user_ranking_global')
-        .select('category', { count: 'exact' })
-        .distinct();
+        .select('category');
 
       if (error) {
         console.error('Error fetching categories:', error);
         return [];
       }
 
-      return data ? data.map((item: { category: string }) => item.category) : [];
+      const categories = data ? data.map((item: { category: string }) => item.category) : [];
+      return Array.from(new Set(categories));
     } catch (err) {
       console.error('Unexpected error in getAllCategories:', err);
       return [];

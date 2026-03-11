@@ -94,6 +94,7 @@ const MockExam = lazy(() => import('./components/Questions/MockExam'));
 const FlashcardsPage = lazy(() => import('./components/Flashcards/FlashcardsPage'));
 const EveOfExamPage = lazy(() => import('./components/ExamPrep/EveOfExamPage'));
 const GroupsPage = lazy(() => import('./components/Social/GroupsPage'));
+const GlobalRankingPage = lazy(() => import('./components/Social/GlobalRankingPage'));
 const FeedbackButton = lazy(() => import('./components/UI/FeedbackButton'));
 const EmptyState = lazy(() => import('./components/UI/EmptyState'));
 
@@ -1032,6 +1033,7 @@ function App() {
       { id: 'flashcards', label: 'Flashcards', icon: BookOpen },
       { id: 'vespera', label: 'Véspera', icon: Zap },
       { id: 'grupos', label: 'Grupos', icon: Users },
+      { id: 'ranking-global', label: 'Ranking Global', icon: Trophy },
       { id: 'conquistas', label: 'Conquistas', icon: Trophy },
       { id: 'configuracoes', label: 'Configurações', icon: Settings },
       { id: 'dados', label: 'Dados', icon: Database },
@@ -1074,7 +1076,7 @@ function App() {
           label: 'Grupos',
           icon: Users,
           defaultTab: 'grupos',
-          tabIds: ['grupos'],
+          tabIds: ['grupos', 'ranking-global'],
         },
       {
         id: 'simulados-domain',
@@ -1780,6 +1782,13 @@ function App() {
                 weeklyGoalMinutes={weeklyGoalMinutes}
                 weeklyStudiedMinutes={weeklyStudiedMinutes}
               />
+            </Suspense>
+          )}
+
+          {/* Página Ranking Global */}
+          {activeTab === 'ranking-global' && (
+            <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando ranking global...</div>}>
+              <GlobalRankingPage />
             </Suspense>
           )}
 

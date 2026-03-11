@@ -212,12 +212,15 @@ set search_path = public
 as $$
 declare
   v_rank int;
+  v_total_correct integer;
+  v_total_answered integer;
+  v_accuracy numeric;
   v_total_users int;
   v_percentile numeric;
 begin
   -- Get user's rank
   select urb.rank_position, urb.total_correct, urb.total_answered, urb.accuracy
-  into v_rank, v_rank, v_rank, v_percentile
+  into v_rank, v_total_correct, v_total_answered, v_accuracy
   from public.user_ranking_global urb
   where urb.user_id = p_user_id and urb.category = p_category;
   
