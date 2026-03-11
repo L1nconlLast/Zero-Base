@@ -370,9 +370,11 @@ const MentorIA: React.FC<MentorIAProps> = ({
     if (!content) return;
 
     const userMessage = mentorIAService.createMessage('user', content);
+    const assistantMessage = mentorIAService.createMessage('assistant', '');
+    let streamedReply = '';
 
     setInput('');
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
     setTyping(true);
 
     trackEvent(
@@ -385,6 +387,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
     );
 
     const recentHistory = messages
+      .concat(userMessage)
       .slice(-10)
       .filter((message) => message.role === 'user' || message.role === 'assistant')
       .map((message) => ({
@@ -407,22 +410,45 @@ const MentorIA: React.FC<MentorIAProps> = ({
     };
 
     try {
-      const reply = await mentorChatApiService.send(payload);
-      const assistantMessage = mentorIAService.createMessage('assistant', reply);
-      setMessages((prev) => [...prev, assistantMessage]);
+      await mentorChatApiService.sendStream(payload, {
+        onChunk: (chunk) => {
+          streamedReply += chunk;
+          setMessages((prev) => prev.map((message) => (
+            message.id === assistantMessage.id
+              ? { ...message, content: streamedReply }
+              : message
+          )));
+        },
+      });
+
+      if (!streamedReply.trim()) {
+        const fallback = getLocalFallbackReply(content);
+        streamedReply = fallback;
+        setMessages((prev) => prev.map((message) => (
+          message.id === assistantMessage.id
+            ? { ...message, content: fallback }
+            : message
+        )));
+      }
 
       if (cloudUserId && isSupabaseConfigured) {
         void Promise.all([
           mentorIAService.pushCloudMessage(cloudUserId, userMessage),
-          mentorIAService.pushCloudMessage(cloudUserId, assistantMessage),
+          mentorIAService.pushCloudMessage(cloudUserId, {
+            ...assistantMessage,
+            content: streamedReply,
+          }),
         ]).catch(() => {
           toast('Resposta salva localmente. A nuvem será sincronizada depois.');
         });
       }
     } catch (error) {
       const fallback = getLocalFallbackReply(content);
-      const assistantMessage = mentorIAService.createMessage('assistant', fallback);
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages((prev) => prev.map((message) => (
+        message.id === assistantMessage.id
+          ? { ...message, content: fallback }
+          : message
+      )));
 
       trackEvent(
         'mentor_chat_error',

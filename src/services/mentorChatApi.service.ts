@@ -1,4 +1,5 @@
 import type { MentorTrigger } from '../types/mentor';
+import { supabase } from './supabase.client';
 
 export interface MentorChatPayload {
   message: string;
@@ -14,21 +15,29 @@ export interface MentorChatPayload {
   };
 }
 
-interface MentorChatResponse {
-  reply: string;
+interface StreamHandlers {
+  onChunk?: (chunk: string) => void;
+  onDone?: (usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }) => void;
 }
 
 class MentorChatApiService {
   private readonly endpoint = '/api/mentor/chat';
 
-  async send(payload: MentorChatPayload, timeoutMs = 12000): Promise<string> {
+  async sendStream(payload: MentorChatPayload, handlers: StreamHandlers, timeoutMs = 25000): Promise<string> {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), timeoutMs);
 
     try {
+      const session = await supabase?.auth.getSession();
+      const accessToken = session?.data?.session?.access_token;
+
       const response = await fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
@@ -37,8 +46,68 @@ class MentorChatApiService {
         throw new Error(`Mentor chat API ${response.status}`);
       }
 
-      const data = (await response.json()) as MentorChatResponse;
-      return data.reply || 'Nao consegui responder agora.';
+      if (!response.body) {
+        throw new Error('Mentor chat API stream unavailable');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let pending = '';
+      let fullReply = '';
+
+      const processEventBlock = (block: string) => {
+        const lines = block.split('\n');
+        let eventName = 'message';
+        let data = '';
+
+        lines.forEach((line) => {
+          if (line.startsWith('event:')) {
+            eventName = line.slice('event:'.length).trim();
+          }
+          if (line.startsWith('data:')) {
+            data += line.slice('data:'.length).trim();
+          }
+        });
+
+        if (!data) return;
+        const parsed = JSON.parse(data) as { text?: string; error?: string; usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } };
+
+        if (eventName === 'chunk' && parsed.text) {
+          fullReply += parsed.text;
+          handlers.onChunk?.(parsed.text);
+          return;
+        }
+
+        if (eventName === 'done') {
+          handlers.onDone?.(parsed.usage);
+          return;
+        }
+
+        if (eventName === 'error') {
+          throw new Error(parsed.error || 'Erro no stream do Mentor IA');
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        pending += decoder.decode(value, { stream: true });
+        let separatorIndex = pending.indexOf('\n\n');
+
+        while (separatorIndex !== -1) {
+          const block = pending.slice(0, separatorIndex).trim();
+          pending = pending.slice(separatorIndex + 2);
+
+          if (block) {
+            processEventBlock(block);
+          }
+
+          separatorIndex = pending.indexOf('\n\n');
+        }
+      }
+
+      return fullReply || 'Nao consegui responder agora.';
     } finally {
       window.clearTimeout(timer);
     }

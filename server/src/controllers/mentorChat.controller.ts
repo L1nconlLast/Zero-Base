@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { mentorChatService } from '../services/mentorChat.service';
+import { mentorUsageService } from '../services/mentorUsage.service';
 
 const ChatMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
@@ -36,32 +37,96 @@ export class MentorChatController {
     }
 
     const { message, history, studentContext } = parsed.data;
+    const userId = req.auth?.userId;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized: usuario nao autenticado.' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const abortController = new AbortController();
+    let closed = false;
+
+    const writeEvent = (event: string, data: unknown) => {
+      if (closed || res.writableEnded) return;
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    req.on('close', () => {
+      closed = true;
+      abortController.abort();
+    });
 
     try {
-      const result = await mentorChatService.chat({ message, history, studentContext });
-      res.status(200).json({ reply: result.reply });
+      await mentorChatService.streamChat(
+        { message, history, studentContext },
+        {
+          onToken: (token) => {
+            writeEvent('chunk', { text: token });
+          },
+          onComplete: (usage) => {
+            if (closed || res.writableEnded) {
+              return;
+            }
+            writeEvent('done', { usage });
+            res.end();
+
+            mentorUsageService.trackUsageFireAndForget({
+              userId,
+              model: mentorChatService.getModel(),
+              provider: 'openai',
+              promptTokens: usage.promptTokens,
+              completionTokens: usage.completionTokens,
+              totalTokens: usage.totalTokens,
+              createdAt: new Date().toISOString(),
+            });
+          },
+        },
+        abortController.signal,
+      );
+
+      if (!closed && !res.writableEnded) {
+        writeEvent('done', {
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        });
+        res.end();
+      }
       return;
     } catch (error) {
+      if (closed || res.writableEnded) {
+        return;
+      }
+
       if (error instanceof Error) {
         const lower = error.message.toLowerCase();
 
         if (error.message.includes('401') || lower.includes('api key')) {
-          res.status(503).json({ error: 'Servico de IA temporariamente indisponivel.' });
+          writeEvent('error', { error: 'Servico de IA temporariamente indisponivel.' });
+          res.end();
           return;
         }
 
         if (error.message.includes('429') || lower.includes('rate limit')) {
-          res.status(429).json({ error: 'Muitas requisicoes em pouco tempo. Aguarde alguns segundos.' });
+          writeEvent('error', { error: 'Muitas requisicoes em pouco tempo. Aguarde alguns segundos.' });
+          res.end();
           return;
         }
 
         if (lower.includes('timeout') || error.message.includes('ETIMEDOUT')) {
-          res.status(504).json({ error: 'A IA demorou para responder. Tente novamente.' });
+          writeEvent('error', { error: 'A IA demorou para responder. Tente novamente.' });
+          res.end();
           return;
         }
       }
 
-      res.status(500).json({ error: 'Ocorreu um erro interno.' });
+      writeEvent('error', { error: 'Ocorreu um erro interno.' });
+      res.end();
     }
   }
 }

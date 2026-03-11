@@ -21,8 +21,15 @@ export interface MentorChatInput {
   studentContext: StudentContext;
 }
 
-export interface MentorChatOutput {
-  reply: string;
+export interface MentorChatUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+interface StreamHandlers {
+  onToken: (token: string) => void;
+  onComplete: (usage: MentorChatUsage) => void;
 }
 
 const BLOCKED_PATTERNS = /(qual assunto vai cair|atalho|chute|gabarito|milagre)/i;
@@ -61,14 +68,17 @@ class MentorChatService {
     apiKey: process.env.OPENAI_API_KEY ?? '',
   });
 
-  async chat(input: MentorChatInput): Promise<MentorChatOutput> {
+  private readonly model = process.env.MENTOR_MODEL || 'gpt-4o-mini';
+
+  async streamChat(input: MentorChatInput, handlers: StreamHandlers, signal?: AbortSignal): Promise<void> {
     const { message, history, studentContext } = input;
 
     if (BLOCKED_PATTERNS.test(message)) {
-      return {
-        reply:
-          'Nao posso orientar atalhos ou previsoes de prova. Posso te ajudar com estrategia real baseada no seu plano atual.',
-      };
+      handlers.onToken(
+        'Nao posso orientar atalhos ou previsoes de prova. Posso te ajudar com estrategia real baseada no seu plano atual.',
+      );
+      handlers.onComplete({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
+      return;
     }
 
     if (!process.env.OPENAI_API_KEY) {
@@ -81,18 +91,55 @@ class MentorChatService {
       { role: 'user', content: message },
     ];
 
-    const completion = await this.openai.chat.completions.create({
-      model: process.env.MENTOR_MODEL || 'gpt-4o-mini',
+    const stream = await this.openai.chat.completions.create({
+      model: this.model,
       messages,
       max_tokens: 512,
       temperature: 0.7,
+      stream: true,
+      stream_options: { include_usage: true },
     });
 
-    const reply =
-      completion.choices[0]?.message?.content?.trim() ||
-      'Nao consegui gerar uma resposta agora. Tente novamente em instantes.';
+    let usage: MentorChatUsage = {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    };
 
-    return { reply };
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        try {
+          (stream as unknown as { controller?: { abort: () => void } }).controller?.abort();
+        } catch {
+          // ignore abort issues
+        }
+      });
+    }
+
+    for await (const chunk of stream) {
+      if (signal?.aborted) {
+        break;
+      }
+
+      const delta = chunk.choices?.[0]?.delta?.content;
+      if (delta) {
+        handlers.onToken(delta);
+      }
+
+      if (chunk.usage) {
+        usage = {
+          promptTokens: chunk.usage.prompt_tokens || 0,
+          completionTokens: chunk.usage.completion_tokens || 0,
+          totalTokens: chunk.usage.total_tokens || 0,
+        };
+      }
+    }
+
+    handlers.onComplete(usage);
+  }
+
+  getModel(): string {
+    return this.model;
   }
 }
 
