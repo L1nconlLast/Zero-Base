@@ -16,7 +16,7 @@ Objetivo: simular a defesa usando o pacote técnico consolidado, em narrativa cl
 
 ## 3:40 - 6:10 | Resultados com Métricas Reais
 - Testes: 128 testes aprovados, 12 arquivos.
-- Build: 8.45s com geração PWA.
+- Build: 8.45s com geração de Progressive Web App (PWA).
 - PWA: 67 arquivos em precache.
 - Entregas: 36 commits desde 01/03/2026.
 - Transparência: demo publicada e validada em produção (`https://zero-base-three.vercel.app`).
@@ -29,8 +29,8 @@ Objetivo: simular a defesa usando o pacote técnico consolidado, em narrativa cl
   - `assets/diagrama_arquitetura.svg`
 
 ## 7:30 - 8:50 | Limitações e Próximos Passos
-- Limitações: demo pública indisponível, ajuste final no Notion, complementação de evidências de campo.
-- Curto prazo: publicar deploy, sincronizar páginas Notion, anexar prints finais.
+- Limitações: ajuste final no Notion, confirmação institucional do orientador e complementação de evidências de campo.
+- Curto prazo: sincronizar páginas do Notion, confirmar orientador e anexar prints finais.
 - Médio prazo: ampliar cobertura de testes e robustez de dados.
 
 ## 8:50 - 10:00 | Fechamento

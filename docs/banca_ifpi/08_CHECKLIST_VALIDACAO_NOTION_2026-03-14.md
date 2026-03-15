@@ -28,11 +28,10 @@ Objetivo: verificar as pendências antigas da análise de 11/03/2026 nas página
 - Evidência observada: varredura local sem placeholders nas páginas atualizadas.
 
 ## Ações recomendadas imediatas
-2. Atualizar campo Aluno no Notion para "Gleydson de Sousa Gomes (Linconl)".
-3. Trocar bloco de métricas no Notion por tabela com método e fonte (mesmo formato de `04_RESULTADOS_VALIDACAO.md`).
-4. Copiar o conteúdo de `07_MUDANCAS_DA_SEMANA.md` para a página equivalente no Notion.
-5. Substituir links antigos da demo por `https://zero-base-three.vercel.app` nas páginas principais.
-4. Copiar o conteúdo de `07_MUDANCAS_DA_SEMANA.md` para a página equivalente no Notion.
+1. Atualizar campo Aluno no Notion para "Gleydson de Sousa Gomes (Linconl)".
+2. Trocar bloco de métricas no Notion por tabela com método e fonte (mesmo formato de `04_RESULTADOS_VALIDACAO.md`).
+3. Copiar o conteúdo de `07_MUDANCAS_DA_SEMANA.md` para a página equivalente no Notion.
+4. Substituir links antigos da demo por `https://zero-base-three.vercel.app` nas páginas principais.
 
 ## Observação metodológica
 Esta validação foi feita por leitura pública do conteúdo disponível (sem acesso de edição ao workspace Notion).

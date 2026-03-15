@@ -16,13 +16,13 @@ Este arquivo consolida as 7 seções da versão enxuta para banca em formato lin
 Este trabalho apresenta o desenvolvimento e a consolidação do projeto Zero Base, uma aplicação web voltada prioritariamente para estudantes de medicina, com recursos de acompanhamento de progresso, organização de sessões e feedback visual.
 
 ## Objetivo geral
-Estruturar uma base técnica sustentável, com documentação padronizada e validação minima de qualidade, adequada para continuidade evolutiva do projeto.
+Estruturar uma base técnica sustentável, com documentação padronizada e validação mínima de qualidade, adequada para continuidade evolutiva do projeto.
 
 ## Escopo executado
 - reorganização e padronização documental;
 - consolidação de nomenclatura para Zero Base;
 - ajustes em testes E2E e fluxo de CI para maior estabilidade em PR;
-- sintese técnica para governança (resumos, relatórios e plano de execução).
+- síntese técnica para governança (resumos, relatórios e plano de execução).
 
 ## Resultado consolidado
 O projeto permanece funcional, com repositório organizado, histórico de mudanças rastreável e documentação orientada para manutenção e apresentação acadêmica.
@@ -49,7 +49,7 @@ Estudantes de medicina lidam com alta densidade de conteúdo, carga horária ext
 A adoção de um padrão de documentação enxuto, aliado a evidências técnicas (commits, testes e checklist), melhora a clareza de apresentação e reduz ambiguidades na avaliação do projeto.
 
 ## Contexto setorial e referências de base
-- Segundo o Conselho Federal de Medicina (CFM), o Brasil mantém grande contingente de estudantes e cursos de medicina, reforçando a relevância de soluções voltadas a gestão da rotina acadêmica. Fonte: https://portal.cfm.org.br/
+- Segundo o Conselho Federal de Medicina (CFM), o Brasil mantém grande contingente de estudantes e cursos de medicina, reforçando a relevância de soluções voltadas à gestão da rotina acadêmica. Fonte: https://portal.cfm.org.br/
 - As Diretrizes Curriculares Nacionais do curso de Medicina vinculadas ao MEC/CNE reforçam a elevada carga formativa do curso. Fonte: https://www.gov.br/mec/ e Resolução CNE/CES n. 3/2014.
 
 ## Objetivo geral
@@ -73,13 +73,13 @@ Organizar o projeto Zero Base com foco em rigor técnico e comunicabilidade acad
 ## Abordagem metodológica
 Foi adotada uma abordagem incremental em ciclos curtos:
 1. diagnóstico do estado do repositório e documentação;
-2. definição de padronização minima necessária;
+2. definição de padronização mínima necessária;
 3. implementação de ajustes com versionamento;
 4. validação por testes e revisão de consistência documental.
 
 ## Procedimentos executados
 - revisão de titulos, nomes de projeto e artefatos de referência;
-- criação de documentação de sintese (resumo executivo e plano profissional);
+- criação de documentação de síntese (resumo executivo e plano profissional);
 - ajuste de testes E2E para reduzir fragilidade em fluxo de PR;
 - atualização de fluxo de CI para separar smoke em PR e execução completa em push.
 
@@ -151,10 +151,10 @@ Tabela 2 - Registro resumido de feedbacks exploratórios
 
 Observação: esta tabela resume validação exploratória informal e não substitui estudo com protocolo formal e termo de consentimento.
 
-## Validação minima recomendada
+## Validação mínima recomendada
 1. Repositório em estado limpo após as alterações.
 2. Commits publicados na branch principal.
-3. Execução de testes de smoke sem falhas criticas.
+3. Execução de testes de smoke sem falhas críticas.
 4. Documentação principal atualizada e coerente.
 
 ## Conclusão desta etapa
@@ -177,12 +177,12 @@ A etapa de organização técnica foi concluída com foco em evidência, mantend
 ## Trabalhos futuros (priorizados)
 ### Curto prazo
 - completar evidências objetivas de métricas relevantes;
-- revisar periodicamente alinhamento Notion x repositório;
+- revisar periodicamente alinhamento entre Notion e repositório;
 - manter ritual semanal de atualização de mudanças.
 
 ### Médio prazo
 - aprofundar padronização de modelos de dados e validação;
-- ampliar cobertura de testes em áreas criticas;
+- ampliar cobertura de testes em áreas críticas;
 - refinar monitoramento de qualidade do fluxo de entrega.
 
 ### Longo prazo

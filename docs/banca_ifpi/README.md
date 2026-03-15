@@ -22,6 +22,7 @@ Este conjunto organiza a apresentação acadêmica do projeto em formato objetiv
 
 ## Como usar no Notion
 - Criar uma página principal: "Zero Base — Apresentação IFPI".
-- Criar 7 subpáginas e colar o conteúdo de cada arquivo.
+- Criar 7 subpáginas principais com os arquivos 01 a 07.
+- Usar os arquivos 08 e 09 como apoio de revisão e ensaio.
 - Inserir prints e vídeos complementares nos locais indicados como pendentes.
- - Usar `00_NOTION_PRONTO_COLAR.md` para colagem rápida em bloco único.
+- Usar `00_NOTION_PRONTO_COLAR.md` para colagem rápida em bloco único.
