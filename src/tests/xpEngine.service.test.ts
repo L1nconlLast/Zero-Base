@@ -41,7 +41,9 @@ describe('xpEngineService', () => {
 
   it('aplica sessões e atualiza streak/points/weekProgress', () => {
     const base = makeUserData();
-    const today = new Date().toISOString();
+    const todayObj = new Date();
+    todayObj.setHours(0, 0, 0, 0);
+    const today = todayObj.toISOString();
 
     const result = xpEngineService.applyStudySessions(base, [
       {

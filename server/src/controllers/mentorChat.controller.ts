@@ -25,6 +25,21 @@ const ChatRequestSchema = z.object({
   studentContext: StudentContextSchema,
 });
 
+const isAuthError = (err: Error): boolean =>
+  /status[:\s]*401|invalid.{0,20}api.key|incorrect.{0,20}api.key|api[_\s]?key/i.test(err.message);
+
+const isQuotaExhaustedError = (err: Error): boolean =>
+  /insufficient.{0,20}quota|billing.{0,20}hard.{0,10}limit|you exceeded your|resource_exhausted/i.test(err.message);
+
+const isRateLimitError = (err: Error): boolean =>
+  /status[:\s]*429|rate.{0,10}limit.{0,30}exceeded|too many requests/i.test(err.message);
+
+const isTimeoutError = (err: Error): boolean =>
+  /timeout|etimedout|econnreset|socket hang up/i.test(err.message);
+
+const isUpstreamError = (err: Error): boolean =>
+  /status[:\s]*5[0-9]{2}|service.{0,10}unavailable|overloaded/i.test(err.message);
+
 export class MentorChatController {
   async handleChat(req: Request, res: Response): Promise<void> {
     const parsed = ChatRequestSchema.safeParse(req.body);
@@ -108,7 +123,7 @@ export class MentorChatController {
               userId,
               requestId,
               model: mentorChatService.getModel(),
-              provider: 'openai',
+              provider: mentorChatService.getProvider(),
               promptTokens: usage.promptTokens,
               completionTokens: usage.completionTokens,
               totalTokens: usage.totalTokens,
@@ -134,29 +149,48 @@ export class MentorChatController {
         return;
       }
 
+      const errorId = `mchat_${Date.now().toString(36)}`;
+
       if (error instanceof Error) {
-        const lower = error.message.toLowerCase();
-
-        if (error.message.includes('401') || lower.includes('api key')) {
-          writeEvent('error', { error: 'Servico de IA temporariamente indisponivel.' });
+        if (isAuthError(error)) {
+          console.error(`[MentorChat][${errorId}] auth/config error:`, error.message);
+          writeEvent('error', { error: 'Servico de IA temporariamente indisponivel.', errorId });
           res.end();
           return;
         }
 
-        if (error.message.includes('429') || lower.includes('rate limit')) {
-          writeEvent('error', { error: 'Muitas requisicoes em pouco tempo. Aguarde alguns segundos.' });
+        if (isQuotaExhaustedError(error)) {
+          console.error(`[MentorChat][${errorId}] quota exhausted:`, error.message);
+          writeEvent('error', { error: 'Sua cota da IA foi atingida. Verifique plano e faturamento para continuar.', errorId });
           res.end();
           return;
         }
 
-        if (lower.includes('timeout') || error.message.includes('ETIMEDOUT')) {
-          writeEvent('error', { error: 'A IA demorou para responder. Tente novamente.' });
+        if (isRateLimitError(error)) {
+          console.warn(`[MentorChat][${errorId}] rate limit:`, error.message);
+          writeEvent('error', { error: 'Muitas requisicoes em pouco tempo. Aguarde alguns segundos.', errorId });
           res.end();
           return;
         }
+
+        if (isTimeoutError(error)) {
+          console.warn(`[MentorChat][${errorId}] timeout:`, error.message);
+          writeEvent('error', { error: 'A IA demorou para responder. Tente novamente.', errorId });
+          res.end();
+          return;
+        }
+
+        if (isUpstreamError(error)) {
+          console.warn(`[MentorChat][${errorId}] upstream unstable:`, error.message);
+          writeEvent('error', { error: 'O servico de IA esta instavel. Tente em instantes.', errorId });
+          res.end();
+          return;
+        }
+
+        console.error(`[MentorChat][${errorId}] unclassified error:`, error);
       }
 
-      writeEvent('error', { error: 'Ocorreu um erro interno.' });
+      writeEvent('error', { error: 'Ocorreu um erro interno.', errorId });
       res.end();
     }
   }

@@ -467,22 +467,6 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
     setCheckedItems((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleCopyNotes = async (contentId: string) => {
-    const note = notesByContentId[contentId] || '';
-
-    if (!note.trim()) {
-      toast('Não há anotações para copiar.');
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(note);
-      toast.success('Anotações copiadas para a área de transferência.');
-    } catch {
-      toast.error('Não foi possível copiar as anotações agora.');
-    }
-  };
-
   const handleDownloadNotes = (contentId: string, title: string) => {
     const note = notesByContentId[contentId] || '';
 
@@ -915,13 +899,6 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
                   <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                     <h4 className="font-bold text-gray-900 dark:text-white">Bloco de notas</h4>
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleCopyNotes(selectedContent.id)}
-                        className="px-2.5 py-1.5 rounded-md text-xs font-semibold border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
-                      >
-                        Copiar
-                      </button>
                       <button
                         type="button"
                         onClick={() => handleDownloadNotes(selectedContent.id, selectedContent.title)}

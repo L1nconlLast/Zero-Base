@@ -54,10 +54,24 @@ const verifyJwt = async (token: string): Promise<JWTPayload> => {
   return payload;
 };
 
+const isDev = process.env.NODE_ENV === 'development';
+const guestAllowed = isDev && process.env.MENTOR_ALLOW_GUEST === 'true';
+
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = getBearerToken(req);
+
     if (!token) {
+      if (guestAllowed) {
+        req.auth = {
+          userId: 'guest-local',
+          token: 'guest-local',
+          claims: { role: 'guest' },
+        };
+        next();
+        return;
+      }
+
       res.status(401).json({ error: 'Unauthorized: token ausente.' });
       return;
     }

@@ -1,4 +1,6 @@
-# Zero Base v2.0
+# Zero Base 2.0
+
+![CI](https://github.com/LinconlLast/Zero-Base/actions/workflows/ci.yml/badge.svg)
 
 > Plataforma de estudos para ENEM e concursos com gamificação, conquistas e análise de progresso.
 
@@ -67,9 +69,86 @@ src/
 
 ---
 
+## Arquitetura do Sistema
+
+```mermaid
+graph TD
+    %% Entidades Externas
+    User((👨🎓 Aluno))
+    LLM[🤖 OpenAI / Gemini API]
+    
+    %% Frontend
+    subgraph Frontend [Frontend: React + Vite]
+        UI[Interface Zero Base 2.0]
+        Admin[Dashboard Admin]
+        MentorChat[Chat do Mentor IA]
+    end
+    
+    %% Backend
+    subgraph Backend [Backend: Node.js + Express]
+        API[API Gateway / Router]
+        
+        subgraph Middlewares [Camada de Segurança]
+            Auth[JWT Auth]
+            Rate[Rate Limiting]
+            Breaker[Circuit Breaker]
+        end
+        
+        subgraph Services [Serviços de Negócio]
+            RAG[Context & RAG Service]
+            AdminService[Admin Metrics Service]
+            Telemetry[Token Usage Tracker]
+        end
+    end
+    
+    %% Banco de Dados
+    subgraph Database [Database: Supabase / PostgreSQL]
+        AuthDB[(Auth & Users)]
+        Progresso[(Progresso & Cronograma)]
+        Tokens[(mentor_token_usage)]
+    end
+
+    %% Fluxo de Dados
+    User -->|Interage| UI
+    UI -->|Acessa| Admin
+    UI -->|Envia Mensagem| MentorChat
+    
+    MentorChat -->|SSE Stream| API
+    Admin -->|GET /metrics| API
+    
+    API --> Auth
+    Auth --> Rate
+    Rate --> Breaker
+    Breaker --> RAG
+    Breaker --> AdminService
+    
+    RAG -->|Envia Prompt + Contexto| LLM
+    LLM -->|Stream de Resposta| RAG
+    
+    AdminService -->|Query Aggregation| Tokens
+    RAG -->|Salva Custo Fire-and-Forget| Telemetry
+    Telemetry --> Tokens
+    
+    Auth -->|Valida Token| AuthDB
+    RAG -->|Busca Histórico| Progresso
+    
+    classDef client fill:#3178c6,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef server fill:#3c873a,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef db fill:#3ebd93,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef ai fill:#74aa9c,stroke:#fff,stroke-width:2px,color:#fff;
+    
+    class Frontend client;
+    class Backend server;
+    class Database db;
+    class LLM ai;
+```
+
+---
+
 ## Organização do Repositório
 
 - Guia de organização: `docs/ORGANIZACAO_REPOSITORIO.md`
+- Autor: Gleydson de Sousa Gomes (Linconl)
 - Resumo executivo: `docs/RESUMO_ZERO_BASE_V2.md`
 - Índice de arquivos: `INDEX_ARQUIVOS.html`
 - Estrutura detalhada: `ESTRUTURA_PROJETO.txt`

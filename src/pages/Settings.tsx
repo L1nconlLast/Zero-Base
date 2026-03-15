@@ -47,6 +47,18 @@ import type { LucideIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { UserData } from '../types';
 
+type PrefThemeValues = 'Claro' | 'Escuro' | 'Sistema';
+type PrefLanguageValues = 'Português' | 'English' | 'Español';
+type PrefDensityValues = 'Compacto' | 'Normal' | 'Espaçoso';
+type PrefTimeValues = 'Manhã' | 'Tarde' | 'Noite' | 'Madrugada';
+
+type PrefOption<T> = {
+  label: 'Tema' | 'Idioma' | 'Densidade';
+  opts: Array<{ l: T; Icon: LucideIcon }>;
+  value: T;
+  setValue: React.Dispatch<React.SetStateAction<T>>;
+};
+
 interface SettingsPageProps {
   userData: UserData;
   userName?: string;
@@ -75,24 +87,27 @@ interface SettingsPageProps {
 }
 
 /* ─── PALETTE ─────────────────────────────────────────────── */
-const L = {
-  bg: '#f8f9fc',
-  surface: '#ffffff',
-  card: '#ffffff',
-  border: '#e8ecf3',
-  border2: '#d1d9e6',
+const getPalette = (isDark: boolean) => ({
+  bg: isDark ? '#0f172a' : '#f8f9fc',
+  surface: isDark ? '#1e293b' : '#ffffff',
+  card: isDark ? '#1e293b' : '#ffffff',
+  border: isDark ? '#334155' : '#e8ecf3',
+  border2: isDark ? '#475569' : '#d1d9e6',
   accent: '#f97316',
   indigo: '#6366f1',
   green: '#16a34a',
   amber: '#d97706',
   red: '#dc2626',
-  blue: '#2563eb',
-  text: '#0f172a',
-  sub: '#475569',
-  muted: '#94a3b8',
-  soft: '#f1f5f9',
-  soft2: '#e2e8f0',
-};
+  blue: '#3b82f6',
+  text: isDark ? '#f8fafc' : '#0f172a',
+  sub: isDark ? '#94a3b8' : '#475569',
+  muted: isDark ? '#64748b' : '#94a3b8',
+  soft: isDark ? '#334155' : '#f1f5f9',
+  soft2: isDark ? '#475569' : '#e2e8f0',
+});
+
+const L = getPalette(false); // fallback static theme (claro)
+
 
 /* ─── DATA ────────────────────────────────────────────────── */
 const AVATAR_ICONS = [
@@ -209,30 +224,20 @@ function AvatarDisplay({ iconId, photo, size = 72, color = L.accent }: { iconId:
   );
 }
 
-function Card({ children, style = {}, accentTop, variant = "default" }: { children: React.ReactNode; style?: React.CSSProperties; accentTop?: string; variant?: "default" | "hero" }) {
-  const baseStyle: React.CSSProperties = {
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: 20,
-    boxShadow: '0 1px 4px rgba(0,0,0,.04), 0 4px 24px rgba(0,0,0,.04)',
-  };
-
-  const variants = {
-    default: {
-      background: L.surface,
-      border: `1px solid ${L.border}`,
-      color: L.text,
-    },
-    hero: {
-      background: `linear-gradient(135deg, #1e293b, #0f172a)`,
-      border: `1px solid #334155`,
-      color: '#ffffff',
-      boxShadow: '0 8px 32px rgba(0,0,0,.15)',
-    }
-  };
-
+/* ─── CARD ───────────────────────────────────────────────── */
+function Card({ children, style = {}, accentTop }: { children: React.ReactNode; style?: React.CSSProperties; accentTop?: string }) {
   return (
-    <div style={{ ...baseStyle, ...variants[variant as keyof typeof variants], ...style }}>
+    <div
+      style={{
+        background: L.surface,
+        border: `1px solid ${L.border}`,
+        borderRadius: 20,
+        boxShadow: '0 1px 4px rgba(0,0,0,.04), 0 4px 24px rgba(0,0,0,.04)',
+        position: 'relative',
+        overflow: 'hidden',
+        ...style,
+      }}
+    >
       {accentTop && <div style={{ height: 3, background: `linear-gradient(90deg,${accentTop},${accentTop}88)`, borderRadius: '20px 20px 0 0' }} />}
       {children}
     </div>
@@ -403,7 +408,10 @@ export default function SettingsPage({
   profileExamGoal,
   profileExamDate,
   preferredStudyTrack,
+  darkMode,
   weeklyGoalMinutes,
+  onToggleDarkMode,
+  onSelectTheme,
   onSaveProfile,
 }: SettingsPageProps) {
   const initialAvatar = useMemo(
@@ -431,7 +439,14 @@ export default function SettingsPage({
   const [hoverAch, setHoverAch] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const accent = L.accent;
+  const [prefTheme, setPrefTheme] = useState<PrefThemeValues>(darkMode ? 'Escuro' : 'Claro');
+  const [prefLang, setPrefLang] = useState<PrefLanguageValues>('Português');
+  const [prefDensity, setPrefDensity] = useState<PrefDensityValues>('Normal');
+  const [prefTime, setPrefTime] = useState<PrefTimeValues>('Tarde');
+
+
+  const theme = getPalette(darkMode);
+  const accent = theme.accent;
   const studiedMin = useMemo(
     () => Object.values(userData.weekProgress || {}).reduce((acc, day) => acc + (day?.minutes || 0), 0),
     [userData.weekProgress],
@@ -450,8 +465,46 @@ export default function SettingsPage({
   );
 
   useEffect(() => {
+    const storedTheme = localStorage.getItem('settings-pref-theme') as 'Claro' | 'Escuro' | 'Sistema' | null;
+    const storedLang = localStorage.getItem('settings-pref-lang') as 'Português' | 'English' | 'Español' | null;
+    const storedDensity = localStorage.getItem('settings-pref-density') as 'Compacto' | 'Normal' | 'Espaçoso' | null;
+    const storedTime = localStorage.getItem('settings-pref-time') as 'Manhã' | 'Tarde' | 'Noite' | 'Madrugada' | null;
+
+    if (storedTheme) {
+      setPrefTheme(storedTheme);
+    }
+    if (storedLang) {
+      setPrefLang(storedLang);
+    }
+    if (storedDensity) {
+      setPrefDensity(storedDensity);
+    }
+    if (storedTime) {
+      setPrefTime(storedTime);
+    }
+  }, []);
+
+  useEffect(() => {
     setTimeout(() => setMounted(true), 80);
   }, []);
+
+  useEffect(() => {
+    if (prefTheme === 'Claro' && darkMode) {
+      onToggleDarkMode();
+    }
+    if (prefTheme === 'Escuro' && !darkMode) {
+      onToggleDarkMode();
+    }
+
+    if (prefTheme !== 'Sistema') {
+      onSelectTheme(prefTheme.toLowerCase());
+    }
+
+    localStorage.setItem('settings-pref-theme', prefTheme);
+    localStorage.setItem('settings-pref-lang', prefLang);
+    localStorage.setItem('settings-pref-density', prefDensity);
+    localStorage.setItem('settings-pref-time', prefTime);
+  }, [prefTheme, prefLang, prefDensity, prefTime, darkMode, onToggleDarkMode, onSelectTheme]);
 
   useEffect(() => {
     setName(userName || 'Lin');
@@ -538,7 +591,7 @@ export default function SettingsPage({
   ];
 
   return (
-    <div style={{ fontFamily: "'DM Sans',sans-serif", background: L.bg, minHeight: '100vh', color: L.text }}>
+    <div style={{ fontFamily: "'DM Sans',sans-serif", background: theme.bg, minHeight: '100vh', color: theme.text }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -552,7 +605,7 @@ export default function SettingsPage({
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
         .pf-input{transition:border-color .2s,box-shadow .2s;}
         .pf-input:focus{border-color:${accent}!important;box-shadow:0 0 0 3px ${accent}18!important;}
-        .tab-btn{transition:all .18s;} .tab-btn:hover{background:${L.soft}!important;}
+        .tab-btn{transition:all .18s;} .tab-btn:hover{background:${theme.soft}!important;}
         .av-chip{transition:all .15s;cursor:pointer;} .av-chip:hover{transform:scale(1.1);}
         .ach-card{transition:all .22s;cursor:default;} .ach-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(0,0,0,.1)!important;}
         .stat-card{transition:transform .2s,box-shadow .2s;} .stat-card:hover{transform:translateY(-4px);box-shadow:0 12px 36px rgba(0,0,0,.09)!important;}
@@ -566,6 +619,8 @@ export default function SettingsPage({
           .four-col{grid-template-columns:1fr 1fr!important;}
         }
       `}</style>
+
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
 
       <div
         style={{
@@ -753,12 +808,12 @@ export default function SettingsPage({
                   cursor: 'pointer',
                   fontSize: 13,
                   fontWeight: 600,
-                  background: active ? L.surface : 'transparent',
-                  color: active ? L.text : L.muted,
+                  background: active ? theme.surface : 'transparent',
+                  color: active ? theme.text : theme.muted,
                   boxShadow: active ? '0 1px 4px rgba(0,0,0,.08), 0 0 0 1px rgba(0,0,0,.06)' : 'none',
                 }}
               >
-                <TabIcon size={14} strokeWidth={active ? 2.4 : 2} color={active ? accent : L.muted} />
+                <TabIcon size={14} strokeWidth={active ? 2.4 : 2} color={active ? accent : theme.muted} />
                 {label}
               </button>
             );
@@ -825,7 +880,6 @@ export default function SettingsPage({
                   );
                 })}
               </div>
-              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
               <button
                 className="btn"
                 onClick={() => fileRef.current?.click()}
@@ -1187,15 +1241,27 @@ export default function SettingsPage({
             <Card accentTop={accent} style={{ padding: '26px 28px' }}>
               <SLabel color={accent} icon={Palette}>Aparência</SLabel>
               {[
-                { label: 'Tema', opts: [{ l: 'Claro', Icon: Sun }, { l: 'Escuro', Icon: Moon }, { l: 'Sistema', Icon: Globe }], sel: 0 },
-                { label: 'Idioma', opts: [{ l: 'Português', Icon: Globe }, { l: 'English', Icon: Globe }, { l: 'Español', Icon: Globe }], sel: 0 },
-                { label: 'Densidade', opts: [{ l: 'Compacto', Icon: Minus }, { l: 'Normal', Icon: AlignJustify }, { l: 'Espaçoso', Icon: LayoutDashboard }], sel: 1 },
+                { label: 'Tema', opts: [{ l: 'Claro', Icon: Sun }, { l: 'Escuro', Icon: Moon }, { l: 'Sistema', Icon: Globe }], value: prefTheme, setValue: setPrefTheme },
+                { label: 'Idioma', opts: [{ l: 'Português', Icon: Globe }, { l: 'English', Icon: Globe }, { l: 'Español', Icon: Globe }], value: prefLang, setValue: setPrefLang },
+                { label: 'Densidade', opts: [{ l: 'Compacto', Icon: Minus }, { l: 'Normal', Icon: AlignJustify }, { l: 'Espaçoso', Icon: LayoutDashboard }], value: prefDensity, setValue: setPrefDensity },
               ].map((f) => (
                 <Field key={f.label} label={f.label}>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {f.opts.map((o, j) => (
+                    {f.opts.map((o) => (
                       <button
-                        key={o.l}
+                        key={`${f.label}-${o.l}`}
+                        onClick={() => {
+                          if (f.label === 'Tema') {
+                            setPrefTheme(o.l as PrefThemeValues);
+                          }
+                          if (f.label === 'Idioma') {
+                            setPrefLang(o.l as PrefLanguageValues);
+                          }
+                          if (f.label === 'Densidade') {
+                            setPrefDensity(o.l as PrefDensityValues);
+                          }
+                          mark();
+                        }}
                         style={{
                           flex: 1,
                           padding: '8px 4px',
@@ -1203,9 +1269,9 @@ export default function SettingsPage({
                           cursor: 'pointer',
                           fontSize: 12,
                           fontWeight: 600,
-                          border: `1.5px solid ${f.sel === j ? `${accent}55` : L.border}`,
-                          background: f.sel === j ? `${accent}0e` : L.soft,
-                          color: f.sel === j ? accent : L.sub,
+                          border: `1.5px solid ${f.value === o.l ? `${accent}55` : theme.border}`,
+                          background: f.value === o.l ? `${accent}0e` : theme.soft,
+                          color: f.value === o.l ? accent : theme.sub,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -1228,9 +1294,13 @@ export default function SettingsPage({
                     { l: 'Tarde', Icon: Sun },
                     { l: 'Noite', Icon: Sunset },
                     { l: 'Madrugada', Icon: Moon },
-                  ].map(({ l, Icon: HIcon }, i) => (
+                  ].map(({ l, Icon: HIcon }) => (
                     <button
                       key={l}
+                      onClick={() => {
+                        setPrefTime(l as PrefTimeValues);
+                        mark();
+                      }}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1240,9 +1310,9 @@ export default function SettingsPage({
                         cursor: 'pointer',
                         fontSize: 12,
                         fontWeight: 600,
-                        border: `1.5px solid ${i === 2 ? `${accent}55` : L.border}`,
-                        background: i === 2 ? `${accent}0e` : L.soft,
-                        color: i === 2 ? accent : L.sub,
+                        border: `1.5px solid ${prefTime === l ? `${accent}55` : theme.border}`,
+                        background: prefTime === l ? `${accent}0e` : theme.soft,
+                        color: prefTime === l ? accent : theme.sub,
                         transition: 'all .15s',
                       }}
                     >

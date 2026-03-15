@@ -33,6 +33,12 @@ class MentorChatApiService {
     try {
       const session = await supabase?.auth.getSession();
       const accessToken = session?.data?.session?.access_token;
+      const allowGuestInDev = Boolean(import.meta.env.DEV);
+      const useGuestMode = allowGuestInDev;
+
+      if (!accessToken && !useGuestMode) {
+        throw new Error('Mentor chat API 401: sessao ausente. Faca login para usar o chat online.');
+      }
 
       const response = await fetch(this.endpoint, {
         method: 'POST',
@@ -40,14 +46,24 @@ class MentorChatApiService {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
           ...(requestId ? { 'x-request-id': requestId } : {}),
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          ...(!useGuestMode && accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
 
       if (!response.ok) {
-        throw new Error(`Mentor chat API ${response.status}`);
+        let detail = '';
+        try {
+          const text = await response.text();
+          if (text) {
+            detail = text.slice(0, 300);
+          }
+        } catch {
+          // ignore response parse errors
+        }
+
+        throw new Error(`Mentor chat API ${response.status}${detail ? `: ${detail}` : ''}`);
       }
 
       if (!response.body) {

@@ -1,19 +1,45 @@
-import bcrypt from 'bcryptjs';
 import DOMPurify from 'dompurify';
 import { logger } from './logger';
 import type { WeekProgress, DayProgress } from '../types';
 
 // Constantes
-const SALT_ROUNDS = 10;
 const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 horas
+
+const textEncoder = new TextEncoder();
+
+const bytesToHex = (bytes: Uint8Array): string =>
+  Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+
+const createSaltHex = (size = 16): string => {
+  const salt = new Uint8Array(size);
+  crypto.getRandomValues(salt);
+  return bytesToHex(salt);
+};
+
+const sha256Hex = async (value: string): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', textEncoder.encode(value));
+  return bytesToHex(new Uint8Array(digest));
+};
 
 // Criptografia de senha
 export const hashPassword = async (password: string): Promise<string> => {
-  return await bcrypt.hash(password, SALT_ROUNDS);
+  const salt = createSaltHex();
+  const digest = await sha256Hex(`${salt}:${password}`);
+  return `zb1$${salt}$${digest}`;
 };
 
 export const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
-  return await bcrypt.compare(password, hash);
+  if (!hash.startsWith('zb1$')) {
+    return false;
+  }
+
+  const [, salt, expectedDigest] = hash.split('$');
+  if (!salt || !expectedDigest) {
+    return false;
+  }
+
+  const digest = await sha256Hex(`${salt}:${password}`);
+  return digest === expectedDigest;
 };
 
 // Sanitização de inputs

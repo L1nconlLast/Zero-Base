@@ -4,7 +4,7 @@ interface TokenUsagePayload {
   userId: string;
   requestId?: string;
   model: string;
-  provider: 'openai';
+  provider: 'openai' | 'gemini' | 'local';
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;

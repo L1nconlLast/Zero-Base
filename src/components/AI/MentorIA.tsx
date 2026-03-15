@@ -446,8 +446,52 @@ const MentorIA: React.FC<MentorIAProps> = ({
       setTyping(false);
 
       const errorMessage = error instanceof Error ? error.message : 'unknown';
+      const lowerErrorMessage = errorMessage.toLowerCase();
 
-      if (errorMessage.includes('429')) {
+      if (errorMessage.includes('401') || lowerErrorMessage.includes('unauthorized') || lowerErrorMessage.includes('sessao ausente')) {
+        const authMessage = '⚠️ Voce precisa estar logado para usar o Mentor IA online. Entre na sua conta para continuar.';
+        setMessages((prev) => prev.map((message) => (
+          message.id === assistantMessage.id
+            ? { ...message, content: authMessage }
+            : message
+        )));
+
+        trackEvent(
+          'mentor_auth_required',
+          {
+            errorMessage,
+          },
+          { userEmail },
+        );
+
+        if (!import.meta.env.DEV) {
+          toast.error('Sessao expirada ou ausente. Faca login novamente.');
+        }
+      } else if (
+        lowerErrorMessage.includes('quota')
+        || lowerErrorMessage.includes('billing')
+        || lowerErrorMessage.includes('insufficient_quota')
+        || lowerErrorMessage.includes('cota')
+        || lowerErrorMessage.includes('faturamento')
+      ) {
+        const fallback = getLocalFallbackReply(content);
+        const quotaMessage = `${fallback}\n\n⚠️ Aviso: cota da IA atingida. Estou respondendo em modo local temporário.`;
+        setMessages((prev) => prev.map((message) => (
+          message.id === assistantMessage.id
+            ? { ...message, content: quotaMessage }
+            : message
+        )));
+
+        trackEvent(
+          'mentor_ai_quota_exceeded',
+          {
+            errorMessage,
+          },
+          { userEmail },
+        );
+
+        toast.error('Cota da IA esgotada. Verifique plano/faturamento.');
+      } else if (errorMessage.includes('429')) {
         const blockMessage = '⚠️ Atingiu o limite diario de uso do Mentor IA. Volte amanha para continuarmos a sua evolucao!';
         setMessages((prev) => prev.map((message) => (
           message.id === assistantMessage.id
@@ -649,7 +693,12 @@ const MentorIA: React.FC<MentorIAProps> = ({
           </div>
 
           <div className="border-t border-gray-200 dark:border-gray-700 p-3 flex gap-2">
+            <label htmlFor="mentor-chat-input" className="sr-only">
+              Pergunta para o Mentor IA
+            </label>
             <input
+              id="mentor-chat-input"
+              name="mentor-chat-input"
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {

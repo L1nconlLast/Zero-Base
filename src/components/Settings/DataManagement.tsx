@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Upload, Trash2, Copy, CheckCircle } from 'lucide-react';
+import { Download, Upload, Trash2 } from 'lucide-react';
 import { safeParseAndValidate } from '../../utils/validation';
 import { ConfirmModal } from '../UI/ConfirmModal';
 import toast from 'react-hot-toast';
@@ -15,7 +15,6 @@ interface DataManagementProps {
 }
 
 export const DataManagement: React.FC<DataManagementProps> = ({ data, onClear }) => {
-  const [copied, setCopied] = useState(false);
   const [importJson, setImportJson] = useState('');
   const [error, setError] = useState('');
   const [showClearModal, setShowClearModal] = useState(false);
@@ -55,18 +54,6 @@ export const DataManagement: React.FC<DataManagementProps> = ({ data, onClear })
     URL.revokeObjectURL(url);
 
     toast.success('Dados exportados com sucesso!');
-  };
-
-  const handleCopyToClipboard = () => {
-    const exportData = {
-      ...data,
-      exportedAt: new Date().toISOString()
-    };
-    const dataStr = JSON.stringify(exportData, null, 2);
-    navigator.clipboard.writeText(dataStr).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
   };
 
   const handleImport = () => {
@@ -128,17 +115,6 @@ export const DataManagement: React.FC<DataManagementProps> = ({ data, onClear })
           >
             <Download size={18} />
             Download JSON
-          </button>
-          <button
-            onClick={handleCopyToClipboard}
-            className={`flex-1 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all ${
-              copied
-                ? 'bg-emerald-500 text-white'
-                : 'bg-gray-100 hover:bg-gray-200 text-slate-700'
-            }`}
-          >
-            {copied ? <CheckCircle size={18} /> : <Copy size={18} />}
-            {copied ? 'Copiado!' : 'Copiar JSON'}
           </button>
         </div>
       </div>

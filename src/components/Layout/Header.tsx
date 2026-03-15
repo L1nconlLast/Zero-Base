@@ -32,7 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectTheme,
   onLogout 
 }) => {
-  const avatarIsImage = Boolean(userAvatar && (/^data:image\//i.test(userAvatar) || /^https?:\/\//i.test(userAvatar)));
+  const avatarIsImage = Boolean(userAvatar && (/^data:image\//i.test(userAvatar) || /^https?:\/\//i.test(userAvatar) || /^blob:/i.test(userAvatar)));
   const syncClass =
     syncStatusTone === 'success'
       ? 'text-emerald-700 bg-emerald-100 dark:text-emerald-200 dark:bg-emerald-900/30'
