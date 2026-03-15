@@ -1,7 +1,13 @@
 # 1. Resumo Executivo
 
+## Identificação acadêmica
+- Autor: Gleydson de Sousa Gomes (Linconl)
+- Orientador: pendente de confirmação institucional
+- Curso: Análise e Desenvolvimento de Sistemas - IFPI Campus Picos
+- Data desta versão: 14/03/2026
+
 ## Contexto
-Este trabalho apresenta o desenvolvimento e a consolidação do projeto Zero Base, uma aplicação web para apoio à rotina de estudos com recursos de acompanhamento de progresso, organização de sessões e feedback visual.
+Este trabalho apresenta o desenvolvimento e a consolidação do projeto Zero Base, uma aplicação web voltada prioritariamente para estudantes de medicina, com recursos de acompanhamento de progresso, organização de sessões e feedback visual.
 
 ## Objetivo geral
 Estruturar uma base técnica sustentável, com documentação padronizada e validação mínima de qualidade, adequada para continuidade evolutiva do projeto.
@@ -21,3 +27,7 @@ O projeto permanece funcional, com repositório organizado, histórico de mudan�
 - Link da página principal no Notion: https://www.notion.so/Zero-Base-Projeto-Completo-3019fab2320281b8995de6936d589f55
 - Link da análise completa no Notion: https://www.notion.so/An-lise-Completa-O-que-Melhorar-e-Aprimorar-3219fab23202811980a8e94c848006b3
 - Status do demo online (14/03/2026): https://zero-base-three.vercel.app ativo e acessível em produção.
+
+## Status da documentação
+- Responsável: Gleydson de Sousa Gomes (Linconl)
+- Data desta versão: 14/03/2026

@@ -16,8 +16,19 @@ Foi adotada uma abordagem incremental em ciclos curtos:
 ## Ferramentas
 - controle de versão: Git/GitHub;
 - documentação: Markdown + Notion;
-- stack do projeto: React, TypeScript, Vite;
+- stack do projeto: React, TypeScript, Vite 5.x;
 - qualidade: Vitest e Cypress.
+
+## Ambiente e evidências técnicas
+- Sistema operacional de desenvolvimento: Windows.
+- Commit de consolidação documental: `393ffed`
+- Commit de atualização do README: `af93460`
+- Commit do plano profissional e governança: `c6b2856`
+- Commit da publicação da documentação da banca: `7ddb7d7`
+- Commit da atualização do backend Mentor e pipeline: `64f7f59`
+
+## Siglas adotadas
+- Progressive Web App (PWA): aplicação web instalável com capacidades de cache e uso parcial offline.
 
 ## Estratégia de validação
 - validação de integridade do repositório (estado limpo e histórico de commits);

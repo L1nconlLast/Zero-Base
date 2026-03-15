@@ -4,6 +4,7 @@
 - parte das métricas históricas depende de comprovação detalhada adicional;
 - algumas melhorias arquiteturais estruturais permanecem como evolução futura;
 - a documentação no Notion pode divergir do repositório sem rotina de sincronização.
+- validação com público ampliado ainda depende de protocolo mais formal e amostra maior.
 
 ## Riscos de continuidade
 - divergência entre planejamento e execução real;
@@ -15,6 +16,7 @@
 - completar evidências objetivas de métricas relevantes;
 - revisar periodicamente alinhamento Notion ↔ repositório;
 - manter ritual semanal de atualização de mudanças.
+- ampliar validação com estudantes de medicina e registrar feedback com instrumento padronizado.
 
 ### Médio prazo
 - aprofundar padronização de modelos de dados e validação;
