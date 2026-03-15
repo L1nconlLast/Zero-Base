@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Tela principal Dashboard Zero Base">
+  <rect width="1280" height="720" fill="#0f172a"/>
+  <rect x="0" y="0" width="1280" height="64" fill="#1e293b"/>
+  <text x="28" y="40" fill="#e2e8f0" font-family="Segoe UI, Arial" font-size="24" font-weight="700">Zero Base - Dashboard</text>
+  <rect x="24" y="96" width="390" height="180" rx="14" fill="#1e293b" stroke="#334155"/>
+  <rect x="445" y="96" width="390" height="180" rx="14" fill="#1e293b" stroke="#334155"/>
+  <rect x="866" y="96" width="390" height="180" rx="14" fill="#1e293b" stroke="#334155"/>
+  <text x="44" y="134" fill="#93c5fd" font-family="Segoe UI, Arial" font-size="18" font-weight="600">Sessoes da Semana</text>
+  <text x="465" y="134" fill="#86efac" font-family="Segoe UI, Arial" font-size="18" font-weight="600">Tempo Estudado</text>
+  <text x="886" y="134" fill="#fcd34d" font-family="Segoe UI, Arial" font-size="18" font-weight="600">Streak</text>
+  <rect x="24" y="300" width="806" height="384" rx="14" fill="#1e293b" stroke="#334155"/>
+  <text x="44" y="338" fill="#e2e8f0" font-family="Segoe UI, Arial" font-size="20" font-weight="600">Heatmap e Evolucao Semanal</text>
+  <g fill="#334155">
+    <rect x="50" y="370" width="20" height="20" rx="4"/><rect x="76" y="370" width="20" height="20" rx="4"/><rect x="102" y="370" width="20" height="20" rx="4"/><rect x="128" y="370" width="20" height="20" rx="4"/>
+    <rect x="154" y="370" width="20" height="20" rx="4"/><rect x="180" y="370" width="20" height="20" rx="4"/><rect x="206" y="370" width="20" height="20" rx="4"/><rect x="232" y="370" width="20" height="20" rx="4"/>
+  </g>
+  <rect x="866" y="300" width="390" height="384" rx="14" fill="#1e293b" stroke="#334155"/>
+  <text x="886" y="338" fill="#e2e8f0" font-family="Segoe UI, Arial" font-size="20" font-weight="600">Resumo Rápido</text>
+  <text x="886" y="380" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="16">Meta semanal: 600 min</text>
+  <text x="886" y="412" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="16">Progresso: 73%</text>
+  <text x="886" y="444" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="16">Proxima acao: simulados</text>
+</svg>

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Tela de timer e sessao de estudo">
+  <rect width="1280" height="720" fill="#0b1220"/>
+  <text x="40" y="56" fill="#e2e8f0" font-family="Segoe UI, Arial" font-size="30" font-weight="700">Sessao de Estudo - Timer Inteligente</text>
+  <circle cx="430" cy="380" r="220" fill="#111827" stroke="#334155" stroke-width="10"/>
+  <circle cx="430" cy="380" r="195" fill="none" stroke="#22c55e" stroke-width="18" stroke-dasharray="920 1225" stroke-linecap="round" transform="rotate(-90 430 380)"/>
+  <text x="350" y="390" fill="#f8fafc" font-family="Segoe UI, Arial" font-size="64" font-weight="700">24:18</text>
+  <text x="315" y="430" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="24">Foco em Biologia</text>
+  <rect x="760" y="168" width="450" height="486" rx="16" fill="#111827" stroke="#334155"/>
+  <text x="790" y="212" fill="#e2e8f0" font-family="Segoe UI, Arial" font-size="22" font-weight="600">Checklist da Sessao</text>
+  <text x="790" y="258" fill="#cbd5e1" font-family="Segoe UI, Arial" font-size="18">- Objetivo definido</text>
+  <text x="790" y="292" fill="#cbd5e1" font-family="Segoe UI, Arial" font-size="18">- Sem distrações por 25 min</text>
+  <text x="790" y="326" fill="#cbd5e1" font-family="Segoe UI, Arial" font-size="18">- Revisao ativa no final</text>
+  <rect x="790" y="566" width="160" height="50" rx="10" fill="#16a34a"/>
+  <text x="840" y="598" fill="#f8fafc" font-family="Segoe UI, Arial" font-size="18" font-weight="700" text-anchor="middle">Iniciar</text>
+  <rect x="970" y="566" width="160" height="50" rx="10" fill="#1d4ed8"/>
+  <text x="1050" y="598" fill="#f8fafc" font-family="Segoe UI, Arial" font-size="18" font-weight="700" text-anchor="middle">Pausar</text>
+</svg>

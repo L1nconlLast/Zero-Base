@@ -9,6 +9,10 @@ Este conjunto organiza a apresentação acadêmica do projeto em formato objetiv
 4. [04_RESULTADOS_VALIDACAO.md](04_RESULTADOS_VALIDACAO.md)
 5. [05_LIMITACOES_TRABALHOS_FUTUROS.md](05_LIMITACOES_TRABALHOS_FUTUROS.md)
 6. [06_APENDICES_EVIDENCIAS.md](06_APENDICES_EVIDENCIAS.md)
+7. [07_MUDANCAS_DA_SEMANA.md](07_MUDANCAS_DA_SEMANA.md)
+8. [08_CHECKLIST_VALIDACAO_NOTION_2026-03-14.md](08_CHECKLIST_VALIDACAO_NOTION_2026-03-14.md)
+9. [09_ROTEIRO_APRESENTACAO_10MIN.md](09_ROTEIRO_APRESENTACAO_10MIN.md)
+10. [00_NOTION_PRONTO_COLAR.md](00_NOTION_PRONTO_COLAR.md)
 
 ## Diretrizes adotadas
 - Linguagem acadêmica formal, sem marketing.
@@ -18,5 +22,6 @@ Este conjunto organiza a apresentação acadêmica do projeto em formato objetiv
 
 ## Como usar no Notion
 - Criar uma página principal: "Zero Base — Apresentação IFPI".
-- Criar 6 subpáginas e colar o conteúdo de cada arquivo.
-- Inserir links de commits/PRs, prints e vídeos nos locais indicados como "A preencher".
+- Criar 7 subpáginas e colar o conteúdo de cada arquivo.
+- Inserir prints e vídeos complementares nos locais indicados como pendentes.
+ - Usar `00_NOTION_PRONTO_COLAR.md` para colagem rápida em bloco único.

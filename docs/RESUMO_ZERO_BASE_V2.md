@@ -1,7 +1,7 @@
 # Resumo Executivo — Zero Base (Notion + Repositório)
 
 ## 1) Visão Geral
-Este documento consolida o contexto do projeto **Zero Base** com base na página principal do Notion (publicada originalmente como **"Medicina do Zero v2.0 — Projeto Completo"**) e no estado atual do repositório.
+Este documento consolida o contexto do projeto **Zero Base** com base na página principal do Notion e no estado atual do repositório.
 
 O foco permanece em uma plataforma web de estudos com gamificação, produtividade e acompanhamento de progresso.
 
@@ -57,6 +57,13 @@ Com base em `MELHORIAS_IMPLEMENTADAS.md`, `CHANGELOG-v2.1.md` e melhorias recent
 - melhorias de organização documental (guias, changelog e materiais de apoio);
 - estabilidade maior nos testes E2E (Cypress) com ajustes de seletores/fluxos;
 - ajuste de pipeline para PR com smoke E2E e execução completa em push.
+
+## 7.1) Evidências de Desenvolvimento Iterativo e Incremental
+*Sprint Review: Arquitetura, Segurança e Inteligência Artificial*
+
+- **Sprint N-2 (Refatoração de IA)**: Desacoplamento do "Mentor IA" do Client-Side. Migração da lógica de RAG (Retrieval-Augmented Generation) para o backend (Node.js), injetando o contexto do aluno (dias para prova, matérias fracas) de forma invisível no prompt da LLM. Implementação de SSE (Server-Sent Events) para digitação em tempo real.
+- **Sprint N-1 (Segurança & Telemetria)**: Implementação de barreiras de proteção na API: Autenticação via Supabase JWT, Rate Limiting (15 req/10min) e um Circuit Breaker para bloqueio automático após consumo de 25k tokens diários. Criação de rotinas fire-and-forget para salvar o consumo na tabela `mentor_token_usage`.
+- **Sprint N (Observabilidade & CI/CD)**: Criação do Dashboard Administrativo em React + Recharts para visualização de custos estimados e identificação de heavy users. Implementação de exportação de relatórios em CSV. Configuração de pipeline CI/CD via GitHub Actions e setup do Vitest para garantia de qualidade (Test Coverage).
 
 ## 8) Benefícios Consolidados
 

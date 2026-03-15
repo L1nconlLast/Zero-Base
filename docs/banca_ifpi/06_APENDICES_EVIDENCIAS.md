@@ -7,16 +7,31 @@ Preencher com links reais:
 - commit de plano profissional (KPIs e governança): `c6b2856`
 
 ## B) Evidências de qualidade
-- resultado de teste smoke (data/resultado): A preencher
+- resultado de teste de qualidade (14/03/2026): `npm run test -- --run` executado com sucesso (12 arquivos e 128 testes aprovados).
 - referência de workflow CI: `.github/workflows/e2e.yml`
-- evidência de estado limpo após publicação: A preencher (print do `git status`)
+- referência de workflow CI adicional: `.github/workflows/ci.yml`
+- evidência de estado limpo após publicação: pendente (capturar print do `git status` após próximo ciclo de commit/push).
 
 ## C) Evidências visuais
-Inserir:
-1. tela inicial/dashboard;
-2. fluxo de timer ou sessão de estudo;
-3. visão de progresso/relatórios;
-4. visão do roadmap/documentação no Notion.
+1. Tela inicial/dashboard:
+
+![Tela Dashboard](assets/tela_dashboard.svg)
+
+2. Fluxo de timer ou sessão de estudo:
+
+![Tela Timer](assets/tela_timer.svg)
+
+3. Visão de progresso/relatórios:
+
+![Tela Relatórios](assets/tela_relatorios.svg)
+
+4. Diagrama de arquitetura:
+
+![Diagrama de Arquitetura](assets/diagrama_arquitetura.svg)
+
+5. Roadmap/documentação no Notion:
+- Página principal: https://www.notion.so/Zero-Base-Projeto-Completo-3019fab2320281b8995de6936d589f55?pvs=18
+- Análise de pendências: https://www.notion.so/An-lise-Completa-O-que-Melhorar-e-Aprimorar-3219fab23202811980a8e94c848006b3?source=copy_link
 
 ## D) Metodologia de medição (modelo)
 Para cada métrica:
@@ -34,6 +49,10 @@ Referenciar:
 - configuração de testes e CI.
 
 ## F) Referências técnicas
-- documentação oficial das tecnologias utilizadas;
-- guias de qualidade de código adotados;
-- materiais acadêmicos/metodológicos utilizados no TCC.
+1. REACT TEAM. React Documentation. 2024-2026. Disponível em: https://react.dev/. Acesso em: 14 mar. 2026.
+2. MICROSOFT. TypeScript Documentation. 2024-2026. Disponível em: https://www.typescriptlang.org/docs/. Acesso em: 14 mar. 2026.
+3. VITE TEAM. Vite Documentation (v5). 2024-2026. Disponível em: https://vite.dev/guide/. Acesso em: 14 mar. 2026.
+4. OWASP FOUNDATION. OWASP Top 10:2021 - The Ten Most Critical Web Application Security Risks. 2021. Disponível em: https://owasp.org/Top10/. Acesso em: 14 mar. 2026.
+5. GOOGLE. web.dev - Progressive Web Apps. 2024-2026. Disponível em: https://web.dev/learn/pwa/. Acesso em: 14 mar. 2026.
+6. CYPRESS. Cypress Documentation. 2024-2026. Disponível em: https://docs.cypress.io/. Acesso em: 14 mar. 2026.
+7. VITEST TEAM. Vitest Documentation. 2024-2026. Disponível em: https://vitest.dev/guide/. Acesso em: 14 mar. 2026.

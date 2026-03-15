@@ -15,7 +15,9 @@ Estruturar uma base técnica sustentável, com documentação padronizada e vali
 ## Resultado consolidado
 O projeto permanece funcional, com repositório organizado, histórico de mudanças rastreável e documentação orientada para manutenção e apresentação acadêmica.
 
-## Evidências principais (a preencher)
-- Link do repositório:
-- Link da branch principal:
-- Link da página principal no Notion:
+## Evidências principais
+- Link do repositório: https://github.com/L1nconlLast/Zero-Base
+- Link da branch principal: https://github.com/L1nconlLast/Zero-Base/tree/main
+- Link da página principal no Notion: https://www.notion.so/Zero-Base-Projeto-Completo-3019fab2320281b8995de6936d589f55
+- Link da análise completa no Notion: https://www.notion.so/An-lise-Completa-O-que-Melhorar-e-Aprimorar-3219fab23202811980a8e94c848006b3
+- Status do demo online (14/03/2026): https://zero-base-three.vercel.app ativo e acessível em produção.
