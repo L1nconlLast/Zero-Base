@@ -32,5 +32,6 @@ dist-ssr
 cypress/screenshots
 cypress/videos
 cypress/downloads
+cypress.env.json
 
 .vercel

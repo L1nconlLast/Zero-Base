@@ -19,7 +19,8 @@
     "cypress:verify": "cypress verify",
     "e2e": "start-server-and-test dev http://localhost:5173 cy:run",
     "e2e:open": "start-server-and-test dev http://localhost:5173 cy:open",
-    "test:all": "npm test -- --run && npm run e2e"
+    "test:all": "npm test -- --run && npm run e2e",
+    "setup:e2e": "tsx scripts/setup-e2e-user.ts"
   },
   "dependencies": {
     "@sentry/browser": "^10.40.0",
