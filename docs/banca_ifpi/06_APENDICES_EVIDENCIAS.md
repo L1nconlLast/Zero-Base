@@ -9,6 +9,7 @@
 
 ## B) Evidências de qualidade
 - resultado de teste de qualidade (14/03/2026): `npm run test -- --run` executado com sucesso (12 arquivos e 128 testes aprovados).
+- resultado de teste focado de autenticação (14/03/2026): `npm run test -- --run src/tests/useAuth.test.ts` com 17 testes aprovados, cobrindo fallback local sem Supabase.
 - referência de workflow CI: `.github/workflows/e2e.yml`
 - referência de workflow CI adicional: `.github/workflows/ci.yml`
 - evidência de estado limpo após publicação: pendente (capturar print do `git status` após próximo ciclo de commit/push).

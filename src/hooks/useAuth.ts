@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { User } from '../types';
 import { supabase, isSupabaseConfigured } from '../services/supabase.client';
 import { logger } from '../utils/logger';
+import { STORAGE_KEYS } from '../constants';
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 type OAuthProvider = 'google' | 'facebook';
@@ -36,6 +37,11 @@ const parseEnabledOAuthProviders = (): OAuthProvider[] => {
 
 const ENABLED_OAUTH_PROVIDERS = parseEnabledOAuthProviders();
 
+interface LocalSessionPayload {
+  user: User;
+  userId: string;
+}
+
 // ─── helpers ────────────────────────────────────────────────────
 
 /** Converte o objeto Supabase Auth → tipo local User */
@@ -48,6 +54,45 @@ const mapSupabaseUser = (su: SupabaseUser): User => ({
   examDate: su.user_metadata?.exam_date || '',
   preferredTrack: su.user_metadata?.preferred_track || 'enem',
 });
+
+const buildLocalUserId = (email: string) => `local:${email.trim().toLowerCase()}`;
+
+const createLocalUser = (email: string, name?: string): User => {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  return {
+    nome: name?.trim() || normalizedEmail.split('@')[0] || 'Usuário',
+    email: normalizedEmail,
+    dataCadastro: new Date().toISOString(),
+    foto: '🧑‍⚕️',
+    examGoal: 'ENEM Medicina',
+    examDate: '',
+    preferredTrack: 'enem',
+  };
+};
+
+const persistLocalSession = (session: LocalSessionPayload) => {
+  localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+};
+
+const readLocalSession = (): LocalSessionPayload | null => {
+  try {
+    const rawSession = localStorage.getItem(STORAGE_KEYS.SESSION);
+    if (!rawSession) return null;
+
+    const parsed = JSON.parse(rawSession) as Partial<LocalSessionPayload>;
+    if (!parsed.user || !parsed.userId || !parsed.user.email) {
+      return null;
+    }
+
+    return {
+      user: parsed.user,
+      userId: parsed.userId,
+    };
+  } catch {
+    return null;
+  }
+};
 
 // ─── hook ───────────────────────────────────────────────────────
 
@@ -67,6 +112,12 @@ export const useAuth = () => {
   // ── Listener principal: onAuthStateChange ──
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
+      const localSession = readLocalSession();
+      if (localSession && mountedRef.current) {
+        setUser(localSession.user);
+        setSupabaseUserId(localSession.userId);
+        setIsLoggedIn(true);
+      }
       setLoading(false);
       return;
     }
@@ -115,7 +166,24 @@ export const useAuth = () => {
   const login = useCallback(
     async (email: string, senha: string): Promise<{ success: boolean; message: string }> => {
       if (!supabase) {
-        return { success: false, message: 'Supabase não configurado.' };
+        const cleanEmail = email.trim().toLowerCase();
+
+        if (!cleanEmail || !senha.trim()) {
+          return { success: false, message: 'Preencha e-mail e senha.' };
+        }
+
+        const localUser = createLocalUser(cleanEmail);
+        const localSession = {
+          user: localUser,
+          userId: buildLocalUserId(cleanEmail),
+        };
+
+        persistLocalSession(localSession);
+        setUser(localUser);
+        setSupabaseUserId(localSession.userId);
+        setIsLoggedIn(true);
+
+        return { success: true, message: 'Entrando em modo local.' };
       }
 
       const cleanEmail = email.trim().toLowerCase();
@@ -151,7 +219,28 @@ export const useAuth = () => {
       senha: string,
     ): Promise<{ success: boolean; message: string }> => {
       if (!supabase) {
-        return { success: false, message: 'Supabase não configurado.' };
+        const cleanName = nome.trim();
+        const cleanEmail = email.trim().toLowerCase();
+
+        if (cleanName.length < 3) {
+          return { success: false, message: 'Nome deve ter no mínimo 3 caracteres.' };
+        }
+        if (senha.length < 6) {
+          return { success: false, message: 'Senha deve ter no mínimo 6 caracteres.' };
+        }
+
+        const localUser = createLocalUser(cleanEmail, cleanName);
+        const localSession = {
+          user: localUser,
+          userId: buildLocalUserId(cleanEmail),
+        };
+
+        persistLocalSession(localSession);
+        setUser(localUser);
+        setSupabaseUserId(localSession.userId);
+        setIsLoggedIn(true);
+
+        return { success: true, message: 'Conta local criada com sucesso!' };
       }
 
       const cleanName = nome.trim();
@@ -233,14 +322,17 @@ export const useAuth = () => {
     setUser(null);
     setSupabaseUserId(null);
     setIsLoggedIn(false);
-    localStorage.removeItem('medicinaSession');
+    localStorage.removeItem(STORAGE_KEYS.SESSION);
   }, []);
 
   // ── Esqueci minha senha ──
   const resetPassword = useCallback(
     async (email: string): Promise<{ success: boolean; message: string }> => {
       if (!supabase) {
-        return { success: false, message: 'Supabase não configurado.' };
+        return {
+          success: false,
+          message: 'Recuperação de senha indisponível no modo local.',
+        };
       }
 
       const cleanEmail = email.trim().toLowerCase();
@@ -273,7 +365,10 @@ export const useAuth = () => {
   const loginWithOAuth = useCallback(
     async (provider: OAuthProvider): Promise<{ success: boolean; message: string }> => {
       if (!supabase) {
-        return { success: false, message: 'Supabase não configurado.' };
+        return {
+          success: false,
+          message: 'Login social indisponível enquanto o Supabase não estiver configurado.',
+        };
       }
 
       if (!ENABLED_OAUTH_PROVIDERS.includes(provider)) {

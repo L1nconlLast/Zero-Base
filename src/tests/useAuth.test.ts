@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { STORAGE_KEYS } from '../constants';
 
 // ─────────────────────────────────────────────────────────────
 // Mock do Supabase client
@@ -10,17 +11,28 @@ const mockSignUp = vi.fn();
 const mockSignOut = vi.fn();
 const mockGetSession = vi.fn();
 const mockOnAuthStateChange = vi.fn();
+const supabaseClientState = vi.hoisted(() => ({
+  isConfigured: true,
+}));
 
 vi.mock('../services/supabase.client', () => ({
-  isSupabaseConfigured: true,
-  supabase: {
-    auth: {
-      signInWithPassword: (...args: unknown[]) => mockSignInWithPassword(...args),
-      signUp: (...args: unknown[]) => mockSignUp(...args),
-      signOut: (...args: unknown[]) => mockSignOut(...args),
-      getSession: (...args: unknown[]) => mockGetSession(...args),
-      onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
-    },
+  get isSupabaseConfigured() {
+    return supabaseClientState.isConfigured;
+  },
+  get supabase() {
+    if (!supabaseClientState.isConfigured) {
+      return null;
+    }
+
+    return {
+      auth: {
+        signInWithPassword: (...args: unknown[]) => mockSignInWithPassword(...args),
+        signUp: (...args: unknown[]) => mockSignUp(...args),
+        signOut: (...args: unknown[]) => mockSignOut(...args),
+        getSession: (...args: unknown[]) => mockGetSession(...args),
+        onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
+      },
+    };
   },
 }));
 
@@ -42,6 +54,8 @@ const FAKE_SESSION = { user: FAKE_USER, access_token: 'token', refresh_token: 'r
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+  supabaseClientState.isConfigured = true;
   // Por padrão: sem sessão existente, listener retorna unsubscribe
   mockGetSession.mockResolvedValue({ data: { session: null } });
   mockOnAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
@@ -81,6 +95,30 @@ describe('useAuth — estado inicial', () => {
     expect(result.current.user?.email).toBe('joao@medicina.com');
     expect(result.current.user?.nome).toBe('João Silva');
     expect(result.current.supabaseUserId).toBe('uuid-123');
+  });
+
+  it('hidrata sessão local quando Supabase não está configurado', async () => {
+    supabaseClientState.isConfigured = false;
+    localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify({
+      user: {
+        nome: 'João Local',
+        email: 'joao@local.com',
+        dataCadastro: '2026-03-14T00:00:00.000Z',
+        foto: '🧑‍⚕️',
+        examGoal: 'ENEM Medicina',
+        examDate: '',
+        preferredTrack: 'enem',
+      },
+      userId: 'local:joao@local.com',
+    }));
+
+    const { result } = renderHook(() => useAuth());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.isLoggedIn).toBe(true);
+    expect(result.current.user?.email).toBe('joao@local.com');
+    expect(result.current.supabaseUserId).toBe('local:joao@local.com');
   });
 });
 
@@ -174,6 +212,23 @@ describe('useAuth — register', () => {
     expect(res.success).toBe(true);
     expect(res.message).toContain('email');
   });
+
+  it('cria conta local quando Supabase não está configurado', async () => {
+    supabaseClientState.isConfigured = false;
+
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let res: { success: boolean; message: string } = { success: false, message: '' };
+    await act(async () => {
+      res = await result.current.register('João Local', 'joao@local.com', 'Senha@123');
+    });
+
+    expect(res.success).toBe(true);
+    expect(result.current.isLoggedIn).toBe(true);
+    expect(result.current.user?.nome).toBe('João Local');
+    expect(localStorage.getItem(STORAGE_KEYS.SESSION)).toContain('joao@local.com');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -236,6 +291,24 @@ describe('useAuth — login', () => {
 
     expect(res.success).toBe(false);
     expect(res.message).toContain('email');
+  });
+
+  it('entra em modo local quando Supabase não está configurado', async () => {
+    supabaseClientState.isConfigured = false;
+
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let res: { success: boolean; message: string } = { success: false, message: '' };
+    await act(async () => {
+      res = await result.current.login('joao@local.com', 'Senha@123');
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.message).toContain('modo local');
+    expect(result.current.isLoggedIn).toBe(true);
+    expect(result.current.user?.email).toBe('joao@local.com');
+    expect(result.current.supabaseUserId).toBe('local:joao@local.com');
   });
 });
 

@@ -6,6 +6,7 @@
 - melhoria da previsibilidade do fluxo de teste em integração contínua;
 - registro de melhorias técnicas e operacionais em artefatos versionados.
 - geração de evidências visuais e relatório Lighthouse real a partir da demo publicada.
+- correção do fallback de autenticação para modo local quando o Supabase não está configurado.
 
 ## Indicadores qualitativos
 - maior rastreabilidade das alterações;
@@ -27,6 +28,7 @@ Tabela 1 - Métricas reais de validação técnica do Zero Base
 | Lighthouse - Best Practices | 100 | Execução de `npx lighthouse https://zero-base-three.vercel.app` | `docs/banca_ifpi/assets/lighthouse-report.report.html` |
 | Entregas recentes | 36 commits desde 01/03/2026 (HEAD local) | Execução de `git rev-list --count --since='2026-03-01' HEAD` | Saída do Git com total de commits |
 | Status da demo pública | ativa em produção | Deploy Vercel + verificação de URL pública | `https://zero-base-three.vercel.app` acessível em 14/03/2026 |
+| Fluxo de login sem Supabase | fallback local ativo e persistente | Teste automatizado `src/tests/useAuth.test.ts` + build de produção | 17 testes de auth aprovados e `npm run build` sem erro |
 
 ## Testes com usuários - síntese descritiva
 Tabela 2 - Registro resumido de feedbacks exploratórios
