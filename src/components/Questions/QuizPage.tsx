@@ -3,6 +3,7 @@ import { CheckCircle, XCircle, ChevronRight, RotateCcw, Filter, Zap, Trophy } fr
 import { QUESTIONS_BANK, type Question, type Difficulty, type QuestionTrack } from '../../data/questionsBank';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { questionsCloudService } from '../../services/questionsCloud.service';
+import { quizPreferencesService } from '../../services/quizPreferences.service';
 import { getDisplayDiscipline } from '../../utils/disciplineLabels';
 import { shuffleArray, shuffleQuestionOptions } from '../../utils/questionRandomization';
 import QuizErrorReview from './QuizErrorReview';
@@ -129,12 +130,13 @@ const getSubjectChipClass = (subject: string, selected: boolean) => {
 };
 
 const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFilter }) => {
+  const userPreferenceScope = supabaseUserId || 'default';
   const [state, setState] = useState<QuizState>('select');
   const [selectedSubject, setSelectedSubject] = useState<string>('Todas');
   const [selectedTopic, setSelectedTopic] = useState<string>('Todos');
   const [selectedTrack, setSelectedTrack] = useState<QuestionTrack | 'ambos'>('ambos');
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | 'todas'>('todas');
-  const [quizQuestionCount, setQuizQuestionCount] = useState<number>(10);
+  const [quizQuestionCount, setQuizQuestionCount] = useLocalStorage<number>(`preferred_quiz_size_${userPreferenceScope}`, 10);
   const [dailyMode, setDailyMode] = useLocalStorage<boolean>('daily_quiz_enabled', true);
   const [dailyStreak, setDailyStreak] = useLocalStorage<number>('daily_quiz_streak', 0);
   const [dailyLastDoneDate, setDailyLastDoneDate] = useLocalStorage<string | null>('daily_quiz_last_done_date', null);
@@ -197,6 +199,41 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
       setSelectedTopic('Todos');
     }
   }, [selectedTopic, topicsBySelection]);
+
+  useEffect(() => {
+    if (!supabaseUserId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateQuizPreference = async () => {
+      try {
+        const preferredSize = await quizPreferencesService.getPreferredQuizSize(supabaseUserId);
+        if (!cancelled && preferredSize && preferredSize !== quizQuestionCount) {
+          setQuizQuestionCount(preferredSize);
+        }
+      } catch {
+        // Keep local preference when sync fails.
+      }
+    };
+
+    void hydrateQuizPreference();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [quizQuestionCount, setQuizQuestionCount, supabaseUserId]);
+
+  useEffect(() => {
+    if (!supabaseUserId) {
+      return;
+    }
+
+    void quizPreferencesService
+      .upsertPreferredQuizSize(supabaseUserId, quizQuestionCount as 5 | 10 | 20 | 50)
+      .catch(() => undefined);
+  }, [quizQuestionCount, supabaseUserId]);
 
   const filteredCount = useMemo(() => {
     return QUESTIONS_BANK.filter(
