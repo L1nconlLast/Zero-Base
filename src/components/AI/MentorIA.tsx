@@ -4,6 +4,7 @@ import { mentorIAService, type MentorMessage } from '../../services/mentorIA.ser
 import { mentorBriefingService } from '../../services/mentorBriefing.service';
 import { mentorChatApiService, type MentorChatPayload } from '../../services/mentorChatApi.service';
 import { isSupabaseConfigured } from '../../services/supabase.client';
+import { examStrategyService } from '../../services/examStrategy.service';
 import { trackEvent } from '../../utils/analytics';
 import type { EngineDecision, MentorOutput, MentorTrigger } from '../../types/mentor';
 import toast from 'react-hot-toast';
@@ -35,6 +36,7 @@ const QUICK_SUGGESTIONS = [
   'Crie um plano para esta semana',
   'O que revisar hoje?',
   'Como melhorar minha consistência?',
+  'Como estudar para CEBRASPE/FGV/FCC?',
 ];
 
 const colorByLevel: Record<AlertItem['level'], string> = {
@@ -283,6 +285,11 @@ const MentorIA: React.FC<MentorIAProps> = ({
   const getLocalFallbackReply = (text: string): string => {
     if (containsBlockedIntent(text)) {
       return 'Não posso orientar atalhos ou previsões de prova. Posso te orientar em estratégia real com base no seu plano atual.';
+    }
+
+    const strategyMessage = examStrategyService.buildMessageForMentor(text);
+    if (strategyMessage) {
+      return strategyMessage;
     }
 
     if (briefing) {
