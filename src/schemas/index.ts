@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { STRONG_PASSWORD_REGEX } from '../utils/passwordPolicy';
 
 // ═══════════════════════════════════════════════════════════════
 //  SCHEMAS BÁSICOS
@@ -172,6 +173,10 @@ export const LoginCredentialsSchema = z.object({
     .max(100, 'Email muito longo'),
   password: z.string()
     .min(8, 'Senha deve ter no mínimo 8 caracteres')
+    .regex(
+      STRONG_PASSWORD_REGEX,
+      'A senha deve conter ao menos 1 letra maiúscula, 1 número e 1 símbolo.',
+    )
     .max(100, 'Senha muito longa'),
 });
 

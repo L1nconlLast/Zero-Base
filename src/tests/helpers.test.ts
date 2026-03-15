@@ -35,12 +35,20 @@ describe('validateEmail', () => {
 
 // ── validatePassword ──────────────────────────────────────────
 describe('validatePassword', () => {
-  it('aceita senha com 8+ caracteres', () => {
+  it('aceita senha forte com maiúscula, número e símbolo', () => {
     expect(validatePassword('Senha@123').valid).toBe(true);
   });
 
-  it('rejeita senha curta', () => {
-    expect(validatePassword('abc').valid).toBe(false);
+  it('rejeita senha sem letra maiúscula', () => {
+    expect(validatePassword('senha@123').valid).toBe(false);
+  });
+
+  it('rejeita senha sem número', () => {
+    expect(validatePassword('Senha@abc').valid).toBe(false);
+  });
+
+  it('rejeita senha sem símbolo', () => {
+    expect(validatePassword('Senha1234').valid).toBe(false);
   });
 
   it('rejeita senha vazia', () => {

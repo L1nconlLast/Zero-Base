@@ -20,6 +20,7 @@ import {
   Check,
   X,
   AlertOctagon,
+  HelpCircle,
 } from 'lucide-react';
 import type { MateriaTipo, ScheduleEntry } from '../../types';
 import { MATERIAS_CONFIG } from '../../types';
@@ -146,6 +147,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
   const [weakTopicInput, setWeakTopicInput] = useState('Funções');
   const [missedDaysInput, setMissedDaysInput] = useState(0);
   const [hoursNowInput, setHoursNowInput] = useState(2);
+  const [isPomodoroHelpOpen, setIsPomodoroHelpOpen] = useState(false);
   const [aiSummary, setAiSummary] = useState<string[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [swapSubjectInput, setSwapSubjectInput] = useState('Matemática');
@@ -560,15 +562,33 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
             className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
             title="Data da prova"
           />
-          <input
-            type="number"
-            min={1}
-            max={10}
-            value={smartProfile.hoursPerDay}
-            onChange={(event) => setSmartProfile((prev: SmartScheduleProfile) => ({ ...prev, hoursPerDay: Number(event.target.value || 1) }))}
-            className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
-            placeholder="Horas por dia"
-          />
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="hours-per-day" className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Quantas horas por dia você tem disponível?
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsPomodoroHelpOpen(true)}
+                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
+              >
+                <HelpCircle className="w-3.5 h-3.5" /> Como funciona o Pomodoro?
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                id="hours-per-day"
+                type="number"
+                min={1}
+                max={10}
+                value={smartProfile.hoursPerDay}
+                onChange={(event) => setSmartProfile((prev: SmartScheduleProfile) => ({ ...prev, hoursPerDay: Number(event.target.value || 1) }))}
+                className="w-full pl-3 pr-10 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+                placeholder="Ex: 2"
+              />
+              <span className="absolute inset-y-0 right-3 inline-flex items-center text-xs text-slate-500 dark:text-slate-400">h</span>
+            </div>
+          </div>
           <select
             value={smartProfile.studyStyle}
             onChange={(event) => setSmartProfile((prev: SmartScheduleProfile) => ({ ...prev, studyStyle: event.target.value as SmartScheduleProfile['studyStyle'] }))}
@@ -635,6 +655,44 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
           </div>
         )}
       </div>
+
+      {isPomodoroHelpOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100">Como funciona o nosso Cronograma Pomodoro? 🍅</h4>
+              <button
+                type="button"
+                onClick={() => setIsPomodoroHelpOpen(false)}
+                className="p-1 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Fechar ajuda do Pomodoro"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              O método Pomodoro divide seu estudo em blocos de foco total e pausas curtas para manter alto rendimento sem exaustão.
+            </p>
+            <ul className="text-sm text-slate-700 dark:text-slate-200 space-y-1.5 list-disc pl-5">
+              <li>Foco total: 25 minutos sem interrupções.</li>
+              <li>Pausa curta: 5 minutos para respirar, hidratar e alongar.</li>
+              <li>Pausa longa: após 4 ciclos, descanso maior de 15 a 30 minutos.</li>
+            </ul>
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 p-3 text-sm text-blue-800 dark:text-blue-200">
+              Basta informar quantas horas por dia você tem disponível. A plataforma converte isso automaticamente para blocos ideais de estudo.
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsPomodoroHelpOpen(false)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm overflow-x-auto space-y-3">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">Grade semanal</h3>

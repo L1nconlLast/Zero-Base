@@ -10,6 +10,7 @@ import { User } from '../types';
 import { supabase, isSupabaseConfigured } from '../services/supabase.client';
 import { logger } from '../utils/logger';
 import { STORAGE_KEYS } from '../constants';
+import { validateStrongPassword } from '../utils/passwordPolicy';
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 type OAuthProvider = 'google' | 'facebook';
@@ -225,8 +226,9 @@ export const useAuth = () => {
         if (cleanName.length < 3) {
           return { success: false, message: 'Nome deve ter no mínimo 3 caracteres.' };
         }
-        if (senha.length < 6) {
-          return { success: false, message: 'Senha deve ter no mínimo 6 caracteres.' };
+        const passwordValidation = validateStrongPassword(senha);
+        if (!passwordValidation.valid) {
+          return { success: false, message: passwordValidation.message };
         }
 
         const localUser = createLocalUser(cleanEmail, cleanName);
@@ -249,8 +251,9 @@ export const useAuth = () => {
       if (cleanName.length < 3) {
         return { success: false, message: 'Nome deve ter no mínimo 3 caracteres.' };
       }
-      if (senha.length < 6) {
-        return { success: false, message: 'Senha deve ter no mínimo 6 caracteres.' };
+      const passwordValidation = validateStrongPassword(senha);
+      if (!passwordValidation.valid) {
+        return { success: false, message: passwordValidation.message };
       }
 
       const { data, error } = await supabase.auth.signUp({

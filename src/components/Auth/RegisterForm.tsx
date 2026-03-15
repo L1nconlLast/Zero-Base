@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { User, Mail, Lock, UserPlus, Stethoscope, Sparkles, ShieldCheck } from 'lucide-react';
+import { User, Mail, Lock, UserPlus, Stethoscope, Sparkles, ShieldCheck, CheckCircle2, Circle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { getPasswordChecks, validateStrongPassword } from '../../utils/passwordPolicy';
 
 type SocialProvider = 'google' | 'facebook';
 
@@ -26,6 +27,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const isGoogleEnabled = enabledSocialProviders.includes('google');
   const isFacebookEnabled = enabledSocialProviders.includes('facebook');
   const hasEnabledSocialProviders = isGoogleEnabled || isFacebookEnabled;
+  const passwordChecks = getPasswordChecks(password);
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -52,6 +54,12 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
     if (password !== confirmPassword) {
       toast.error('As senhas não coincidem');
+      return;
+    }
+
+    const passwordValidation = validateStrongPassword(password);
+    if (!passwordValidation.valid) {
+      toast.error(passwordValidation.message);
       return;
     }
 
@@ -158,13 +166,28 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
-                placeholder="Mínimo 6 caracteres"
+                placeholder="Ex: MinhaSenha@123"
                 disabled={isLoading}
               />
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Mínimo 6 caracteres com letras e números
-            </p>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs">
+              <p className={`inline-flex items-center gap-1 ${passwordChecks.minLength ? 'text-emerald-600' : 'text-gray-500 dark:text-gray-400'}`}>
+                {passwordChecks.minLength ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
+                8+ caracteres
+              </p>
+              <p className={`inline-flex items-center gap-1 ${passwordChecks.hasUppercase ? 'text-emerald-600' : 'text-gray-500 dark:text-gray-400'}`}>
+                {passwordChecks.hasUppercase ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
+                1 letra maiúscula
+              </p>
+              <p className={`inline-flex items-center gap-1 ${passwordChecks.hasNumber ? 'text-emerald-600' : 'text-gray-500 dark:text-gray-400'}`}>
+                {passwordChecks.hasNumber ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
+                1 número
+              </p>
+              <p className={`inline-flex items-center gap-1 ${passwordChecks.hasSpecialChar ? 'text-emerald-600' : 'text-gray-500 dark:text-gray-400'}`}>
+                {passwordChecks.hasSpecialChar ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
+                1 símbolo (!@#$...)
+              </p>
+            </div>
           </div>
 
           <div>

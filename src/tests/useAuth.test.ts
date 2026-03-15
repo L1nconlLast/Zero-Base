@@ -181,7 +181,7 @@ describe('useAuth — register', () => {
     expect(mockSignUp).not.toHaveBeenCalled();
   });
 
-  it('rejeita senha curta (< 6 chars)', async () => {
+  it('rejeita senha fraca no cadastro', async () => {
     const { result } = renderHook(() => useAuth());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -191,7 +191,7 @@ describe('useAuth — register', () => {
     });
 
     expect(res.success).toBe(false);
-    expect(res.message).toContain('6 caracteres');
+    expect(res.message).toContain('8 caracteres');
     expect(mockSignUp).not.toHaveBeenCalled();
   });
 

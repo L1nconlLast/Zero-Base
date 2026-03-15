@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import { logger } from './logger';
 import type { WeekProgress, DayProgress } from '../types';
+import { validateStrongPassword } from './passwordPolicy';
 
 // Constantes
 const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 horas
@@ -54,13 +55,7 @@ export const validateEmail = (email: string): boolean => {
 };
 
 export const validatePassword = (password: string): { valid: boolean; message: string } => {
-  if (password.length < 6) {
-    return { valid: false, message: 'Senha deve ter no mínimo 6 caracteres' };
-  }
-  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    return { valid: false, message: 'Senha deve conter letras e números' };
-  }
-  return { valid: true, message: '' };
+  return validateStrongPassword(password);
 };
 
 export const validateName = (name: string): boolean => {
