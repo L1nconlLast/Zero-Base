@@ -49,6 +49,8 @@ const TRACK_LABEL: Record<QuestionTrack | 'ambos', string> = {
   ambos: 'Ambos',
 };
 
+const QUIZ_QUESTION_OPTIONS = [5, 10, 20, 50] as const;
+
 const ENEM_SUBJECT_ORDER = [
   'Linguagens',
   'Ciências Humanas',
@@ -132,6 +134,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
   const [selectedTopic, setSelectedTopic] = useState<string>('Todos');
   const [selectedTrack, setSelectedTrack] = useState<QuestionTrack | 'ambos'>('ambos');
   const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty | 'todas'>('todas');
+  const [quizQuestionCount, setQuizQuestionCount] = useState<number>(10);
   const [dailyMode, setDailyMode] = useLocalStorage<boolean>('daily_quiz_enabled', true);
   const [dailyStreak, setDailyStreak] = useLocalStorage<number>('daily_quiz_streak', 0);
   const [dailyLastDoneDate, setDailyLastDoneDate] = useLocalStorage<string | null>('daily_quiz_last_done_date', null);
@@ -235,7 +238,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
         matchTopic(q, selectedTopic),
     );
     const todayKey = getTodayKey();
-    const baseCount = dailyMode ? 5 : 10;
+    const baseCount = dailyMode ? 5 : quizQuestionCount;
     let selectedQuestions: Question[] = [];
 
     if (dailyMode) {
@@ -274,7 +277,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
     setStartedAt(Date.now());
     setShowResultDetails(false);
     setState('answering');
-  }, [dailyMode, getQuestionPriority, selectedDifficulty, selectedSubject, selectedTopic, selectedTrack]);
+  }, [dailyMode, getQuestionPriority, quizQuestionCount, selectedDifficulty, selectedSubject, selectedTopic, selectedTrack]);
 
   const handleAnswer = (letter: string) => {
     if (selectedAnswer) return;
@@ -412,6 +415,28 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
             {dailyMode && <span className="text-xs font-semibold text-amber-500 ml-1">🔥 sequência: {dailyStreak}</span>}
           </label>
 
+          {!dailyMode && (
+            <div>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                Quantas questões você quer resolver agora?
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {QUIZ_QUESTION_OPTIONS.map((count) => (
+                  <button
+                    key={count}
+                    onClick={() => setQuizQuestionCount(count)}
+                    className={`py-2 rounded-lg text-sm font-semibold border transition ${quizQuestionCount === count
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-400'
+                      }`}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
               <Filter className="inline w-3.5 h-3.5 mr-1" />Matéria
@@ -479,7 +504,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
 
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
-              {filteredCount} questões disponíveis ({TRACK_LABEL[selectedTrack]}) • sessão de até {dailyMode ? 5 : 10} questões
+              {filteredCount} questões disponíveis ({TRACK_LABEL[selectedTrack]}) • sessão de até {dailyMode ? 5 : quizQuestionCount} questões
             </p>
             <button
               onClick={startQuiz}
@@ -487,7 +512,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
               className="w-full py-3 rounded-xl font-bold text-white transition disabled:opacity-40"
               style={{ backgroundColor: 'var(--color-primary)' }}
             >
-              Iniciar Quiz
+              Iniciar Quiz ({dailyMode ? 5 : quizQuestionCount} questões)
             </button>
           </div>
         </div>
