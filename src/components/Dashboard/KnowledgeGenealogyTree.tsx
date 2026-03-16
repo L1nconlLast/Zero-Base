@@ -1,5 +1,14 @@
 import React from 'react';
-import { Brain, ChevronDown, ChevronRight, Sparkles, GitBranch, ShieldCheck, ArrowRightCircle } from 'lucide-react';
+import {
+  ArrowRightCircle,
+  Brain,
+  ChevronDown,
+  ChevronRight,
+  Compass,
+  GitBranch,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
 import {
   GLOBAL_KNOWLEDGE_ROOTS,
   KNOWLEDGE_GRAPH_EDGES,
@@ -20,6 +29,106 @@ interface KnowledgeGenealogyTreeProps {
   supabaseUserId?: string | null;
 }
 
+type LearningMode = 'simple' | 'advanced';
+type TrackMode = 'enem' | 'concurso';
+
+interface StageTopic {
+  title: string;
+  topicHints: string[];
+}
+
+interface StageBlock {
+  id: string;
+  title: string;
+  tone: 'green' | 'yellow' | 'orange' | 'blue';
+  topics: StageTopic[];
+}
+
+const TRACK_STAGE_MAP: Record<TrackMode, StageBlock[]> = {
+  enem: [
+    {
+      id: 'fundamentos',
+      title: 'Fundamentos',
+      tone: 'green',
+      topics: [
+        { title: 'Linguagem', topicHints: ['linguagem'] },
+        { title: 'Texto', topicHints: ['texto'] },
+        { title: 'Interpretacao basica', topicHints: ['interpretacao', 'inferencia'] },
+      ],
+    },
+    {
+      id: 'gramatica',
+      title: 'Gramatica',
+      tone: 'yellow',
+      topics: [
+        { title: 'Morfologia', topicHints: ['morfologia'] },
+        { title: 'Sintaxe', topicHints: ['sintaxe'] },
+        { title: 'Concordancia', topicHints: ['concordancia'] },
+      ],
+    },
+    {
+      id: 'producao',
+      title: 'Producao de texto',
+      tone: 'orange',
+      topics: [
+        { title: 'Argumentacao', topicHints: ['argumentacao'] },
+        { title: 'Coesao', topicHints: ['coesao'] },
+        { title: 'Redacao ENEM', topicHints: ['redacao'] },
+      ],
+    },
+    {
+      id: 'literatura',
+      title: 'Literatura',
+      tone: 'blue',
+      topics: [{ title: 'Escolas literarias', topicHints: ['literatura', 'modernismo', 'realismo'] }],
+    },
+  ],
+  concurso: [
+    {
+      id: 'base',
+      title: 'Base comum',
+      tone: 'green',
+      topics: [
+        { title: 'Portugues', topicHints: ['portugues', 'interpretacao', 'gramatica'] },
+        { title: 'Raciocinio logico', topicHints: ['raciocinio', 'logico'] },
+        { title: 'Informatica', topicHints: ['informatica', 'tecnologia'] },
+      ],
+    },
+    {
+      id: 'direito',
+      title: 'Direito publico',
+      tone: 'yellow',
+      topics: [
+        { title: 'Constitucional', topicHints: ['constitucional'] },
+        { title: 'Administrativo', topicHints: ['administrativo'] },
+        { title: 'Legislacao', topicHints: ['legislacao'] },
+      ],
+    },
+    {
+      id: 'edital',
+      title: 'Especialidade do edital',
+      tone: 'orange',
+      topics: [
+        { title: 'Topicos de banca', topicHints: ['banca', 'fgv', 'cebraspe', 'fcc', 'vunesp'] },
+        { title: 'Simulados da carreira', topicHints: ['simulado', 'carreira', 'cargo'] },
+      ],
+    },
+    {
+      id: 'dominio',
+      title: 'Dominio avancado',
+      tone: 'blue',
+      topics: [{ title: 'Revisao intensiva', topicHints: ['revisao', 'questoes', 'prova completa'] }],
+    },
+  ],
+};
+
+const toneStyle: Record<StageBlock['tone'], string> = {
+  green: 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20',
+  yellow: 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20',
+  orange: 'border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20',
+  blue: 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20',
+};
+
 const kindLabel: Record<KnowledgeNode['kind'], string> = {
   root: 'Raiz',
   area: 'Area',
@@ -33,17 +142,6 @@ const kindStyle: Record<KnowledgeNode['kind'], string> = {
   topic: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   microtopic: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
 };
-
-const parentByChild = KNOWLEDGE_GRAPH_EDGES.reduce<Record<string, string[]>>((acc, edge) => {
-  if (!acc[edge.to]) acc[edge.to] = [];
-  acc[edge.to].push(edge.from);
-  return acc;
-}, {});
-
-const rootLabelById = GLOBAL_KNOWLEDGE_ROOTS.reduce<Record<string, string>>((acc, item) => {
-  acc[item.id] = item.name;
-  return acc;
-}, {});
 
 const statusLabel: Record<LearningProgressStatus, string> = {
   locked: 'Bloqueado',
@@ -61,14 +159,52 @@ const statusStyle: Record<LearningProgressStatus, string> = {
   review: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
 };
 
+const statusEmoji: Record<LearningProgressStatus, string> = {
+  locked: '🔒',
+  available: '⚪',
+  studying: '🟡',
+  completed: '🟢',
+  review: '🟣',
+};
+
 const statusFlow: LearningProgressStatus[] = ['locked', 'available', 'studying', 'completed', 'review'];
+
+const parentByChild = KNOWLEDGE_GRAPH_EDGES.reduce<Record<string, string[]>>((acc, edge) => {
+  if (!acc[edge.to]) acc[edge.to] = [];
+  acc[edge.to].push(edge.from);
+  return acc;
+}, {});
+
+const rootLabelById = GLOBAL_KNOWLEDGE_ROOTS.reduce<Record<string, string>>((acc, item) => {
+  acc[item.id] = item.name;
+  return acc;
+}, {});
 
 const getNextStatus = (current: LearningProgressStatus): LearningProgressStatus => {
   const index = statusFlow.indexOf(current);
-  if (index < 0 || index === statusFlow.length - 1) {
-    return 'completed';
-  }
+  if (index < 0 || index === statusFlow.length - 1) return 'completed';
   return statusFlow[index + 1];
+};
+
+const getDisciplineTrack = (discipline: LearningGraphDiscipline): TrackMode | null => {
+  const relation = Array.isArray(discipline.modalidades)
+    ? discipline.modalidades[0]
+    : discipline.modalidades;
+  const modalidadeName = (relation?.nome || '').toLowerCase();
+  const fallbackName = (discipline.nome || '').toLowerCase();
+
+  if (modalidadeName.includes('enem')) return 'enem';
+  if (modalidadeName.includes('concurso')) return 'concurso';
+
+  if (fallbackName.includes('constitucional') || fallbackName.includes('administrativo') || fallbackName.includes('raciocinio')) {
+    return 'concurso';
+  }
+
+  if (fallbackName.includes('redacao') || fallbackName.includes('natureza') || fallbackName.includes('humanas')) {
+    return 'enem';
+  }
+
+  return null;
 };
 
 const KnowledgeNodeRow: React.FC<{ node: KnowledgeNode; level: number }> = ({ node, level }) => {
@@ -78,18 +214,10 @@ const KnowledgeNodeRow: React.FC<{ node: KnowledgeNode; level: number }> = ({ no
 
   return (
     <div className="space-y-2">
-      <div
-        className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2"
-        style={{ marginLeft: `${level * 14}px` }}
-      >
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2" style={{ marginLeft: `${level * 14}px` }}>
         <div className="flex items-center gap-2">
           {hasChildren ? (
-            <button
-              type="button"
-              onClick={() => setOpen((prev) => !prev)}
-              className="text-slate-500"
-              aria-label={open ? 'Recolher ramo' : 'Expandir ramo'}
-            >
+            <button type="button" onClick={() => setOpen((prev) => !prev)} className="text-slate-500" aria-label={open ? 'Recolher ramo' : 'Expandir ramo'}>
               {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </button>
           ) : (
@@ -97,10 +225,7 @@ const KnowledgeNodeRow: React.FC<{ node: KnowledgeNode; level: number }> = ({ no
           )}
 
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{node.name}</p>
-
-          <span className={`ml-auto text-[11px] font-semibold px-2 py-1 rounded-full ${kindStyle[node.kind]}`}>
-            {kindLabel[node.kind]}
-          </span>
+          <span className={`ml-auto text-[11px] font-semibold px-2 py-1 rounded-full ${kindStyle[node.kind]}`}>{kindLabel[node.kind]}</span>
         </div>
 
         {prerequisites.length > 0 && (
@@ -108,10 +233,7 @@ const KnowledgeNodeRow: React.FC<{ node: KnowledgeNode; level: number }> = ({ no
             <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
             <span className="text-slate-500 dark:text-slate-400">Prerequisitos:</span>
             {prerequisites.map((dependency) => (
-              <span
-                key={dependency}
-                className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-              >
+              <span key={dependency} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                 {dependency}
               </span>
             ))}
@@ -131,6 +253,8 @@ const KnowledgeNodeRow: React.FC<{ node: KnowledgeNode; level: number }> = ({ no
 };
 
 const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabaseUserId }) => {
+  const [learningMode, setLearningMode] = React.useState<LearningMode>('simple');
+  const [trackMode, setTrackMode] = React.useState<TrackMode>('enem');
   const [disciplines, setDisciplines] = React.useState<LearningGraphDiscipline[]>([]);
   const [selectedDisciplineId, setSelectedDisciplineId] = React.useState<string>('');
   const [topics, setTopics] = React.useState<LearningGraphTopic[]>([]);
@@ -165,6 +289,22 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
     };
   }, []);
 
+  const trackDisciplines = React.useMemo(
+    () => disciplines.filter((discipline) => getDisciplineTrack(discipline) === trackMode),
+    [disciplines, trackMode],
+  );
+
+  React.useEffect(() => {
+    if (trackDisciplines.length === 0) {
+      setSelectedDisciplineId('');
+      return;
+    }
+
+    if (!trackDisciplines.some((item) => item.id === selectedDisciplineId)) {
+      setSelectedDisciplineId(trackDisciplines[0].id);
+    }
+  }, [trackDisciplines, selectedDisciplineId]);
+
   React.useEffect(() => {
     let active = true;
 
@@ -176,9 +316,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
         const [topicRows, edgeRows, progressRows] = await Promise.all([
           learningGraphApiService.listTopics(selectedDisciplineId || undefined),
           learningGraphApiService.listPrerequisiteEdges(selectedDisciplineId || undefined),
-          supabaseUserId
-            ? learningGraphApiService.getUserProgress(selectedDisciplineId || undefined)
-            : Promise.resolve([]),
+          supabaseUserId ? learningGraphApiService.getUserProgress(selectedDisciplineId || undefined) : Promise.resolve([]),
         ]);
 
         if (!active) return;
@@ -199,9 +337,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
         setPrerequisiteEdges([]);
         setProgressByTopicId({});
       } finally {
-        if (active) {
-          setIsLoadingMap(false);
-        }
+        if (active) setIsLoadingMap(false);
       }
     };
 
@@ -213,30 +349,22 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
   }, [selectedDisciplineId, supabaseUserId]);
 
   React.useEffect(() => {
-    if (!supabaseUserId || topics.length === 0 || isAutoUnlocking) {
-      return;
-    }
+    if (!supabaseUserId || topics.length === 0 || isAutoUnlocking) return;
 
     const completedStatuses = new Set<LearningProgressStatus>(['completed', 'review']);
 
     const edgeMap = prerequisiteEdges.reduce<Record<string, string[]>>((acc, edge) => {
-      if (!acc[edge.topico_id]) {
-        acc[edge.topico_id] = [];
-      }
+      if (!acc[edge.topico_id]) acc[edge.topico_id] = [];
       acc[edge.topico_id].push(edge.prerequisito_id);
       return acc;
     }, {});
 
     const unlockedCandidates = topics.filter((topic) => {
       const currentStatus = progressByTopicId[topic.id]?.status || 'locked';
-      if (currentStatus !== 'locked') {
-        return false;
-      }
+      if (currentStatus !== 'locked') return false;
 
       const prerequisites = edgeMap[topic.id] || [];
-      if (prerequisites.length === 0) {
-        return true;
-      }
+      if (prerequisites.length === 0) return true;
 
       return prerequisites.every((prereqId) => {
         const prereqStatus = progressByTopicId[prereqId]?.status;
@@ -244,9 +372,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
       });
     });
 
-    if (unlockedCandidates.length === 0) {
-      return;
-    }
+    if (unlockedCandidates.length === 0) return;
 
     let active = true;
 
@@ -255,14 +381,9 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
 
       try {
         for (const topic of unlockedCandidates) {
-          const updated = await learningGraphApiService.updateTopicProgress({
-            topicId: topic.id,
-            status: 'available',
-          });
+          const updated = await learningGraphApiService.updateTopicProgress({ topicId: topic.id, status: 'available' });
 
-          if (!active || !updated) {
-            continue;
-          }
+          if (!active || !updated) continue;
 
           setProgressByTopicId((prev) => ({
             ...prev,
@@ -274,9 +395,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
           setMapError(error instanceof Error ? error.message : 'Falha no desbloqueio automatico de topicos.');
         }
       } finally {
-        if (active) {
-          setIsAutoUnlocking(false);
-        }
+        if (active) setIsAutoUnlocking(false);
       }
     };
 
@@ -287,24 +406,20 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
     };
   }, [supabaseUserId, topics, prerequisiteEdges, progressByTopicId, isAutoUnlocking]);
 
-  const handleRecommend = async () => {
-    setIsLoadingNextTopic(true);
-    setNextTopicError(null);
-
-    try {
-      const recommended = await learningGraphApiService.getNextTopic(selectedDisciplineId || undefined);
-      setNextTopic(recommended);
-    } catch (error) {
-      setNextTopic(null);
-      setNextTopicError(error instanceof Error ? error.message : 'Nao foi possivel obter recomendacao.');
-    } finally {
-      setIsLoadingNextTopic(false);
-    }
-  };
-
   const getTopicStatus = React.useCallback(
     (topicId: string): LearningProgressStatus => progressByTopicId[topicId]?.status || 'locked',
     [progressByTopicId],
+  );
+
+  const findTopicByHint = React.useCallback(
+    (hintList: string[]) => {
+      const normalizedHints = hintList.map((hint) => hint.toLowerCase());
+      return topics.find((topic) => {
+        const text = `${topic.nome} ${topic.descricao || ''}`.toLowerCase();
+        return normalizedHints.some((hint) => text.includes(hint));
+      });
+    },
+    [topics],
   );
 
   const handleAdvanceTopic = async (topic: LearningGraphTopic) => {
@@ -341,21 +456,45 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
     }
   };
 
-  const handleStartRecommendedTopic = async () => {
-    if (!nextTopic?.topic_id) {
-      return;
-    }
+  const handleRecommend = async () => {
+    setIsLoadingNextTopic(true);
+    setNextTopicError(null);
 
-    const linked = topics.find((topic) => topic.id === nextTopic.topic_id);
-    if (!linked) {
-      setMapError('Topico recomendado nao esta na lista atual. Selecione a disciplina correspondente.');
-      return;
+    try {
+      const recommended = await learningGraphApiService.getNextTopic(selectedDisciplineId || undefined);
+      setNextTopic(recommended);
+    } catch (error) {
+      setNextTopic(null);
+      setNextTopicError(error instanceof Error ? error.message : 'Nao foi possivel obter recomendacao.');
+    } finally {
+      setIsLoadingNextTopic(false);
     }
-
-    await handleAdvanceTopic(linked);
   };
 
-  const displayedTopics = React.useMemo(() => topics.slice(0, 14), [topics]);
+  const handleContinue = async () => {
+    if (nextTopic?.topic_id) {
+      const linkedByRecommendation = topics.find((topic) => topic.id === nextTopic.topic_id);
+      if (linkedByRecommendation) {
+        await handleAdvanceTopic(linkedByRecommendation);
+        return;
+      }
+    }
+
+    const candidate = topics.find((topic) => {
+      const status = getTopicStatus(topic.id);
+      return status === 'available' || status === 'studying';
+    });
+
+    if (candidate) {
+      await handleAdvanceTopic(candidate);
+      return;
+    }
+
+    setMapError('Nenhum topico disponivel para continuar no momento.');
+  };
+
+  const displayedTopics = React.useMemo(() => topics.slice(0, 16), [topics]);
+  const stages = TRACK_STAGE_MAP[trackMode];
 
   return (
     <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
@@ -363,171 +502,256 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
         <div>
           <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
             <GitBranch className="w-4 h-4 text-indigo-500" />
-            Arvore genealogica do conhecimento
+            Arvore do conhecimento
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Visualize linhagem de base, ramos e prerequisitos antes de subir para topicos avancados.
+            Interface em trilha para aluno e mapa completo para exploracao avancada.
           </p>
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Brain className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
-          <p className="text-sm font-semibold text-indigo-800 dark:text-indigo-200">Recomendacao IA de proximo topico</p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-2">
-          <select
-            value={selectedDisciplineId}
-            onChange={(event) => setSelectedDisciplineId(event.target.value)}
-            className="w-full sm:max-w-xs px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-slate-900 text-sm"
-          >
-            <option value="">Todas as disciplinas</option>
-            {disciplines.map((discipline) => (
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-2">
+        <select
+          value={selectedDisciplineId}
+          onChange={(event) => setSelectedDisciplineId(event.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+        >
+          {trackDisciplines.length === 0 ? (
+            <option value="">Sem disciplina mapeada</option>
+          ) : (
+            trackDisciplines.map((discipline) => (
               <option key={discipline.id} value={discipline.id}>
                 {discipline.nome}
               </option>
-            ))}
-          </select>
+            ))
+          )}
+        </select>
 
+        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 p-1 bg-slate-50 dark:bg-slate-800">
+          {([
+            { id: 'enem', label: 'ENEM' },
+            { id: 'concurso', label: 'Concurso' },
+          ] as const).map((track) => (
+            <button
+              key={track.id}
+              type="button"
+              onClick={() => setTrackMode(track.id)}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold ${trackMode === track.id ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}
+              style={trackMode === track.id ? { backgroundColor: 'var(--color-primary)' } : undefined}
+            >
+              {track.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 p-1 bg-slate-50 dark:bg-slate-800">
+          {([
+            { id: 'simple', label: 'Simples' },
+            { id: 'advanced', label: 'Avancado' },
+          ] as const).map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setLearningMode(mode.id)}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold ${learningMode === mode.id ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}
+              style={learningMode === mode.id ? { backgroundColor: 'var(--color-primary)' } : undefined}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-4">
+        <p className="text-xs uppercase tracking-[0.12em] text-indigo-700 dark:text-indigo-300">Continuar estudo</p>
+        <p className="text-base font-bold text-indigo-900 dark:text-indigo-100 mt-1">
+          {nextTopic?.topic_nome || 'Proximo topico recomendado'}
+        </p>
+        <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-1">
+          {nextTopic
+            ? `${nextTopic.discipline_nome} • dificuldade ${nextTopic.difficulty} • score IA ${nextTopic.score}`
+            : 'Clique para calcular recomendacao personalizada com IA.'}
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => {
               void handleRecommend();
             }}
             disabled={!supabaseUserId || isLoadingNextTopic}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+            className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
             style={{ backgroundColor: 'var(--color-primary)' }}
           >
-            {isLoadingNextTopic ? 'Calculando...' : 'Sugerir proximo topico'}
+            {isLoadingNextTopic ? 'Calculando...' : 'Proximo topico recomendado'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              void handleContinue();
+            }}
+            disabled={!supabaseUserId || isLoadingMap}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-emerald-300 dark:border-emerald-700 bg-white/90 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 disabled:opacity-50"
+          >
+            <ArrowRightCircle className="w-3.5 h-3.5" />
+            Continuar de onde parei
           </button>
         </div>
 
-        {!supabaseUserId && (
-          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-            Faca login para receber recomendacao personalizada baseada no seu progresso.
-          </p>
-        )}
-
-        {nextTopicError && (
-          <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{nextTopicError}</p>
-        )}
-
-        {nextTopic && (
-          <div className="mt-3 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3">
-            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4" />
-              {nextTopic.topic_nome}
-            </p>
-            <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
-              Disciplina: {nextTopic.discipline_nome} • Dificuldade: {nextTopic.difficulty} • Score IA: {nextTopic.score}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                void handleStartRecommendedTopic();
-              }}
-              disabled={!supabaseUserId || updatingTopicId === nextTopic.topic_id}
-              className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 disabled:opacity-50"
-            >
-              {updatingTopicId === nextTopic.topic_id ? 'Atualizando...' : 'Iniciar recomendado'}
-            </button>
-          </div>
-        )}
+        {nextTopicError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{nextTopicError}</p>}
       </div>
 
-      <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-4">
-        <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Grafo executavel (status por no)</p>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            {isAutoUnlocking ? 'Desbloqueio automatico em andamento...' : '1 clique para avancar etapa'}
-          </span>
-        </div>
-
-        <div className="mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5">
-          <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">Linha do tempo de progressao</p>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {statusFlow.map((status, index) => (
-              <React.Fragment key={status}>
-                <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]}`}>
-                  {statusLabel[status]}
-                </span>
-                {index < statusFlow.length - 1 && <span className="text-slate-400">→</span>}
-              </React.Fragment>
-            ))}
+      {learningMode === 'simple' && (
+        <div className="mt-4 space-y-3">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-3">
+            <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Trilha atual ({trackMode === 'enem' ? 'ENEM' : 'Concurso'})</p>
           </div>
-        </div>
 
-        {mapError && <p className="text-xs text-rose-600 dark:text-rose-400 mb-2">{mapError}</p>}
+          {stages.map((stage) => (
+            <div key={stage.id} className={`rounded-xl border p-3 ${toneStyle[stage.tone]}`}>
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 inline-flex items-center gap-2">
+                <Compass className="w-4 h-4" />
+                {stage.title}
+              </p>
 
-        {isLoadingMap ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">Carregando topicos e progresso...</p>
-        ) : displayedTopics.length === 0 ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">Sem topicos para a disciplina selecionada.</p>
-        ) : (
-          <div className="space-y-2">
-            {displayedTopics.map((topic) => {
-              const status = getTopicStatus(topic.id);
-              const nextStatus = getNextStatus(status);
-              const isUpdating = updatingTopicId === topic.id;
+              <div className="mt-2 space-y-2">
+                {stage.topics.map((stageTopic) => {
+                  const matched = findTopicByHint(stageTopic.topicHints);
+                  const status = matched ? getTopicStatus(matched.id) : 'locked';
+                  const isUpdating = matched ? updatingTopicId === matched.id : false;
 
-              return (
-                <div
-                  key={topic.id}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3"
-                >
-                  <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{topic.nome}</p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                        Nivel: {topic.nivel_dificuldade || 'intermediario'}
-                      </p>
+                  return (
+                    <div key={stageTopic.title} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5">
+                      <div className="flex items-center gap-2">
+                        <span>{statusEmoji[status]}</span>
+                        <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{stageTopic.title}</p>
+                        <span className={`ml-auto text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]}`}>{statusLabel[status]}</span>
+                      </div>
+
+                      {matched && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleAdvanceTopic(matched);
+                          }}
+                          disabled={!supabaseUserId || isUpdating}
+                          className="mt-2 text-[11px] font-semibold px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-50"
+                        >
+                          {isUpdating ? 'Atualizando...' : `Avancar para ${statusLabel[getNextStatus(status)]}`}
+                        </button>
+                      )}
                     </div>
-
-                    <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]}`}>
-                      {statusLabel[status]}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleAdvanceTopic(topic);
-                      }}
-                      disabled={!supabaseUserId || isUpdating}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-50"
-                    >
-                      <ArrowRightCircle className="w-3.5 h-3.5" />
-                      {isUpdating ? 'Atualizando...' : `Avancar para ${statusLabel[nextStatus]}`}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 space-y-2">
-        <KnowledgeNodeRow node={PORTUGUESE_KNOWLEDGE_TREE} level={0} />
-      </div>
-
-      <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-3">
-        <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-[0.12em]">Raizes globais mapeadas</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {GLOBAL_KNOWLEDGE_ROOTS.map((root) => (
-            <span
-              key={root.id}
-              className="px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
-              title={root.id}
-            >
-              {rootLabelById[root.id] || root.name}
-            </span>
+                  );
+                })}
+              </div>
+            </div>
           ))}
+
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-[0.12em]">Como a IA decide o proximo topico</p>
+            <ul className="mt-2 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+              <li>1. Verifica prerequisitos concluidos.</li>
+              <li>2. Prioriza topicos disponiveis com maior impacto.</li>
+              <li>3. Ajusta pela dificuldade e progresso recente.</li>
+            </ul>
+          </div>
         </div>
-      </div>
+      )}
+
+      {learningMode === 'advanced' && (
+        <div className="mt-4 space-y-4">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Mapa completo (modo avancado)</p>
+              <span className="text-xs text-slate-500 dark:text-slate-400">{isAutoUnlocking ? 'Desbloqueio automatico em andamento...' : 'Escala para 2000+ topicos por filtros'}</span>
+            </div>
+
+            <div className="mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5">
+              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">Linha do tempo de progressao</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {statusFlow.map((status, index) => (
+                  <React.Fragment key={status}>
+                    <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]}`}>{statusLabel[status]}</span>
+                    {index < statusFlow.length - 1 && <span className="text-slate-400">→</span>}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+            {mapError && <p className="text-xs text-rose-600 dark:text-rose-400 mb-2">{mapError}</p>}
+
+            {isLoadingMap ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Carregando topicos e progresso...</p>
+            ) : displayedTopics.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Sem topicos para a disciplina selecionada.</p>
+            ) : (
+              <div className="space-y-2">
+                {displayedTopics.map((topic) => {
+                  const status = getTopicStatus(topic.id);
+                  const nextStatus = getNextStatus(status);
+                  const isUpdating = updatingTopicId === topic.id;
+
+                  return (
+                    <div key={topic.id} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{topic.nome}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Nivel: {topic.nivel_dificuldade || 'intermediario'}</p>
+                        </div>
+
+                        <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]}`}>{statusLabel[status]}</span>
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleAdvanceTopic(topic);
+                          }}
+                          disabled={!supabaseUserId || isUpdating}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-50"
+                        >
+                          <ArrowRightCircle className="w-3.5 h-3.5" />
+                          {isUpdating ? 'Atualizando...' : `Avancar para ${statusLabel[nextStatus]}`}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <KnowledgeNodeRow node={PORTUGUESE_KNOWLEDGE_TREE} level={0} />
+          </div>
+
+          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-3">
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-[0.12em]">Raizes globais mapeadas</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {GLOBAL_KNOWLEDGE_ROOTS.map((root) => (
+                <span
+                  key={root.id}
+                  className="px-2.5 py-1 rounded-full text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                  title={root.id}
+                >
+                  {rootLabelById[root.id] || root.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!supabaseUserId && (
+        <div className="mt-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+          <p className="text-xs text-amber-700 dark:text-amber-300 inline-flex items-center gap-2">
+            <Brain className="w-3.5 h-3.5" />
+            Faca login para recomendacao personalizada e salvamento de progresso no grafo.
+          </p>
+        </div>
+      )}
     </section>
   );
 };

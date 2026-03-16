@@ -4,6 +4,7 @@ export interface LearningGraphDiscipline {
   id: string;
   nome: string;
   modalidade_id?: string;
+  modalidades?: { nome?: string } | Array<{ nome?: string }> | null;
 }
 
 export interface LearningGraphTopic {
@@ -49,6 +50,27 @@ export interface LearningGraphNextTopic {
 class LearningGraphApiService {
   private readonly baseEndpoint = '/api/learning-graph';
 
+  private async parseJsonResponse<T>(response: Response, errorPrefix: string): Promise<T> {
+    const contentType = response.headers.get('content-type') || '';
+
+    if (!response.ok) {
+      const rawBody = await response.text();
+      const preview = rawBody.slice(0, 120).replace(/\s+/g, ' ').trim();
+      throw new Error(`${errorPrefix} (${response.status}). ${preview || 'Sem detalhes.'}`);
+    }
+
+    if (!contentType.toLowerCase().includes('application/json')) {
+      const rawBody = await response.text();
+      const looksLikeHtml = rawBody.trim().toLowerCase().startsWith('<!doctype') || rawBody.trim().startsWith('<');
+      const hint = looksLikeHtml
+        ? 'Resposta HTML detectada. Verifique se o endpoint /api/learning-graph esta disponivel em producao.'
+        : 'Resposta nao-JSON detectada no endpoint.';
+      throw new Error(`${errorPrefix}. ${hint}`);
+    }
+
+    return (await response.json()) as T;
+  }
+
   private async getAccessToken(): Promise<string | null> {
     const session = await supabase?.auth.getSession();
     return session?.data?.session?.access_token || null;
@@ -67,11 +89,10 @@ class LearningGraphApiService {
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        throw new Error(`Falha ao listar disciplinas (${response.status}).`);
-      }
-
-      const data = (await response.json()) as { disciplines?: LearningGraphDiscipline[] };
+      const data = await this.parseJsonResponse<{ disciplines?: LearningGraphDiscipline[] }>(
+        response,
+        'Falha ao listar disciplinas',
+      );
       return data.disciplines || [];
     } finally {
       window.clearTimeout(timer);
@@ -96,11 +117,7 @@ class LearningGraphApiService {
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        throw new Error(`Falha ao listar topicos (${response.status}).`);
-      }
-
-      const data = (await response.json()) as { topics?: LearningGraphTopic[] };
+      const data = await this.parseJsonResponse<{ topics?: LearningGraphTopic[] }>(response, 'Falha ao listar topicos');
       return data.topics || [];
     } finally {
       window.clearTimeout(timer);
@@ -125,11 +142,10 @@ class LearningGraphApiService {
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        throw new Error(`Falha ao listar arestas de prerequisito (${response.status}).`);
-      }
-
-      const data = (await response.json()) as { edges?: LearningGraphPrerequisiteEdge[] };
+      const data = await this.parseJsonResponse<{ edges?: LearningGraphPrerequisiteEdge[] }>(
+        response,
+        'Falha ao listar arestas de prerequisito',
+      );
       return data.edges || [];
     } finally {
       window.clearTimeout(timer);
@@ -160,11 +176,10 @@ class LearningGraphApiService {
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        throw new Error(`Falha ao buscar progresso (${response.status}).`);
-      }
-
-      const data = (await response.json()) as { progress?: LearningGraphUserProgress[] };
+      const data = await this.parseJsonResponse<{ progress?: LearningGraphUserProgress[] }>(
+        response,
+        'Falha ao buscar progresso',
+      );
       return data.progress || [];
     } finally {
       window.clearTimeout(timer);
@@ -193,11 +208,10 @@ class LearningGraphApiService {
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      throw new Error(`Falha ao atualizar progresso (${response.status}).`);
-    }
-
-    const data = (await response.json()) as { progress?: LearningGraphUserProgress | null };
+    const data = await this.parseJsonResponse<{ progress?: LearningGraphUserProgress | null }>(
+      response,
+      'Falha ao atualizar progresso',
+    );
     return data.progress || null;
   }
 
@@ -225,11 +239,10 @@ class LearningGraphApiService {
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        throw new Error(`Falha ao buscar recomendacao (${response.status}).`);
-      }
-
-      const data = (await response.json()) as { nextTopic?: LearningGraphNextTopic | null };
+      const data = await this.parseJsonResponse<{ nextTopic?: LearningGraphNextTopic | null }>(
+        response,
+        'Falha ao buscar recomendacao',
+      );
       return data.nextTopic || null;
     } finally {
       window.clearTimeout(timer);
