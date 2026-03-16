@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { rankingService } from '../../services/ranking.service';
 import type { CategoryRankingEntry, UserRankInfo } from '../../types/ranking';
 import { useAuth } from '../../hooks/useAuth';
@@ -18,11 +18,7 @@ export function GlobalRankingPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadRankingData();
-  }, []);
-
-  const loadRankingData = async () => {
+  const loadRankingData = useCallback(async () => {
     setLoading(true);
     try {
       // Get all categories
@@ -62,7 +58,11 @@ export function GlobalRankingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCategory, supabaseUserId]);
+
+  useEffect(() => {
+    void loadRankingData();
+  }, [loadRankingData]);
 
   if (loading) {
     return <div className="global-ranking loading">Carregando rankings...</div>;
@@ -144,7 +144,7 @@ export function GlobalRankingPage() {
                         </td>
                       </tr>
                     ) : (
-                      currentStats.ranking.map((entry, idx) => (
+                      currentStats.ranking.map((entry) => (
                         <tr
                           key={entry.user_id}
                           className={supabaseUserId === entry.user_id ? 'current-user' : ''}

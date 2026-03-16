@@ -51,7 +51,6 @@ import { getDayOfWeek } from './utils/helpers';
 import { trackEvent } from './utils/analytics';
 import { buildWeeklyRetentionSnapshot } from './utils/weeklyRetention';
 
-const WEEK_DAYS = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'] as const;
 type StudyMode = 'pomodoro' | 'livre';
 type StudyTrack = 'enem' | 'concursos' | 'hibrido';
 type QuizTrackFilter = 'enem' | 'concurso' | 'ambos';
@@ -1768,7 +1767,7 @@ function App() {
           {activeTab === 'vespera' && (
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando véspera...</div>}>
               <EveOfExamPage
-                onStartQuiz={(subject) => {
+                onStartQuiz={() => {
                   setActiveTab('questoes');
                 }}
                 onStartFlashcards={() => setActiveTab('flashcards')}

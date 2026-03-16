@@ -3,13 +3,6 @@ import { XCircle, RotateCcw, BookOpen } from 'lucide-react';
 import type { Question } from '../../data/questionsBank';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
-interface ErrorEntry {
-    questionId: string;
-    date: string;
-    subject: string;
-    tags: string[];
-}
-
 interface QuizErrorReviewProps {
     /** Called when the user wants to start a quiz filtered to error topics */
     onStartReview: (topicFilter: string, subjectFilter: string) => void;

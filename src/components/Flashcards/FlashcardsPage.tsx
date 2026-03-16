@@ -43,46 +43,6 @@ const SUBJECT_ICON: Record<string, string> = {
   Atualidades: '📰',
 };
 
-const disciplinas = {
-  enem: [
-    { id: 'port', label: 'Português', icon: '🇧🇷' },
-    { id: 'lit', label: 'Literatura', icon: '📖' },
-    { id: 'red', label: 'Redação', icon: '✍️' },
-    { id: 'ing', label: 'Inglês', icon: '🇬🇧' },
-    { id: 'esp', label: 'Espanhol', icon: '🇪🇸' },
-    { id: 'art', label: 'Artes', icon: '🎨' },
-    { id: 'edf', label: 'Educação Física', icon: '🏃‍♂️' },
-    { id: 'hist', label: 'História', icon: '🏰' },
-    { id: 'geo', label: 'Geografia', icon: '🌎' },
-    { id: 'fil', label: 'Filosofia', icon: '🧠' },
-    { id: 'soc', label: 'Sociologia', icon: '👥' },
-    { id: 'fis', label: 'Física', icon: '🔬' },
-    { id: 'qui', label: 'Química', icon: '⚗️' },
-    { id: 'bio', label: 'Biologia', icon: '🧬' },
-    { id: 'mat', label: 'Matemática', icon: '📐' },
-  ],
-  concurso: [
-    { id: 'port', label: 'Português', icon: '🇧🇷' },
-    { id: 'raci', label: 'Raciocínio Lógico', icon: '🧩' },
-    { id: 'info', label: 'Informática', icon: '💻' },
-    { id: 'admPub', label: 'Administração Pública', icon: '🏛️' },
-    { id: 'atual', label: 'Atualidades', icon: '📰' },
-    { id: 'dirConst', label: 'Direito Constitucional', icon: '⚖️' },
-    { id: 'dirAdm', label: 'Direito Administrativo', icon: '🏢' },
-    { id: 'dirPen', label: 'Direito Penal', icon: '🚔' },
-    { id: 'dirProcPen', label: 'Direito Processual Penal', icon: '📜' },
-    { id: 'dirCivil', label: 'Direito Civil', icon: '🏠' },
-    { id: 'dirProcCivil', label: 'Direito Processual Civil', icon: '📑' },
-    { id: 'dirTrib', label: 'Direito Tributário', icon: '💰' },
-    { id: 'dirTrab', label: 'Direito do Trabalho', icon: '🛠️' },
-    { id: 'cont', label: 'Contabilidade', icon: '📊' },
-    { id: 'contPub', label: 'Contabilidade Pública', icon: '🏦' },
-    { id: 'adm', label: 'Administração Geral', icon: '🗂️' },
-    { id: 'gestPes', label: 'Gestão de Pessoas', icon: '👔' },
-    { id: 'arquiv', label: 'Arquivologia', icon: '🗃️' },
-  ],
-};
-
 const ENEM_SUBJECTS = new Set(ENEM_SUBJECT_ORDER);
 const CONCURSO_SUBJECTS = new Set(CONCURSO_SUBJECT_ORDER);
 
@@ -152,7 +112,7 @@ const FlashcardsPage: React.FC = () => {
   const subjectsForTrack = useMemo(() => {
     const unique = [...new Set(trackCards.map((card) => card.subject))];
     return getOrderedSubjects(unique, selectedTrack);
-  }, [trackCards]);
+  }, [selectedTrack, trackCards]);
 
   const cardsBySubject = useMemo(() => {
     return selectedSubject === 'Todas'

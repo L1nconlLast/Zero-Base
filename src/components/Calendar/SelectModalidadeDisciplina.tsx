@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 const MODALIDADES = [
   { value: 'enem', label: 'ENEM', color: 'bg-blue-600', icon: '🔵' },

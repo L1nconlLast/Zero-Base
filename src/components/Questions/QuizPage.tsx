@@ -140,7 +140,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
   const [dailyMode, setDailyMode] = useLocalStorage<boolean>('daily_quiz_enabled', true);
   const [dailyStreak, setDailyStreak] = useLocalStorage<number>('daily_quiz_streak', 0);
   const [dailyLastDoneDate, setDailyLastDoneDate] = useLocalStorage<string | null>('daily_quiz_last_done_date', null);
-  const [dailyQuizHistory, setDailyQuizHistory] = useLocalStorage<DailyQuizHistoryEntry[]>('daily_quiz_history', []);
+  const [, setDailyQuizHistory] = useLocalStorage<DailyQuizHistoryEntry[]>('daily_quiz_history', []);
   const [errorHistoryByTopic] = useLocalStorage<Record<string, number>>('mock_exam_error_history_by_topic', {});
   const [answeredIds, setAnsweredIds] = useLocalStorage<string[]>('quiz_answered_ids', []);
   const [showResultDetails, setShowResultDetails] = useState(false);
@@ -248,7 +248,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
   const getTodayKey = () => new Date().toISOString().slice(0, 10);
 
   // Filter already-answered questions from pool (keep last 50 to allow cycling)
-  const recentlyAnsweredSet = new Set(answeredIds.slice(-50));
+  const recentlyAnsweredSet = useMemo(() => new Set(answeredIds.slice(-50)), [answeredIds]);
 
   // Handler called by QuizErrorReview to launch a targeted session (Fix #1)
   const handleStartReview = useCallback((topicFilter: string, subjectFilter: string) => {
@@ -314,7 +314,7 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
     setStartedAt(Date.now());
     setShowResultDetails(false);
     setState('answering');
-  }, [dailyMode, getQuestionPriority, quizQuestionCount, selectedDifficulty, selectedSubject, selectedTopic, selectedTrack]);
+  }, [dailyMode, getQuestionPriority, quizQuestionCount, recentlyAnsweredSet, selectedDifficulty, selectedSubject, selectedTopic, selectedTrack]);
 
   const handleAnswer = (letter: string) => {
     if (selectedAnswer) return;

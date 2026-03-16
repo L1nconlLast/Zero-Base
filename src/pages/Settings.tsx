@@ -52,13 +52,6 @@ type PrefLanguageValues = 'Português' | 'English' | 'Español';
 type PrefDensityValues = 'Compacto' | 'Normal' | 'Espaçoso';
 type PrefTimeValues = 'Manhã' | 'Tarde' | 'Noite' | 'Madrugada';
 
-type PrefOption<T> = {
-  label: 'Tema' | 'Idioma' | 'Densidade';
-  opts: Array<{ l: T; Icon: LucideIcon }>;
-  value: T;
-  setValue: React.Dispatch<React.SetStateAction<T>>;
-};
-
 interface SettingsPageProps {
   userData: UserData;
   userName?: string;

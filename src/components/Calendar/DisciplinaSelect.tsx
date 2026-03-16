@@ -30,7 +30,7 @@ const DisciplinaSelect: React.FC<DisciplinaSelectProps> = ({ modalidade, value, 
     setSearch('');
     setOpen(false);
     onChange(null);
-  }, [modalidade]);
+  }, [modalidade, onChange]);
 
   const filtered = disciplinas.filter(d =>
     d.label.toLowerCase().includes(search.toLowerCase())

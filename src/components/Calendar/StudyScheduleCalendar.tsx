@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ModalidadeSelect from './ModalidadeSelect';
 import DisciplinaSelect from './DisciplinaSelect';
-import CommandPaletteDisciplineSelect from './CommandPaletteDisciplineSelect';
 import {
   CalendarDays,
   Plus,
@@ -110,15 +109,6 @@ const addDays = (date: Date, days: number): Date => {
   return next;
 };
 
-const getSubjectCellClass = (subject?: string): string => {
-  if (!subject) return 'bg-slate-100 dark:bg-slate-800 text-slate-500';
-  if (subject.includes('Matem')) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
-  if (subject.includes('Lingu')) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
-  if (subject.includes('Human')) return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300';
-  if (subject.includes('Reda')) return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300';
-  return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300';
-};
-
 interface StudyScheduleCalendarProps {
   userId?: string | null;
 }
@@ -127,6 +117,46 @@ interface EditableWeeklyRow {
   time: string;
   cells: string[];
 }
+
+const DISCIPLINAS_BY_MODALIDADE: Record<'enem' | 'concurso', { id: string; label: string }[]> = {
+  enem: [
+    { id: 'port', label: 'Português' },
+    { id: 'lit', label: 'Literatura' },
+    { id: 'red', label: 'Redação' },
+    { id: 'ing', label: 'Inglês' },
+    { id: 'esp', label: 'Espanhol' },
+    { id: 'art', label: 'Artes' },
+    { id: 'edf', label: 'Educação Física' },
+    { id: 'hist', label: 'História' },
+    { id: 'geo', label: 'Geografia' },
+    { id: 'fil', label: 'Filosofia' },
+    { id: 'soc', label: 'Sociologia' },
+    { id: 'fis', label: 'Física' },
+    { id: 'qui', label: 'Química' },
+    { id: 'bio', label: 'Biologia' },
+    { id: 'mat', label: 'Matemática' },
+  ],
+  concurso: [
+    { id: 'port', label: 'Português' },
+    { id: 'raci', label: 'Raciocínio Lógico' },
+    { id: 'info', label: 'Informática' },
+    { id: 'admPub', label: 'Administração Pública' },
+    { id: 'atual', label: 'Atualidades' },
+    { id: 'dirConst', label: 'Direito Constitucional' },
+    { id: 'dirAdm', label: 'Direito Administrativo' },
+    { id: 'dirPen', label: 'Direito Penal' },
+    { id: 'dirProcPen', label: 'Direito Processual Penal' },
+    { id: 'dirCivil', label: 'Direito Civil' },
+    { id: 'dirProcCivil', label: 'Direito Processual Civil' },
+    { id: 'dirTrib', label: 'Direito Tributário' },
+    { id: 'dirTrab', label: 'Direito do Trabalho' },
+    { id: 'cont', label: 'Contabilidade' },
+    { id: 'contPub', label: 'Contabilidade Pública' },
+    { id: 'adm', label: 'Administração Geral' },
+    { id: 'gestPes', label: 'Gestão de Pessoas' },
+    { id: 'arquiv', label: 'Arquivologia' },
+  ],
+};
 
 const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId }) => {
   const today = new Date();
@@ -178,48 +208,6 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     });
   }, [setSmartProfile]);
 
-  // já declarado acima
-
-  const disciplinas: Record<'enem' | 'concurso', { id: string; label: string }[]> = {
-    enem: [
-      { id: 'port', label: 'Português' },
-      { id: 'lit', label: 'Literatura' },
-      { id: 'red', label: 'Redação' },
-      { id: 'ing', label: 'Inglês' },
-      { id: 'esp', label: 'Espanhol' },
-      { id: 'art', label: 'Artes' },
-      { id: 'edf', label: 'Educação Física' },
-      { id: 'hist', label: 'História' },
-      { id: 'geo', label: 'Geografia' },
-      { id: 'fil', label: 'Filosofia' },
-      { id: 'soc', label: 'Sociologia' },
-      { id: 'fis', label: 'Física' },
-      { id: 'qui', label: 'Química' },
-      { id: 'bio', label: 'Biologia' },
-      { id: 'mat', label: 'Matemática' },
-    ],
-    concurso: [
-      { id: 'port', label: 'Português' },
-      { id: 'raci', label: 'Raciocínio Lógico' },
-      { id: 'info', label: 'Informática' },
-      { id: 'admPub', label: 'Administração Pública' },
-      { id: 'atual', label: 'Atualidades' },
-      { id: 'dirConst', label: 'Direito Constitucional' },
-      { id: 'dirAdm', label: 'Direito Administrativo' },
-      { id: 'dirPen', label: 'Direito Penal' },
-      { id: 'dirProcPen', label: 'Direito Processual Penal' },
-      { id: 'dirCivil', label: 'Direito Civil' },
-      { id: 'dirProcCivil', label: 'Direito Processual Civil' },
-      { id: 'dirTrib', label: 'Direito Tributário' },
-      { id: 'dirTrab', label: 'Direito do Trabalho' },
-      { id: 'cont', label: 'Contabilidade' },
-      { id: 'contPub', label: 'Contabilidade Pública' },
-      { id: 'adm', label: 'Administração Geral' },
-      { id: 'gestPes', label: 'Gestão de Pessoas' },
-      { id: 'arquiv', label: 'Arquivologia' },
-    ],
-  };
-
   // Calendar grid
   const calendarDays = useMemo(() => {
     const firstDay = new Date(viewYear, viewMonth, 1).getDay();
@@ -244,7 +232,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
   const handleAdd = () => {
     if (!selectedDate || !disciplina) return;
     const selectedDisciplineLabel = modalidade
-      ? disciplinas[modalidade].find((item) => item.id === disciplina)?.label
+      ? DISCIPLINAS_BY_MODALIDADE[modalidade].find((item) => item.id === disciplina)?.label
       : null;
 
     addEntry(selectedDate, selectedDisciplineLabel || disciplina, formNote, {
@@ -255,7 +243,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     setFormNote('');
   };
 
-  const handleGenerateBaseSchedule = () => {
+  const handleGenerateBaseSchedule = useCallback(() => {
     const horizonDays = 30;
     const generated = generateBasePlan(smartProfile, todayStr, horizonDays);
 
@@ -288,7 +276,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
       `Cronograma base gerado para ${horizonDays} dias.`,
       `Distribuição baseada em dificuldade, peso por matéria e dias disponíveis.`,
     ]);
-  };
+  }, [addEntry, entries, removeEntry, setAiSummary, smartProfile, todayStr, userId]);
 
   const handleAiAdjust = () => {
     applyAdaptiveSchedule(smartProfile.hoursPerDay);
@@ -410,7 +398,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
 
     handleGenerateBaseSchedule();
     window.localStorage.removeItem(autoGenerateKey);
-  }, [entries.length, autoGenerateKey]);
+  }, [entries.length, autoGenerateKey, handleGenerateBaseSchedule]);
 
   const selectedDateObj = selectedDate ? new Date(`${selectedDate}T12:00:00`) : new Date(`${todayStr}T12:00:00`);
   const weekStart = getWeekStart(selectedDateObj);
@@ -508,10 +496,10 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
 
   const allDisciplineLabels = useMemo(() => {
     const values = new Set<string>();
-    disciplinas.enem.forEach((item) => values.add(item.label));
-    disciplinas.concurso.forEach((item) => values.add(item.label));
+    DISCIPLINAS_BY_MODALIDADE.enem.forEach((item) => values.add(item.label));
+    DISCIPLINAS_BY_MODALIDADE.concurso.forEach((item) => values.add(item.label));
     return [...values].sort((a, b) => a.localeCompare(b));
-  }, [disciplinas]);
+  }, []);
 
   // Stats
   const totalScheduled = entries.length;
@@ -847,7 +835,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
               modalidade={modalidade}
               value={disciplina}
               onChange={setDisciplina}
-              disciplinas={modalidade ? disciplinas[modalidade] : []}
+              disciplinas={modalidade ? DISCIPLINAS_BY_MODALIDADE[modalidade] : []}
             />
             <input
               value={formNote}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { rankingService } from '../services/ranking.service';
 import type { CategoryRankingEntry, UserRankInfo } from '../types/ranking';
 
@@ -7,13 +7,14 @@ interface UseGlobalRankingReturn {
   currentCategory: string | null;
   ranking: CategoryRankingEntry[];
   userRank: UserRankInfo | null;
-  loading: boolean;
+  loading: boolean; 
   error: Error | null;
   setCurrentCategory: (category: string) => void;
   refresh: () => Promise<void>;
 }
 
 export function useGlobalRanking(userId?: string): UseGlobalRankingReturn {
+  const initializedRef = useRef(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [currentCategory, setCurrentCategory] = useState<string | null>(null);
   const [ranking, setRanking] = useState<CategoryRankingEntry[]>([]);
@@ -79,8 +80,13 @@ export function useGlobalRanking(userId?: string): UseGlobalRankingReturn {
   }, [currentCategory, handleCategoryChange, loadData]);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (initializedRef.current) {
+      return;
+    }
+
+    initializedRef.current = true;
+    void loadData();
+  }, [loadData]);
 
   return {
     categories,

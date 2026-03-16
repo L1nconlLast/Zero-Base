@@ -106,30 +106,52 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           {step === 1 && (
             <div className="space-y-3">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><Target className="w-4 h-4" /> 1) Objetivo</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Preencha os 3 campos abaixo para o plano entender seu alvo real de prova e calibrar o cronograma.
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <select
-                  value={profile.examName}
-                  onChange={(event) => setProfile((prev) => ({ ...prev, examName: event.target.value as SmartScheduleProfile['examName'] }))}
-                  className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
-                >
-                  <option value="ENEM">ENEM</option>
-                  <option value="CONCURSO">Concurso</option>
-                </select>
-                <input
-                  type="date"
-                  value={profile.examDate}
-                  onChange={(event) => setProfile((prev) => ({ ...prev, examDate: event.target.value }))}
-                  className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
-                />
-                <input
-                  type="number"
-                  min={500}
-                  max={1000}
-                  value={profile.desiredScore}
-                  onChange={(event) => setProfile((prev) => ({ ...prev, desiredScore: Number(event.target.value || 700) }))}
-                  className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
-                  placeholder="Nota desejada"
-                />
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Tipo de prova</label>
+                  <select
+                    value={profile.examName}
+                    onChange={(event) => setProfile((prev) => ({ ...prev, examName: event.target.value as SmartScheduleProfile['examName'] }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  >
+                    <option value="ENEM">ENEM</option>
+                    <option value="CONCURSO">Concurso</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Data da prova</label>
+                  <input
+                    type="date"
+                    value={profile.examDate}
+                    onChange={(event) => setProfile((prev) => ({ ...prev, examDate: event.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Se ainda não tiver edital, use uma data estimada.</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                    {profile.examName === 'ENEM' ? 'Nota desejada (0 a 1000)' : 'Meta de desempenho (ex: 70)'}
+                  </label>
+                  <input
+                    type="number"
+                    min={profile.examName === 'ENEM' ? 0 : 1}
+                    max={profile.examName === 'ENEM' ? 1000 : 100}
+                    value={profile.desiredScore}
+                    onChange={(event) => setProfile((prev) => ({ ...prev, desiredScore: Number(event.target.value || 700) }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                    placeholder={profile.examName === 'ENEM' ? 'Ex: 780' : 'Ex: 70'}
+                  />
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {profile.examName === 'ENEM'
+                      ? 'Use a nota alvo para orientar a intensidade do plano.'
+                      : 'Use % de acertos no último simulado para calibrar o nível atual.'}
+                  </p>
+                </div>
               </div>
             </div>
           )}
