@@ -36,7 +36,7 @@ const DashboardSkeleton: React.FC = () => (
   </div>
 );
 
-const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = () => {
+const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }) => {
   const [data, setData] = useState<MentorAdminMetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +116,7 @@ const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = () => {
         <div className="flex-1 flex gap-2">
           <select
             value={period}
-            onChange={(e) => setPeriod(e.target.value as '7d' | '15d' | '30d' | 'current_month')}
+            onChange={(e) => setPeriod(e.target.value as any)}
             className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-500"
           >
             <option value="7d">Últimos 7 Dias</option>

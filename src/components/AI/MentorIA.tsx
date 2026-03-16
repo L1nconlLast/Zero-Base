@@ -263,7 +263,6 @@ const MentorIA: React.FC<MentorIAProps> = ({
     };
   }, [
     userKey,
-    userEmail,
     daysToExam,
     weeklyPct,
     strongArea,

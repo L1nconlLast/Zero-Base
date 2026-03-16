@@ -189,7 +189,7 @@ export const useAuth = () => {
 
       const cleanEmail = email.trim().toLowerCase();
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: senha,
       });

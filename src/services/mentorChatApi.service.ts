@@ -108,13 +108,9 @@ class MentorChatApiService {
         }
       };
 
-      let doneReading = false;
-      while (!doneReading) {
+      while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          doneReading = true;
-          continue;
-        }
+        if (done) break;
 
         pending += decoder.decode(value, { stream: true });
         let separatorIndex = pending.indexOf('\n\n');

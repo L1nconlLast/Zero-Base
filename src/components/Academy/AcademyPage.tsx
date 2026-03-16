@@ -1,6 +1,6 @@
 import React from 'react';
 import toast from 'react-hot-toast';
-import { Crown, CheckCircle2, Lock, GraduationCap, Flame, PlayCircle, ChevronDown, ChevronUp, Target } from 'lucide-react';
+import { Crown, CheckCircle2, Lock, GraduationCap, AlertTriangle, TrendingUp, Flame, PlayCircle, ChevronDown, ChevronUp, Target } from 'lucide-react';
 import type { AcademyContent, AcademyDepartment, AcademySubDepartment } from '../../types';
 import { ACADEMY_CONTENT } from '../../data/academyContent';
 import { useAcademyProgress } from '../../hooks/useAcademyProgress';

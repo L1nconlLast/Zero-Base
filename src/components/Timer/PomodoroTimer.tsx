@@ -166,7 +166,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
       subject,
       source: 'department_focus_cta',
     });
-  }, [quickStartSignal, methodId, subject]);
+  }, [quickStartSignal, methodId]);
 
   const getModeMinutes = useCallback((phase: TimerMode): number => {
     if (phase === 'focus') return selectedMethod.focusMinutes;

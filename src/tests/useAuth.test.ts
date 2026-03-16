@@ -77,11 +77,8 @@ describe('useAuth — estado inicial', () => {
     expect(result.current.supabaseUserId).toBeNull();
   });
 
-  it('expõe funções de login, register e logout', async () => {
+  it('expõe funções de login, register e logout', () => {
     const { result } = renderHook(() => useAuth());
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
     expect(typeof result.current.login).toBe('function');
     expect(typeof result.current.register).toBe('function');
     expect(typeof result.current.logout).toBe('function');

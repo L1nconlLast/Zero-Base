@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AtSign, Image as ImageIcon, MessageSquare, Paperclip, Plus, Target, Trophy, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { rankingService } from '../../services/ranking.service';
@@ -202,7 +202,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
       .slice(0, 6);
   }, [groupMembers, mentionQuery, showMentionMenu]);
 
-  const fetchGroups = useCallback(async () => {
+  const fetchGroups = async () => {
     if (!userId) return;
     setLoadingGroups(true);
     try {
@@ -216,9 +216,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     } finally {
       setLoadingGroups(false);
     }
-  }, [selectedGroupId, userId]);
+  };
 
-  const fetchMessages = useCallback(async (groupId: string) => {
+  const fetchMessages = async (groupId: string) => {
     setLoadingMessages(true);
     try {
       const data = await socialGroupsService.listMessages(groupId);
@@ -229,9 +229,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     } finally {
       setLoadingMessages(false);
     }
-  }, []);
+  };
 
-  const fetchGroupMembers = useCallback(async (groupId: string) => {
+  const fetchGroupMembers = async (groupId: string) => {
     setLoadingMembers(true);
     try {
       const data = await socialGroupsService.listMembers(groupId);
@@ -242,9 +242,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     } finally {
       setLoadingMembers(false);
     }
-  }, []);
+  };
 
-  const fetchChallenges = useCallback(async (groupId: string) => {
+  const fetchChallenges = async (groupId: string) => {
     if (!userId) return;
 
     setLoadingChallenges(true);
@@ -266,9 +266,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     } finally {
       setLoadingChallenges(false);
     }
-  }, [selectedChallengeId, userId]);
+  };
 
-  const fetchChallengeParticipants = useCallback(async (challengeId: string) => {
+  const fetchChallengeParticipants = async (challengeId: string) => {
     if (!userId) return;
 
     setLoadingParticipants(true);
@@ -281,9 +281,9 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     } finally {
       setLoadingParticipants(false);
     }
-  }, [userId]);
+  };
 
-  const fetchRanking = useCallback(async () => {
+  const fetchRanking = async () => {
     if (!userId) return;
     if (rankingScope === 'group' && !selectedGroupId) {
       setRankingRows([]);
@@ -307,11 +307,11 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     } finally {
       setLoadingRanking(false);
     }
-  }, [rankingPeriod, rankingScope, selectedGroupId, userId]);
+  };
 
   useEffect(() => {
     void fetchGroups();
-  }, [fetchGroups]);
+  }, [userId]);
 
   useEffect(() => {
     if (!selectedGroupId) {
@@ -326,7 +326,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     void fetchMessages(selectedGroupId);
     void fetchGroupMembers(selectedGroupId);
     void fetchChallenges(selectedGroupId);
-  }, [fetchChallenges, fetchGroupMembers, fetchMessages, selectedGroupId]);
+  }, [selectedGroupId]);
 
   useEffect(() => {
     if (!selectedChallengeId) {
@@ -336,7 +336,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
     }
 
     void fetchChallengeParticipants(selectedChallengeId);
-  }, [fetchChallengeParticipants, selectedChallengeId, userId]);
+  }, [selectedChallengeId, userId]);
 
   useEffect(() => {
     if (!myParticipant) {
@@ -349,7 +349,7 @@ const GroupsPage: React.FC<GroupsPageProps> = ({
 
   useEffect(() => {
     void fetchRanking();
-  }, [fetchRanking]);
+  }, [selectedGroupId, rankingPeriod, rankingScope, userId]);
 
   useEffect(() => {
     if (!selectedGroupId || !isSupabaseConfigured || !supabase) {

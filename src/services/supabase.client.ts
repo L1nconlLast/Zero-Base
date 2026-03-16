@@ -4,7 +4,7 @@ const normalizeEnvValue = (value?: string): string | undefined => {
   if (!value) return undefined;
 
   const trimmed = value.trim();
-  const unquoted = trimmed.replace(/^['"]|['"]$/g, '');
+  const unquoted = trimmed.replace(/^['\"]|['\"]$/g, '');
 
   if (!unquoted || unquoted === 'undefined' || unquoted === 'null') {
     return undefined;
