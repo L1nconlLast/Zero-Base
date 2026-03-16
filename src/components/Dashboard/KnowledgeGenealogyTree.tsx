@@ -445,6 +445,20 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
           </span>
         </div>
 
+        <div className="mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5">
+          <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">Linha do tempo de progressao</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {statusFlow.map((status, index) => (
+              <React.Fragment key={status}>
+                <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]}`}>
+                  {statusLabel[status]}
+                </span>
+                {index < statusFlow.length - 1 && <span className="text-slate-400">→</span>}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
         {mapError && <p className="text-xs text-rose-600 dark:text-rose-400 mb-2">{mapError}</p>}
 
         {isLoadingMap ? (
