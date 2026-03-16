@@ -1,5 +1,15 @@
 import React from 'react';
 import {
+  Background,
+  BackgroundVariant,
+  Controls,
+  MiniMap,
+  ReactFlow,
+  type Edge,
+  type Node,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import {
   ArrowRightCircle,
   Brain,
   ChevronDown,
@@ -7,7 +17,6 @@ import {
   Compass,
   GitBranch,
   ShieldCheck,
-  Sparkles,
 } from 'lucide-react';
 import {
   GLOBAL_KNOWLEDGE_ROOTS,
@@ -31,6 +40,7 @@ interface KnowledgeGenealogyTreeProps {
 
 type LearningMode = 'simple' | 'advanced';
 type TrackMode = 'enem' | 'concurso';
+type AdvancedViewMode = 'list' | 'graph';
 
 interface StageTopic {
   title: string;
@@ -168,6 +178,13 @@ const statusEmoji: Record<LearningProgressStatus, string> = {
 };
 
 const statusFlow: LearningProgressStatus[] = ['locked', 'available', 'studying', 'completed', 'review'];
+const statusColorHex: Record<LearningProgressStatus, string> = {
+  locked: '#94a3b8',
+  available: '#3b82f6',
+  studying: '#8b5cf6',
+  completed: '#10b981',
+  review: '#f59e0b',
+};
 
 const parentByChild = KNOWLEDGE_GRAPH_EDGES.reduce<Record<string, string[]>>((acc, edge) => {
   if (!acc[edge.to]) acc[edge.to] = [];
@@ -254,6 +271,7 @@ const KnowledgeNodeRow: React.FC<{ node: KnowledgeNode; level: number }> = ({ no
 
 const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabaseUserId }) => {
   const [learningMode, setLearningMode] = React.useState<LearningMode>('simple');
+  const [advancedViewMode, setAdvancedViewMode] = React.useState<AdvancedViewMode>('graph');
   const [trackMode, setTrackMode] = React.useState<TrackMode>('enem');
   const [disciplines, setDisciplines] = React.useState<LearningGraphDiscipline[]>([]);
   const [selectedDisciplineId, setSelectedDisciplineId] = React.useState<string>('');
@@ -422,7 +440,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
     [topics],
   );
 
-  const handleAdvanceTopic = async (topic: LearningGraphTopic) => {
+  const handleAdvanceTopic = React.useCallback(async (topic: LearningGraphTopic) => {
     if (!supabaseUserId) {
       setMapError('Faca login para atualizar status dos topicos.');
       return;
@@ -454,7 +472,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
     } finally {
       setUpdatingTopicId(null);
     }
-  };
+  }, [supabaseUserId, getTopicStatus]);
 
   const handleRecommend = async () => {
     setIsLoadingNextTopic(true);
@@ -495,6 +513,114 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
 
   const displayedTopics = React.useMemo(() => topics.slice(0, 16), [topics]);
   const stages = TRACK_STAGE_MAP[trackMode];
+
+  const graphData = React.useMemo(() => {
+    const selectedTopicIds = new Set(topics.map((topic) => topic.id));
+
+    const incomingMap = prerequisiteEdges.reduce<Record<string, string[]>>((acc, edge) => {
+      if (!selectedTopicIds.has(edge.topico_id) || !selectedTopicIds.has(edge.prerequisito_id)) {
+        return acc;
+      }
+
+      if (!acc[edge.topico_id]) {
+        acc[edge.topico_id] = [];
+      }
+
+      acc[edge.topico_id].push(edge.prerequisito_id);
+      return acc;
+    }, {});
+
+    const depthMemo = new Map<string, number>();
+
+    const getDepth = (topicId: string, trail: Set<string> = new Set()): number => {
+      if (depthMemo.has(topicId)) {
+        return depthMemo.get(topicId) || 0;
+      }
+
+      if (trail.has(topicId)) {
+        return 0;
+      }
+
+      trail.add(topicId);
+      const deps = incomingMap[topicId] || [];
+
+      const depth = deps.length === 0
+        ? 0
+        : Math.max(...deps.map((depId) => getDepth(depId, new Set(trail)))) + 1;
+
+      depthMemo.set(topicId, depth);
+      return depth;
+    };
+
+    const columns = new Map<number, string[]>();
+    topics.forEach((topic) => {
+      const depth = getDepth(topic.id);
+      const list = columns.get(depth) || [];
+      list.push(topic.id);
+      columns.set(depth, list);
+    });
+
+    const topicById = new Map(topics.map((topic) => [topic.id, topic]));
+
+    const nodes: Node[] = [];
+    [...columns.entries()].forEach(([depth, ids]) => {
+      ids.forEach((topicId, index) => {
+        const topic = topicById.get(topicId);
+        if (!topic) {
+          return;
+        }
+
+        const status = getTopicStatus(topic.id);
+
+        nodes.push({
+          id: topic.id,
+          type: 'default',
+          position: { x: depth * 280, y: index * 110 },
+          data: {
+            label: `${statusEmoji[status]} ${topic.nome}`,
+          },
+          draggable: false,
+          style: {
+            borderRadius: 12,
+            border: `1px solid ${statusColorHex[status]}`,
+            background: '#ffffff',
+            color: '#0f172a',
+            fontSize: 12,
+            fontWeight: 600,
+            width: 210,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          },
+        });
+      });
+    });
+
+    const edges: Edge[] = prerequisiteEdges
+      .filter((edge) => selectedTopicIds.has(edge.topico_id) && selectedTopicIds.has(edge.prerequisito_id))
+      .map((edge) => ({
+        id: `${edge.prerequisito_id}->${edge.topico_id}`,
+        source: edge.prerequisito_id,
+        target: edge.topico_id,
+        animated: false,
+        style: {
+          stroke: '#64748b',
+          strokeWidth: 1.5,
+        },
+      }));
+
+    return { nodes, edges };
+  }, [topics, prerequisiteEdges, getTopicStatus]);
+
+  const handleGraphNodeClick = React.useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      const linkedTopic = topics.find((topic) => topic.id === node.id);
+      if (!linkedTopic) {
+        return;
+      }
+
+      void handleAdvanceTopic(linkedTopic);
+    },
+    [topics, handleAdvanceTopic],
+  );
 
   return (
     <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
@@ -667,6 +793,23 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
               <span className="text-xs text-slate-500 dark:text-slate-400">{isAutoUnlocking ? 'Desbloqueio automatico em andamento...' : 'Escala para 2000+ topicos por filtros'}</span>
             </div>
 
+            <div className="mb-3 inline-flex rounded-lg border border-slate-200 dark:border-slate-700 p-1 bg-white dark:bg-slate-900">
+              {([
+                { id: 'graph', label: 'Skill Tree' },
+                { id: 'list', label: 'Lista' },
+              ] as const).map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  onClick={() => setAdvancedViewMode(view.id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold ${advancedViewMode === view.id ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}
+                  style={advancedViewMode === view.id ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                >
+                  {view.label}
+                </button>
+              ))}
+            </div>
+
             <div className="mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5">
               <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">Linha do tempo de progressao</p>
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -683,8 +826,24 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
 
             {isLoadingMap ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">Carregando topicos e progresso...</p>
-            ) : displayedTopics.length === 0 ? (
+            ) : topics.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">Sem topicos para a disciplina selecionada.</p>
+            ) : advancedViewMode === 'graph' ? (
+              <div className="h-[460px] w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+                <ReactFlow
+                  nodes={graphData.nodes}
+                  edges={graphData.edges}
+                  fitView
+                  fitViewOptions={{ padding: 0.2 }}
+                  nodesConnectable={false}
+                  nodesDraggable={false}
+                  onNodeClick={handleGraphNodeClick}
+                >
+                  <MiniMap pannable zoomable />
+                  <Controls showInteractive={false} />
+                  <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
+                </ReactFlow>
+              </div>
             ) : (
               <div className="space-y-2">
                 {displayedTopics.map((topic) => {

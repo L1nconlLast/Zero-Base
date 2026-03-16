@@ -25,6 +25,7 @@
   "dependencies": {
     "@sentry/browser": "^10.40.0",
     "@supabase/supabase-js": "^2.97.0",
+    "@xyflow/react": "^12.10.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.6",
     "date-fns": "^3.2.0",
