@@ -1,12 +1,19 @@
 import React from 'react';
-import { Brain, ChevronDown, ChevronRight, Sparkles, GitBranch, ShieldCheck } from 'lucide-react';
+import { Brain, ChevronDown, ChevronRight, Sparkles, GitBranch, ShieldCheck, ArrowRightCircle } from 'lucide-react';
 import {
   GLOBAL_KNOWLEDGE_ROOTS,
   KNOWLEDGE_GRAPH_EDGES,
   PORTUGUESE_KNOWLEDGE_TREE,
   type KnowledgeNode,
 } from '../../data/knowledgeTreeBlueprint';
-import { learningGraphApiService, type LearningGraphDiscipline, type LearningGraphNextTopic } from '../../services/learningGraphApi.service';
+import {
+  learningGraphApiService,
+  type LearningGraphDiscipline,
+  type LearningGraphNextTopic,
+  type LearningGraphTopic,
+  type LearningGraphUserProgress,
+  type LearningProgressStatus,
+} from '../../services/learningGraphApi.service';
 
 interface KnowledgeGenealogyTreeProps {
   supabaseUserId?: string | null;
@@ -36,6 +43,32 @@ const rootLabelById = GLOBAL_KNOWLEDGE_ROOTS.reduce<Record<string, string>>((acc
   acc[item.id] = item.name;
   return acc;
 }, {});
+
+const statusLabel: Record<LearningProgressStatus, string> = {
+  locked: 'Bloqueado',
+  available: 'Disponivel',
+  studying: 'Estudando',
+  completed: 'Concluido',
+  review: 'Revisao',
+};
+
+const statusStyle: Record<LearningProgressStatus, string> = {
+  locked: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  available: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  studying: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+  completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  review: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+};
+
+const statusFlow: LearningProgressStatus[] = ['locked', 'available', 'studying', 'completed', 'review'];
+
+const getNextStatus = (current: LearningProgressStatus): LearningProgressStatus => {
+  const index = statusFlow.indexOf(current);
+  if (index < 0 || index === statusFlow.length - 1) {
+    return 'completed';
+  }
+  return statusFlow[index + 1];
+};
 
 const KnowledgeNodeRow: React.FC<{ node: KnowledgeNode; level: number }> = ({ node, level }) => {
   const [open, setOpen] = React.useState(level < 2);
@@ -99,9 +132,14 @@ const KnowledgeNodeRow: React.FC<{ node: KnowledgeNode; level: number }> = ({ no
 const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabaseUserId }) => {
   const [disciplines, setDisciplines] = React.useState<LearningGraphDiscipline[]>([]);
   const [selectedDisciplineId, setSelectedDisciplineId] = React.useState<string>('');
+  const [topics, setTopics] = React.useState<LearningGraphTopic[]>([]);
+  const [progressByTopicId, setProgressByTopicId] = React.useState<Record<string, LearningGraphUserProgress>>({});
+  const [isLoadingMap, setIsLoadingMap] = React.useState(false);
+  const [mapError, setMapError] = React.useState<string | null>(null);
   const [nextTopic, setNextTopic] = React.useState<LearningGraphNextTopic | null>(null);
   const [isLoadingNextTopic, setIsLoadingNextTopic] = React.useState(false);
   const [nextTopicError, setNextTopicError] = React.useState<string | null>(null);
+  const [updatingTopicId, setUpdatingTopicId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -124,6 +162,50 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
     };
   }, []);
 
+  React.useEffect(() => {
+    let active = true;
+
+    const loadMapData = async () => {
+      setIsLoadingMap(true);
+      setMapError(null);
+
+      try {
+        const [topicRows, progressRows] = await Promise.all([
+          learningGraphApiService.listTopics(selectedDisciplineId || undefined),
+          supabaseUserId
+            ? learningGraphApiService.getUserProgress(selectedDisciplineId || undefined)
+            : Promise.resolve([]),
+        ]);
+
+        if (!active) return;
+
+        setTopics(topicRows);
+
+        const nextProgressByTopic = (progressRows || []).reduce<Record<string, LearningGraphUserProgress>>((acc, row) => {
+          acc[row.topico_id] = row;
+          return acc;
+        }, {});
+
+        setProgressByTopicId(nextProgressByTopic);
+      } catch (error) {
+        if (!active) return;
+        setMapError(error instanceof Error ? error.message : 'Nao foi possivel carregar o mapa de topicos.');
+        setTopics([]);
+        setProgressByTopicId({});
+      } finally {
+        if (active) {
+          setIsLoadingMap(false);
+        }
+      }
+    };
+
+    void loadMapData();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedDisciplineId, supabaseUserId]);
+
   const handleRecommend = async () => {
     setIsLoadingNextTopic(true);
     setNextTopicError(null);
@@ -138,6 +220,61 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
       setIsLoadingNextTopic(false);
     }
   };
+
+  const getTopicStatus = React.useCallback(
+    (topicId: string): LearningProgressStatus => progressByTopicId[topicId]?.status || 'locked',
+    [progressByTopicId],
+  );
+
+  const handleAdvanceTopic = async (topic: LearningGraphTopic) => {
+    if (!supabaseUserId) {
+      setMapError('Faca login para atualizar status dos topicos.');
+      return;
+    }
+
+    const currentStatus = getTopicStatus(topic.id);
+    const nextStatus = getNextStatus(currentStatus);
+
+    setUpdatingTopicId(topic.id);
+    setMapError(null);
+
+    try {
+      const updated = await learningGraphApiService.updateTopicProgress({
+        topicId: topic.id,
+        status: nextStatus,
+        attemptsDelta: 1,
+        studyMinutes: nextStatus === 'studying' || nextStatus === 'completed' ? 25 : 0,
+        score: nextStatus === 'completed' ? 100 : undefined,
+      });
+
+      if (updated) {
+        setProgressByTopicId((prev) => ({
+          ...prev,
+          [topic.id]: updated,
+        }));
+      }
+    } catch (error) {
+      setMapError(error instanceof Error ? error.message : 'Nao foi possivel atualizar o topico.');
+    } finally {
+      setUpdatingTopicId(null);
+    }
+  };
+
+  const handleStartRecommendedTopic = async () => {
+    if (!nextTopic?.topic_id) {
+      return;
+    }
+
+    const linked = topics.find((topic) => topic.id === nextTopic.topic_id);
+    if (!linked) {
+      setMapError('Topico recomendado nao esta na lista atual. Selecione a disciplina correspondente.');
+      return;
+    }
+
+    await handleAdvanceTopic(linked);
+  };
+
+  const displayedTopics = React.useMemo(() => topics.slice(0, 14), [topics]);
 
   return (
     <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
@@ -205,6 +342,73 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
             <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
               Disciplina: {nextTopic.discipline_nome} • Dificuldade: {nextTopic.difficulty} • Score IA: {nextTopic.score}
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                void handleStartRecommendedTopic();
+              }}
+              disabled={!supabaseUserId || updatingTopicId === nextTopic.topic_id}
+              className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 disabled:opacity-50"
+            >
+              {updatingTopicId === nextTopic.topic_id ? 'Atualizando...' : 'Iniciar recomendado'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-4">
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Grafo executavel (status por no)</p>
+          <span className="text-xs text-slate-500 dark:text-slate-400">1 clique para avancar etapa</span>
+        </div>
+
+        {mapError && <p className="text-xs text-rose-600 dark:text-rose-400 mb-2">{mapError}</p>}
+
+        {isLoadingMap ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">Carregando topicos e progresso...</p>
+        ) : displayedTopics.length === 0 ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">Sem topicos para a disciplina selecionada.</p>
+        ) : (
+          <div className="space-y-2">
+            {displayedTopics.map((topic) => {
+              const status = getTopicStatus(topic.id);
+              const nextStatus = getNextStatus(status);
+              const isUpdating = updatingTopicId === topic.id;
+
+              return (
+                <div
+                  key={topic.id}
+                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3"
+                >
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{topic.nome}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Nivel: {topic.nivel_dificuldade || 'intermediario'}
+                      </p>
+                    </div>
+
+                    <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]}`}>
+                      {statusLabel[status]}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleAdvanceTopic(topic);
+                      }}
+                      disabled={!supabaseUserId || isUpdating}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-50"
+                    >
+                      <ArrowRightCircle className="w-3.5 h-3.5" />
+                      {isUpdating ? 'Atualizando...' : `Avancar para ${statusLabel[nextStatus]}`}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
