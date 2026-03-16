@@ -9,7 +9,15 @@ interface OnboardingFlowProps {
   onComplete: (payload: { dailyGoal: number; methodId: string; smartProfile: SmartScheduleProfile }) => void;
 }
 
-const SUBJECTS = ['Matemática', 'Linguagens', 'Humanas', 'Natureza', 'Redação'] as const;
+const ENEM_SUBJECTS = ['Matemática', 'Linguagens', 'Humanas', 'Natureza', 'Redação'] as const;
+const CONCURSO_SUBJECTS = [
+  'Português',
+  'Raciocínio Lógico',
+  'Direito Constitucional',
+  'Direito Administrativo',
+  'Informática',
+  'Atualidades',
+] as const;
 const WEEK_DAYS = [
   { id: 1, label: 'Seg' },
   { id: 2, label: 'Ter' },
@@ -41,6 +49,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       studyStyle: initialMethodId === 'pomodoro' ? 'pomodoro_25_5' : base.studyStyle,
     };
   });
+
+  const subjects = profile.examName === 'ENEM' ? ENEM_SUBJECTS : CONCURSO_SUBJECTS;
 
   const setDifficulty = (subject: string, level: DifficultyLevel) => {
     setProfile((prev) => ({
@@ -203,7 +213,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             <div className="space-y-3">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><Brain className="w-4 h-4" /> 3) Nível por matéria</h3>
               <div className="space-y-2">
-                {SUBJECTS.map((subject) => {
+                {subjects.map((subject) => {
                   const value = profile.subjectDifficulty[subject] || 'medio';
                   return (
                     <div key={subject} className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-2 items-center">
