@@ -15,6 +15,12 @@ const TestPushSchema = z.object({
   body: z.string().min(1).max(200).default('Hora de revisar seu plano de hoje.'),
 });
 
+const HeartbeatSchema = z.object({
+  action: z.string().min(1).max(80).optional(),
+  appVersion: z.string().min(1).max(40).optional(),
+  platform: z.string().min(1).max(40).optional(),
+});
+
 export class NotificationsController {
   getVapidPublicKey(_req: Request, res: Response): void {
     const key = pushNotificationService.getPublicKey();
@@ -75,6 +81,29 @@ export class NotificationsController {
     });
 
     res.status(200).json({ ok: true, sent });
+  }
+
+  async heartbeat(req: Request, res: Response): Promise<void> {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const parsed = HeartbeatSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Payload invalido', details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+
+    await pushNotificationService.markUserActivity({
+      userId,
+      action: parsed.data.action,
+      appVersion: parsed.data.appVersion,
+      platform: parsed.data.platform,
+    });
+
+    res.status(204).send();
   }
 
   async runInactivityJob(_req: Request, res: Response): Promise<void> {

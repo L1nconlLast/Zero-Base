@@ -17,6 +17,10 @@ router.post('/test', authMiddleware, (req, res) => {
   void notificationsController.sendTest(req, res);
 });
 
+router.post('/heartbeat', authMiddleware, (req, res) => {
+  void notificationsController.heartbeat(req, res);
+});
+
 router.post('/jobs/inactivity-48h', authMiddleware, adminAuthMiddleware, (req, res) => {
   void notificationsController.runInactivityJob(req, res);
 });

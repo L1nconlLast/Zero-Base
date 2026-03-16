@@ -75,6 +75,25 @@ class PushApiService {
 
     return response.ok;
   }
+
+  async sendHeartbeat(action = 'app_opened'): Promise<boolean> {
+    const accessToken = await this.getAccessToken();
+    if (!accessToken) return false;
+
+    const response = await fetch(`${this.endpointBase}/heartbeat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        action,
+        platform: navigator.platform || 'web',
+      }),
+    });
+
+    return response.ok;
+  }
 }
 
 export const pushApiService = new PushApiService();

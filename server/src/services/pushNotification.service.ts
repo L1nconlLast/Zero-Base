@@ -16,6 +16,10 @@ interface PushSubscriptionRow {
   user_id: string;
 }
 
+interface NotificationPreferencesRow {
+  inactivity_threshold_hours: number;
+}
+
 const supabaseUrl = process.env.SUPABASE_URL?.trim();
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY?.trim();
@@ -70,6 +74,62 @@ class PushNotificationService {
     if (error) {
       throw new Error(`push subscription upsert failed: ${error.message}`);
     }
+
+    await supabase
+      .from('user_notification_preferences')
+      .upsert(
+        {
+          user_id: input.userId,
+          push_enabled: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+  }
+
+  async markUserActivity(input: {
+    userId: string;
+    action?: string;
+    appVersion?: string;
+    platform?: string;
+  }): Promise<void> {
+    if (!supabase) return;
+
+    await supabase
+      .from('user_activity')
+      .upsert(
+        {
+          user_id: input.userId,
+          last_seen_at: new Date().toISOString(),
+          last_action: input.action || null,
+          app_version: input.appVersion || null,
+          platform: input.platform || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+  }
+
+  private async logDeliveryEvent(input: {
+    userId: string;
+    subscriptionId?: string;
+    title: string;
+    body: string;
+    tag?: string;
+    status: 'sent' | 'failed' | 'expired';
+    errorMessage?: string;
+  }): Promise<void> {
+    if (!supabase) return;
+
+    await supabase.from('push_delivery_events').insert({
+      user_id: input.userId,
+      subscription_id: input.subscriptionId || null,
+      title: input.title,
+      body: input.body,
+      tag: input.tag || null,
+      status: input.status,
+      error_message: input.errorMessage || null,
+    });
   }
 
   async sendToUser(userId: string, payload: PushPayload): Promise<number> {
@@ -105,6 +165,15 @@ class PushNotificationService {
           .from('push_subscriptions')
           .update({ last_sent_at: new Date().toISOString() })
           .eq('id', row.id);
+
+        await this.logDeliveryEvent({
+          userId,
+          subscriptionId: row.id,
+          title: payload.title,
+          body: payload.body,
+          tag: payload.tag,
+          status: 'sent',
+        });
       } catch (err: unknown) {
         const statusCode = typeof err === 'object' && err !== null && 'statusCode' in err
           ? Number((err as { statusCode?: number }).statusCode)
@@ -112,7 +181,28 @@ class PushNotificationService {
 
         if (statusCode === 404 || statusCode === 410) {
           await supabase.from('push_subscriptions').delete().eq('id', row.id);
+
+          await this.logDeliveryEvent({
+            userId,
+            subscriptionId: row.id,
+            title: payload.title,
+            body: payload.body,
+            tag: payload.tag,
+            status: 'expired',
+            errorMessage: 'Subscription expired (404/410)',
+          });
+          continue;
         }
+
+        await this.logDeliveryEvent({
+          userId,
+          subscriptionId: row.id,
+          title: payload.title,
+          body: payload.body,
+          tag: payload.tag,
+          status: 'failed',
+          errorMessage: err instanceof Error ? err.message : 'Unknown push error',
+        });
       }
     }
 
@@ -122,20 +212,42 @@ class PushNotificationService {
   async runInactivityReminderJob(inactiveHours = 48): Promise<{ users: number; sent: number }> {
     if (!this.isConfigured() || !supabase) return { users: 0, sent: 0 };
 
-    const cutoff = new Date(Date.now() - inactiveHours * 60 * 60 * 1000).toISOString();
+    const { data: activityRows, error } = await supabase
+      .from('user_activity')
+      .select('user_id, last_seen_at')
+      .limit(400);
 
-    const { data, error } = await supabase
-      .from('user_profile')
-      .select('user_id, updated_at')
-      .lte('updated_at', cutoff)
-      .limit(200);
+    if (error || !activityRows?.length) {
+      return { users: 0, sent: 0 };
+    }
 
-    if (error || !data?.length) {
+    const userIds = activityRows.map((row) => row.user_id);
+    const { data: prefRows } = await supabase
+      .from('user_notification_preferences')
+      .select('user_id, inactivity_threshold_hours, push_enabled')
+      .in('user_id', userIds);
+
+    const prefsMap = new Map(
+      (prefRows || [])
+        .filter((row) => row.push_enabled !== false)
+        .map((row) => [row.user_id, row as NotificationPreferencesRow & { user_id: string }]),
+    );
+
+    const dueUsers = activityRows
+      .filter((row) => {
+        const pref = prefsMap.get(row.user_id);
+        const threshold = pref?.inactivity_threshold_hours || inactiveHours;
+        const cutoff = Date.now() - threshold * 60 * 60 * 1000;
+        return new Date(row.last_seen_at).getTime() <= cutoff;
+      })
+      .slice(0, 200);
+
+    if (!dueUsers.length) {
       return { users: 0, sent: 0 };
     }
 
     let sent = 0;
-    for (const row of data as Array<{ user_id: string }>) {
+    for (const row of dueUsers as Array<{ user_id: string }>) {
       sent += await this.sendToUser(row.user_id, {
         title: 'Seu plano de estudos sente sua falta',
         body: 'Volte hoje com uma meta micro de 15 minutos para manter o ritmo.',
@@ -144,7 +256,7 @@ class PushNotificationService {
       });
     }
 
-    return { users: data.length, sent };
+    return { users: dueUsers.length, sent };
   }
 }
 

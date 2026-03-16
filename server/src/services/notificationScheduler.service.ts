@@ -1,11 +1,16 @@
 import { pushNotificationService } from './pushNotification.service';
 
 const intervalMinutes = Number(process.env.PUSH_INACTIVITY_JOB_INTERVAL_MINUTES || 60);
+const schedulerEnabled = String(process.env.PUSH_SCHEDULER_ENABLED || 'true').toLowerCase() === 'true';
 
 class NotificationSchedulerService {
   private timer: NodeJS.Timeout | null = null;
 
   start(): void {
+    if (!schedulerEnabled) {
+      return;
+    }
+
     if (!pushNotificationService.isConfigured()) {
       return;
     }

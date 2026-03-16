@@ -8,6 +8,10 @@ export function NotificationSetup() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    void pushApiService.sendHeartbeat('app_opened');
+  }, []);
+
+  useEffect(() => {
     // Mostra o banner só se nunca foi decidido
     if (isSupported && permission === 'default') {
       // Pequeno delay para não aparecer imediatamente no login
