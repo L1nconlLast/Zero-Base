@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Bell, X } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
+import { pushApiService } from '../services/pushApi.service';
 
 export function NotificationSetup() {
   const { requestPermission, isSupported, permission } = useNotifications();
@@ -18,7 +19,10 @@ export function NotificationSetup() {
   if (!visible) return null;
 
   const handleAccept = async () => {
-    await requestPermission();
+    const granted = await requestPermission();
+    if (granted) {
+      await pushApiService.subscribeUser();
+    }
     setVisible(false);
   };
 

@@ -11,6 +11,12 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
   });
 }
 
+if (!import.meta.env.DEV && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js');
+  });
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
