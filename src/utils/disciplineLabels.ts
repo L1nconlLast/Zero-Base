@@ -36,7 +36,7 @@ export const CYCLE_DISCIPLINE_LABELS = ENEM_CYCLE_DISCIPLINE_LABELS;
 
 export const getCycleDisciplineLabels = (
   preferredTrack: StudyTrackLabel,
-  hybridEnemWeight = 70,
+  _hybridEnemWeight?: number,
 ): Record<MateriaTipo, { label: string; icon: string }> => {
   if (preferredTrack === 'concursos') {
     return CONCURSO_CYCLE_DISCIPLINE_LABELS;
