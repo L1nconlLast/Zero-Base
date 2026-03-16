@@ -7,6 +7,7 @@ import { useLocalStorage } from '../../hooks/useLocalStorage';
 import type { StudySession } from '../../types';
 import { buildWeeklyRetentionSnapshot } from '../../utils/weeklyRetention';
 import StudyHierarchyTree from './StudyHierarchyTree';
+import KnowledgeGenealogyTree from './KnowledgeGenealogyTree';
 import { learningHierarchyService, type StudyHierarchyAreaNode, type StudyHierarchyTrack } from '../../services/learningHierarchy.service';
 import { CYCLE_DISCIPLINE_LABELS } from '../../utils/disciplineLabels';
 
@@ -534,6 +535,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
           onTopicSelect={handleTopicSelect}
         />
       </section>
+
+      <KnowledgeGenealogyTree supabaseUserId={supabaseUserId} />
     </div>
   );
 };
