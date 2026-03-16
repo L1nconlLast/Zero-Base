@@ -69,6 +69,41 @@ export default defineConfig({
       },
     })
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+
+          if (id.includes('recharts')) {
+            return 'vendor-recharts';
+          }
+
+          if (id.includes('d3-')) {
+            return 'vendor-d3';
+          }
+
+          if (id.includes('jspdf')) {
+            return 'vendor-jspdf';
+          }
+
+          if (id.includes('html2canvas')) {
+            return 'vendor-html2canvas';
+          }
+
+          if (id.includes('@supabase/supabase-js')) {
+            return 'vendor-supabase';
+          }
+
+          if (id.includes('zod') || id.includes('@hookform') || id.includes('react-hook-form')) {
+            return 'vendor-forms';
+          }
+
+          return;
+        },
+      },
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',
