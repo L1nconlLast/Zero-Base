@@ -10,6 +10,7 @@ import {
   learningGraphApiService,
   type LearningGraphDiscipline,
   type LearningGraphNextTopic,
+  type LearningGraphPrerequisiteEdge,
   type LearningGraphTopic,
   type LearningGraphUserProgress,
   type LearningProgressStatus,
@@ -133,8 +134,10 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
   const [disciplines, setDisciplines] = React.useState<LearningGraphDiscipline[]>([]);
   const [selectedDisciplineId, setSelectedDisciplineId] = React.useState<string>('');
   const [topics, setTopics] = React.useState<LearningGraphTopic[]>([]);
+  const [prerequisiteEdges, setPrerequisiteEdges] = React.useState<LearningGraphPrerequisiteEdge[]>([]);
   const [progressByTopicId, setProgressByTopicId] = React.useState<Record<string, LearningGraphUserProgress>>({});
   const [isLoadingMap, setIsLoadingMap] = React.useState(false);
+  const [isAutoUnlocking, setIsAutoUnlocking] = React.useState(false);
   const [mapError, setMapError] = React.useState<string | null>(null);
   const [nextTopic, setNextTopic] = React.useState<LearningGraphNextTopic | null>(null);
   const [isLoadingNextTopic, setIsLoadingNextTopic] = React.useState(false);
@@ -170,8 +173,9 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
       setMapError(null);
 
       try {
-        const [topicRows, progressRows] = await Promise.all([
+        const [topicRows, edgeRows, progressRows] = await Promise.all([
           learningGraphApiService.listTopics(selectedDisciplineId || undefined),
+          learningGraphApiService.listPrerequisiteEdges(selectedDisciplineId || undefined),
           supabaseUserId
             ? learningGraphApiService.getUserProgress(selectedDisciplineId || undefined)
             : Promise.resolve([]),
@@ -180,6 +184,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
         if (!active) return;
 
         setTopics(topicRows);
+        setPrerequisiteEdges(edgeRows);
 
         const nextProgressByTopic = (progressRows || []).reduce<Record<string, LearningGraphUserProgress>>((acc, row) => {
           acc[row.topico_id] = row;
@@ -191,6 +196,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
         if (!active) return;
         setMapError(error instanceof Error ? error.message : 'Nao foi possivel carregar o mapa de topicos.');
         setTopics([]);
+        setPrerequisiteEdges([]);
         setProgressByTopicId({});
       } finally {
         if (active) {
@@ -205,6 +211,81 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
       active = false;
     };
   }, [selectedDisciplineId, supabaseUserId]);
+
+  React.useEffect(() => {
+    if (!supabaseUserId || topics.length === 0 || isAutoUnlocking) {
+      return;
+    }
+
+    const completedStatuses = new Set<LearningProgressStatus>(['completed', 'review']);
+
+    const edgeMap = prerequisiteEdges.reduce<Record<string, string[]>>((acc, edge) => {
+      if (!acc[edge.topico_id]) {
+        acc[edge.topico_id] = [];
+      }
+      acc[edge.topico_id].push(edge.prerequisito_id);
+      return acc;
+    }, {});
+
+    const unlockedCandidates = topics.filter((topic) => {
+      const currentStatus = progressByTopicId[topic.id]?.status || 'locked';
+      if (currentStatus !== 'locked') {
+        return false;
+      }
+
+      const prerequisites = edgeMap[topic.id] || [];
+      if (prerequisites.length === 0) {
+        return true;
+      }
+
+      return prerequisites.every((prereqId) => {
+        const prereqStatus = progressByTopicId[prereqId]?.status;
+        return prereqStatus ? completedStatuses.has(prereqStatus) : false;
+      });
+    });
+
+    if (unlockedCandidates.length === 0) {
+      return;
+    }
+
+    let active = true;
+
+    const autoUnlock = async () => {
+      setIsAutoUnlocking(true);
+
+      try {
+        for (const topic of unlockedCandidates) {
+          const updated = await learningGraphApiService.updateTopicProgress({
+            topicId: topic.id,
+            status: 'available',
+          });
+
+          if (!active || !updated) {
+            continue;
+          }
+
+          setProgressByTopicId((prev) => ({
+            ...prev,
+            [topic.id]: updated,
+          }));
+        }
+      } catch (error) {
+        if (active) {
+          setMapError(error instanceof Error ? error.message : 'Falha no desbloqueio automatico de topicos.');
+        }
+      } finally {
+        if (active) {
+          setIsAutoUnlocking(false);
+        }
+      }
+    };
+
+    void autoUnlock();
+
+    return () => {
+      active = false;
+    };
+  }, [supabaseUserId, topics, prerequisiteEdges, progressByTopicId, isAutoUnlocking]);
 
   const handleRecommend = async () => {
     setIsLoadingNextTopic(true);
@@ -359,7 +440,9 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
       <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-4">
         <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Grafo executavel (status por no)</p>
-          <span className="text-xs text-slate-500 dark:text-slate-400">1 clique para avancar etapa</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {isAutoUnlocking ? 'Desbloqueio automatico em andamento...' : '1 clique para avancar etapa'}
+          </span>
         </div>
 
         {mapError && <p className="text-xs text-rose-600 dark:text-rose-400 mb-2">{mapError}</p>}

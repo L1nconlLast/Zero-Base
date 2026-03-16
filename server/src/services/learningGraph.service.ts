@@ -101,6 +101,27 @@ class LearningGraphService {
     return data || [];
   }
 
+  async listPrerequisiteEdges(disciplineId?: string) {
+    if (!supabase) return [];
+
+    let query = supabase
+      .from('topico_prerequisitos')
+      .select('topico_id, prerequisito_id, mastery_required, topicos!inner(disciplina_id)');
+
+    if (disciplineId) {
+      query = query.eq('topicos.disciplina_id', disciplineId);
+    }
+
+    const { data, error } = await query.limit(2000);
+    if (error) throw new Error(`listPrerequisiteEdges failed: ${error.message}`);
+
+    return (data || []).map((row) => ({
+      topico_id: row.topico_id,
+      prerequisito_id: row.prerequisito_id,
+      mastery_required: row.mastery_required,
+    }));
+  }
+
   async upsertProgress(input: TopicProgressInput) {
     if (!supabase) return null;
 

@@ -47,6 +47,25 @@ export class LearningGraphController {
     }
   }
 
+  async listPrerequisiteEdges(req: Request, res: Response): Promise<void> {
+    const disciplineId = typeof req.query.disciplinaId === 'string' ? req.query.disciplinaId : undefined;
+
+    if (disciplineId) {
+      const disciplineParsed = UuidSchema.safeParse(disciplineId);
+      if (!disciplineParsed.success) {
+        res.status(400).json({ error: 'disciplinaId invalido' });
+        return;
+      }
+    }
+
+    try {
+      const edges = await learningGraphService.listPrerequisiteEdges(disciplineId);
+      res.status(200).json({ edges });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao listar arestas de prerequisito' });
+    }
+  }
+
   async getTopic(req: Request, res: Response): Promise<void> {
     const parsed = UuidSchema.safeParse(req.params.topicId);
     if (!parsed.success) {

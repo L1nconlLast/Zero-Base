@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Home, GraduationCap, Brain, Clock3, BarChart3, Trophy, Settings, Database, Info, Heart, CalendarDays, HelpCircle, Layers, BookOpen, Zap, Users } from 'lucide-react';
+import { Home, GraduationCap, Brain, Clock3, BarChart3, Trophy, Settings, Database, Info, Heart, CalendarDays, HelpCircle, Layers, BookOpen, Zap, Users, GitBranch } from 'lucide-react';
 import { NotificationSetup } from './components/NotificationSetup';
 
 // static theme definitions (won't change per render)
@@ -98,6 +98,7 @@ const GlobalRankingPage = lazy(() => import('./components/Social/GlobalRankingPa
 const FeedbackButton = lazy(() => import('./components/UI/FeedbackButton'));
 const EmptyState = lazy(() => import('./components/UI/EmptyState'));
 const MentorAdminDashboard = lazy(() => import('./pages/MentorAdminDashboard'));
+const KnowledgeGenealogyTree = lazy(() => import('./components/Dashboard/KnowledgeGenealogyTree'));
 
 function App() {
   // Authentication (Supabase Auth)
@@ -1023,6 +1024,7 @@ function App() {
   const tabList = React.useMemo(
     () => [
       { id: 'inicio', label: 'Início', icon: Home },
+      { id: 'arvore', label: 'Árvore', icon: GitBranch },
       { id: 'departamento', label: 'Departamento', icon: GraduationCap },
       { id: 'mentor', label: 'Mentor IA', icon: Brain },
       { id: 'mentor-admin', label: 'Mentor Admin', icon: BarChart3 },
@@ -1058,6 +1060,13 @@ function App() {
         icon: Clock3,
         defaultTab: 'foco',
         tabIds: ['foco', 'questoes', 'metodos', 'cronograma'],
+      },
+      {
+        id: 'arvore-domain',
+        label: 'Árvore',
+        icon: GitBranch,
+        defaultTab: 'arvore',
+        tabIds: ['arvore'],
       },
       {
         id: 'departamento-domain',
@@ -1429,6 +1438,13 @@ function App() {
                   setActiveStudyMode('pomodoro');
                 }}
               />
+            </Suspense>
+          )}
+
+          {/* Página Árvore */}
+          {activeTab === 'arvore' && (
+            <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando árvore...</div>}>
+              <KnowledgeGenealogyTree supabaseUserId={supabaseUserId} />
             </Suspense>
           )}
 

@@ -12,6 +12,10 @@ router.get('/topics', (req, res) => {
   void learningGraphController.listTopics(req, res);
 });
 
+router.get('/prerequisite-edges', (req, res) => {
+  void learningGraphController.listPrerequisiteEdges(req, res);
+});
+
 router.get('/topics/:topicId', (req, res) => {
   void learningGraphController.getTopic(req, res);
 });

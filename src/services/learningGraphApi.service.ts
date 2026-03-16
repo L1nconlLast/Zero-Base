@@ -15,6 +15,12 @@ export interface LearningGraphTopic {
   ordem?: number | null;
 }
 
+export interface LearningGraphPrerequisiteEdge {
+  topico_id: string;
+  prerequisito_id: string;
+  mastery_required: number;
+}
+
 export type LearningProgressStatus = 'locked' | 'available' | 'studying' | 'completed' | 'review';
 
 export interface LearningGraphUserProgress {
@@ -96,6 +102,35 @@ class LearningGraphApiService {
 
       const data = (await response.json()) as { topics?: LearningGraphTopic[] };
       return data.topics || [];
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  async listPrerequisiteEdges(disciplineId?: string, timeoutMs = 15000): Promise<LearningGraphPrerequisiteEdge[]> {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const url = new URL(`${this.baseEndpoint}/prerequisite-edges`, window.location.origin);
+      if (disciplineId) {
+        url.searchParams.set('disciplinaId', disciplineId);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Falha ao listar arestas de prerequisito (${response.status}).`);
+      }
+
+      const data = (await response.json()) as { edges?: LearningGraphPrerequisiteEdge[] };
+      return data.edges || [];
     } finally {
       window.clearTimeout(timer);
     }
