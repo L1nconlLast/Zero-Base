@@ -1,6 +1,7 @@
 import React from 'react';
 import { Hand, Brain, CalendarDays, Target } from 'lucide-react';
 import { createDefaultSmartProfile, type DifficultyLevel, type SmartScheduleProfile } from '../../utils/smartScheduleEngine';
+import { OFFICIAL_EXAM_MODELS } from '../../data/officialExamModels';
 
 interface OnboardingFlowProps {
   userName?: string;
@@ -18,6 +19,8 @@ const CONCURSO_SUBJECTS = [
   'Informática',
   'Atualidades',
 ] as const;
+const CONCURSO_MODELS = OFFICIAL_EXAM_MODELS.filter((model) => model.track === 'concurso');
+const DEFAULT_CONCURSO_MODEL_ID = CONCURSO_MODELS[0]?.id || '';
 const WEEK_DAYS = [
   { id: 1, label: 'Seg' },
   { id: 2, label: 'Ter' },
@@ -41,6 +44,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   onComplete,
 }) => {
   const [step, setStep] = React.useState(1);
+  const [selectedConcursoModelId, setSelectedConcursoModelId] = React.useState(DEFAULT_CONCURSO_MODEL_ID);
   const [profile, setProfile] = React.useState<SmartScheduleProfile>(() => {
     const base = createDefaultSmartProfile();
     return {
@@ -50,7 +54,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     };
   });
 
-  const subjects = profile.examName === 'ENEM' ? ENEM_SUBJECTS : CONCURSO_SUBJECTS;
+  const selectedConcursoModel = React.useMemo(
+    () => CONCURSO_MODELS.find((model) => model.id === selectedConcursoModelId) || CONCURSO_MODELS[0],
+    [selectedConcursoModelId],
+  );
+
+  const subjects = React.useMemo(() => {
+    if (profile.examName === 'ENEM') {
+      return [...ENEM_SUBJECTS];
+    }
+
+    const modelSubjects = selectedConcursoModel?.disciplinas?.filter(Boolean) || [];
+    return modelSubjects.length > 0 ? modelSubjects : [...CONCURSO_SUBJECTS];
+  }, [profile.examName, selectedConcursoModel]);
 
   const setDifficulty = (subject: string, level: DifficultyLevel) => {
     setProfile((prev) => ({
@@ -83,7 +99,26 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const finish = () => {
     const methodId = profile.studyStyle === 'pomodoro_25_5' ? 'pomodoro' : 'livre';
     const dailyGoal = profile.hoursPerDay * 60;
-    onComplete({ dailyGoal, methodId, smartProfile: profile });
+
+    // Keep only the active track subjects in the saved profile to avoid stale ENEM/Concurso mixing.
+    const normalizedSubjectDifficulty: Record<string, DifficultyLevel> = {};
+    const normalizedSubjectWeight: Record<string, number> = {};
+
+    subjects.forEach((subject) => {
+      const level = profile.subjectDifficulty[subject] || 'medio';
+      normalizedSubjectDifficulty[subject] = level;
+      normalizedSubjectWeight[subject] = difficultyWeight[level];
+    });
+
+    onComplete({
+      dailyGoal,
+      methodId,
+      smartProfile: {
+        ...profile,
+        subjectDifficulty: normalizedSubjectDifficulty,
+        subjectWeight: normalizedSubjectWeight,
+      },
+    });
   };
 
   return (
@@ -124,13 +159,41 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Tipo de prova</label>
                   <select
                     value={profile.examName}
-                    onChange={(event) => setProfile((prev) => ({ ...prev, examName: event.target.value as SmartScheduleProfile['examName'] }))}
+                    onChange={(event) => {
+                      const nextExamName = event.target.value as SmartScheduleProfile['examName'];
+                      setProfile((prev) => ({ ...prev, examName: nextExamName }));
+                      if (nextExamName === 'CONCURSO' && !selectedConcursoModelId && DEFAULT_CONCURSO_MODEL_ID) {
+                        setSelectedConcursoModelId(DEFAULT_CONCURSO_MODEL_ID);
+                      }
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
                   >
                     <option value="ENEM">ENEM</option>
                     <option value="CONCURSO">Concurso</option>
                   </select>
                 </div>
+
+                {profile.examName === 'CONCURSO' && (
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Carreira / edital de referência</label>
+                    <select
+                      value={selectedConcursoModelId}
+                      onChange={(event) => setSelectedConcursoModelId(event.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                    >
+                      {CONCURSO_MODELS.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.nome} · {model.banca}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedConcursoModel && (
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                        {selectedConcursoModel.category} • {selectedConcursoModel.disciplinas.length} disciplinas mapeadas.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Data da prova</label>
@@ -216,7 +279,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 {subjects.map((subject) => {
                   const value = profile.subjectDifficulty[subject] || 'medio';
                   return (
-                    <div key={subject} className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-2 items-center">
+                    <div key={subject} className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-2 items-center">
                       <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{subject}</p>
                       <div className="flex gap-2">
                         {(['fraco', 'medio', 'forte'] as const).map((level) => {
@@ -267,6 +330,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4 space-y-1">
                 <p className="text-sm text-gray-700 dark:text-gray-200"><strong>Prova:</strong> {profile.examName}</p>
+                {profile.examName === 'CONCURSO' && selectedConcursoModel && (
+                  <p className="text-sm text-gray-700 dark:text-gray-200"><strong>Edital base:</strong> {selectedConcursoModel.nome}</p>
+                )}
                 <p className="text-sm text-gray-700 dark:text-gray-200"><strong>Meta:</strong> {profile.desiredScore} pontos</p>
                 <p className="text-sm text-gray-700 dark:text-gray-200"><strong>Disponibilidade:</strong> {profile.hoursPerDay}h/dia</p>
               </div>
