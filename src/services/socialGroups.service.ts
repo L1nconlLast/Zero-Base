@@ -44,6 +44,17 @@ const assertClient = () => {
   return supabase;
 };
 
+const isAuthLockTimeout = (message?: string): boolean => {
+  if (!message) return false;
+  return message.includes('Navigator LockManager lock')
+    || message.includes('auth-token')
+    || message.includes('timed out waiting');
+};
+
+const delay = (ms: number) => new Promise<void>((resolve) => {
+  setTimeout(resolve, ms);
+});
+
 const toStudyGroup = (row: GroupRow): StudyGroup => ({
   id: row.id,
   name: row.name,
@@ -80,16 +91,35 @@ class SocialGroupsService {
   async listGroups(): Promise<StudyGroup[]> {
     const client = assertClient();
 
-    const { data, error } = await client
-      .from('groups')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let data: GroupRow[] | null = null;
+    let errorMessage: string | null = null;
 
-    if (error) {
-      throw new Error(`Erro ao listar grupos: ${error.message}`);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { data: rows, error } = await client
+        .from('groups')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error) {
+        data = (rows || []) as GroupRow[];
+        errorMessage = null;
+        break;
+      }
+
+      errorMessage = error.message;
+
+      if (!isAuthLockTimeout(error.message) || attempt === 1) {
+        break;
+      }
+
+      await delay(400);
     }
 
-    return ((data || []) as GroupRow[]).map(toStudyGroup);
+    if (errorMessage) {
+      throw new Error(`Erro ao listar grupos: ${errorMessage}`);
+    }
+
+    return (data || []).map(toStudyGroup);
   }
 
   async createGroup(input: {
@@ -125,18 +155,35 @@ class SocialGroupsService {
 
     const { data, error } = await client
       .from('group_members')
-      .upsert(
+      .insert(
         {
           group_id: groupId,
           user_id: userId,
           role: 'member',
         },
-        { onConflict: 'group_id,user_id' },
       )
       .select('*')
       .single();
 
     if (error) {
+      const pgCode = (error as { code?: string }).code;
+
+      // Usuário já no grupo: retorna o vínculo atual sem tentar atualizar role.
+      if (pgCode === '23505') {
+        const { data: existing, error: existingError } = await client
+          .from('group_members')
+          .select('*')
+          .eq('group_id', groupId)
+          .eq('user_id', userId)
+          .single();
+
+        if (existingError || !existing) {
+          throw new Error(`Erro ao entrar no grupo: ${existingError?.message || error.message}`);
+        }
+
+        return toGroupMember(existing as GroupMemberRow);
+      }
+
       throw new Error(`Erro ao entrar no grupo: ${error.message}`);
     }
 

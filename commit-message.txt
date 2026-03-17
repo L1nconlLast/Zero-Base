@@ -1,0 +1,7 @@
+feat(profile-2.0): replace legacy profile/statistics UI with ProfileV2 + ProfileStatsV2 and integrate full backend persistence
+
+- add real profile load/save/notifications/avatar upload integration
+- add daily activity tracking and 365-day heatmap rendering
+- connect achievements persistence with fallback safety
+- keep Settings as orchestrator and remove legacy tab layouts
+- validate with typecheck and smoke-ready script

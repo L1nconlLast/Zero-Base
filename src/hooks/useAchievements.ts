@@ -15,15 +15,30 @@ export const useAchievements = (
   const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
   const [newlyUnlocked, setNewlyUnlocked] = useState<Achievement | null>(null);
   const syncedRef = useRef(false);
+  const syncedUserRef = useRef<string | null>(null);
+  const syncInFlightRef = useRef(false);
+  const retryAfterRef = useRef(0);
   const processingRef = useRef<Set<string>>(new Set());
 
   // ── Cloud sync: carregar conquistas salvas ──
   useEffect(() => {
-    if (!userId || !isSupabaseConfigured || syncedRef.current) return;
+    if (!userId || !isSupabaseConfigured) return;
+
+    if (syncedUserRef.current !== userId) {
+      syncedRef.current = false;
+      syncedUserRef.current = userId;
+      retryAfterRef.current = 0;
+    }
+
+    if (syncedRef.current || syncInFlightRef.current || Date.now() < retryAfterRef.current) {
+      return;
+    }
 
     let cancelled = false;
 
     const loadCloud = async () => {
+      syncInFlightRef.current = true;
+
       try {
         const cloudIds = await achievementsService.listUnlocked(userId);
         if (cancelled) return;
@@ -42,13 +57,16 @@ export const useAchievements = (
 
         syncedRef.current = true;
       } catch {
-        // Fallback local
+        // Evita tempestade de requisições quando há falha temporária de auth/lock.
+        retryAfterRef.current = Date.now() + 15000;
+      } finally {
+        syncInFlightRef.current = false;
       }
     };
 
     void loadCloud();
     return () => { cancelled = true; };
-  }, [userId, userData.achievements]);
+  }, [userId]);
 
   // ── Verificar novas conquistas ──
   useEffect(() => {

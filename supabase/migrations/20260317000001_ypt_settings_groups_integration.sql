@@ -109,6 +109,24 @@ CREATE TABLE IF NOT EXISTS group_members (
   PRIMARY KEY (group_id, user_id)
 );
 
+-- Compatibilidade: se group_members já existir de migração anterior, garante coluna status.
+ALTER TABLE IF EXISTS group_members
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'group_members_status_check'
+      AND conrelid = 'group_members'::regclass
+  ) THEN
+    ALTER TABLE group_members
+      ADD CONSTRAINT group_members_status_check
+      CHECK (status IN ('active','left'));
+  END IF;
+END $$;
+
 -- ── Sessões do grupo ──
 CREATE TABLE IF NOT EXISTS group_sessions (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),

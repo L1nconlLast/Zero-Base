@@ -465,10 +465,25 @@ function App() {
       dailyGoal,
       methodId,
       smartProfile,
+      onboardingMeta,
     }: {
       dailyGoal: number;
       methodId: string;
       smartProfile: SmartScheduleProfile;
+      onboardingMeta?: {
+        focus: 'enem' | 'concurso' | 'faculdade' | 'outros';
+        concurso: {
+          id: string;
+          nome: string;
+          banca: string;
+          area: string;
+        } | null;
+        enem: {
+          goalId: string | null;
+          targetCollege: string | null;
+          targetCourse: string | null;
+        } | null;
+      };
     }) => {
       if (user?.email) {
         const onboardingKey = `mdzOnboardingCompleted_${user.email}`;
@@ -476,6 +491,9 @@ function App() {
         window.localStorage.setItem(`smartScheduleAutoGenerate_${user.email.toLowerCase()}`, 'true');
         window.localStorage.setItem(`smartScheduleAutoGenerate_${supabaseUserId || 'default'}`, 'true');
         window.localStorage.setItem(`smartScheduleProfile_${supabaseUserId || 'default'}`, JSON.stringify(smartProfile));
+        if (onboardingMeta) {
+          window.localStorage.setItem(`smartScheduleOnboardingMeta_${supabaseUserId || 'default'}`, JSON.stringify(onboardingMeta));
+        }
       }
 
       trackEvent(
@@ -512,6 +530,17 @@ function App() {
       }
     },
     [setUserData, setSelectedMethodId, setActiveStudyMode, user?.email, supabaseUserId]
+  );
+
+  const handleOnboardingStepProgressSave = React.useCallback(
+    ({ smartProfile }: { step: number; focusType: string; smartProfile: SmartScheduleProfile }) => {
+      if (!supabaseUserId || !isSupabaseConfigured) return;
+
+      void saasPlanningService.upsertProfile(supabaseUserId, smartProfile).catch(() => {
+        // fallback silencioso: progresso já permanece no localStorage
+      });
+    },
+    [supabaseUserId]
   );
 
   useEffect(() => {
@@ -1212,6 +1241,7 @@ function App() {
           userName={resolvedDisplayName}
           initialDailyGoal={userData.dailyGoal || 90}
           initialMethodId={selectedMethodId}
+          onStepProgressSave={handleOnboardingStepProgressSave}
           onComplete={handleCompleteOnboarding}
         />
       )}

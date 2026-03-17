@@ -1,0 +1,16 @@
+:root {
+  --bg-card: #ffffff;
+  --bg-card-soft: #f8fafc;
+  --text-primary: #0f172a;
+  --text-muted: #64748b;
+  --border-default: #e5e7eb;
+}
+
+[data-theme='dark'],
+:root.dark {
+  --bg-card: #0f172a;
+  --bg-card-soft: #111827;
+  --text-primary: #e5e7eb;
+  --text-muted: #94a3b8;
+  --border-default: #1f2937;
+}

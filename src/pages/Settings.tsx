@@ -46,11 +46,174 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { UserData } from '../types';
+import { supabase } from '../services/supabase.client';
+import ProfileV2 from '../components/profile/ProfileV2';
+import ProfileStatsV2 from '../components/profile/ProfileStatsV2';
 
 type PrefThemeValues = 'Claro' | 'Escuro' | 'Sistema';
 type PrefLanguageValues = 'Português' | 'English' | 'Español';
 type PrefDensityValues = 'Compacto' | 'Normal' | 'Espaçoso';
 type PrefTimeValues = 'Manhã' | 'Tarde' | 'Noite' | 'Madrugada';
+type ThemeMode = 'light' | 'dark' | 'system';
+type Lang = 'pt' | 'en' | 'es';
+type Density = 'compact' | 'normal' | 'spacious';
+type Period = 'morning' | 'afternoon' | 'night' | 'late_night';
+
+type ProfileLoadResponse = {
+  profile?: {
+    displayName?: string | null;
+    display_name?: string | null;
+    email?: string | null;
+    avatarIcon?: string | null;
+    avatar_icon?: string | null;
+    avatarUrl?: string | null;
+    avatar_url?: string | null;
+    theme?: ThemeMode;
+    language?: Lang;
+    density?: Density;
+    preferredPeriod?: Period;
+    preferred_period?: Period;
+  };
+  notifications?: {
+    studyReminders?: boolean;
+    study_reminders?: boolean;
+    unlockedAchievements?: boolean;
+    unlocked_achievements?: boolean;
+    groupActivity?: boolean;
+    group_activity?: boolean;
+    weeklyReport?: boolean;
+    weekly_report?: boolean;
+    reminderTime?: string | null;
+    reminder_time?: string | null;
+    timezone?: string | null;
+  };
+  stats?: {
+    currentStreakDays?: number;
+    totalMinutes365?: number;
+    totalSessions365?: number;
+    ranking?: number;
+  };
+  achievements?: Array<{
+    key: string;
+    title?: string;
+    description?: string;
+    unlocked?: boolean;
+    unlockedAt?: string | null;
+    unlocked_at?: string | null;
+    progress?: number;
+    progressTarget?: number;
+    progress_target?: number;
+    xpReward?: number;
+  }>;
+  heatmap?: Array<{
+    date: string;
+    minutes: number;
+    sessions: number;
+    logins: number;
+    level: 0 | 1 | 2 | 3 | 4;
+  }>;
+};
+
+const PROFILE_CACHE_KEY = 'zb_profile_cache_v2';
+
+const themeLabelFromMode = (value: ThemeMode): PrefThemeValues => {
+  if (value === 'dark') return 'Escuro';
+  if (value === 'light') return 'Claro';
+  return 'Sistema';
+};
+
+const themeModeFromLabel = (value: PrefThemeValues): ThemeMode => {
+  if (value === 'Escuro') return 'dark';
+  if (value === 'Claro') return 'light';
+  return 'system';
+};
+
+const langLabelFromCode = (value: Lang): PrefLanguageValues => {
+  if (value === 'en') return 'English';
+  if (value === 'es') return 'Español';
+  return 'Português';
+};
+
+const langCodeFromLabel = (value: PrefLanguageValues): Lang => {
+  if (value === 'English') return 'en';
+  if (value === 'Español') return 'es';
+  return 'pt';
+};
+
+const densityLabelFromCode = (value: Density): PrefDensityValues => {
+  if (value === 'compact') return 'Compacto';
+  if (value === 'spacious') return 'Espaçoso';
+  return 'Normal';
+};
+
+const densityCodeFromLabel = (value: PrefDensityValues): Density => {
+  if (value === 'Compacto') return 'compact';
+  if (value === 'Espaçoso') return 'spacious';
+  return 'normal';
+};
+
+const periodLabelFromCode = (value: Period): PrefTimeValues => {
+  if (value === 'morning') return 'Manhã';
+  if (value === 'night') return 'Noite';
+  if (value === 'late_night') return 'Madrugada';
+  return 'Tarde';
+};
+
+const periodCodeFromLabel = (value: PrefTimeValues): Period => {
+  if (value === 'Manhã') return 'morning';
+  if (value === 'Noite') return 'night';
+  if (value === 'Madrugada') return 'late_night';
+  return 'afternoon';
+};
+
+const getStoredAuthToken = (): string | null => {
+  return localStorage.getItem('token') || localStorage.getItem('auth_token');
+};
+
+const getAccessToken = async (): Promise<string | null> => {
+  const session = await supabase?.auth.getSession();
+  return session?.data?.session?.access_token || getStoredAuthToken();
+};
+
+const getAuthHeaders = async (isJson = true): Promise<Record<string, string>> => {
+  const token = await getAccessToken();
+  return {
+    ...(isJson ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
+
+const apiGet = async <T,>(url: string): Promise<T> => {
+  const response = await fetch(url, { headers: await getAuthHeaders(false) });
+  if (!response.ok) throw new Error(`${response.status}`);
+  return (await response.json()) as T;
+};
+
+const apiPost = async <T,>(url: string, body: unknown): Promise<T> => {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: await getAuthHeaders(true),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`${response.status}`);
+  return (await response.json()) as T;
+};
+
+const uploadAvatarApi = async (file: File): Promise<string> => {
+  const token = await getAccessToken();
+  const form = new FormData();
+  form.append('file', file);
+
+  const response = await fetch('/api/profile/avatar/upload', {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  });
+
+  if (!response.ok) throw new Error(`upload_failed_${response.status}`);
+  const data = (await response.json()) as { avatarUrl?: string };
+  return data.avatarUrl || '';
+};
 
 interface SettingsPageProps {
   userData: UserData;
@@ -343,18 +506,51 @@ function Select({
   );
 }
 
-/* ─── TOGGLE ──────────────────────────────────────────────── */
-function Toggle({ on, color = L.indigo }: { on: boolean; color?: string }) {
-  const [state, setState] = useState(on);
+function HeatmapGrid({ data, palette }: { data: NonNullable<ProfileLoadResponse['heatmap']>; palette: ReturnType<typeof getPalette> }) {
+  const map = new Map(data.map((day) => [day.date, day.level]));
+  const days: string[] = [];
+  const now = new Date();
+
+  for (let i = 364; i >= 0; i -= 1) {
+    const dt = new Date(now);
+    dt.setDate(now.getDate() - i);
+    days.push(dt.toISOString().slice(0, 10));
+  }
+
+  const levelColor = (level: number): string => {
+    if (level === 0) return palette.soft2;
+    if (level === 1) return '#c7d2fe';
+    if (level === 2) return '#93c5fd';
+    if (level === 3) return '#60a5fa';
+    return '#2563eb';
+  };
 
   return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(53, 10px)', gap: 4, overflowX: 'auto', paddingBottom: 4 }}>
+      {days.map((date) => {
+        const level = map.get(date) ?? 0;
+        return (
+          <div
+            key={date}
+            title={`${date} • nível ${level}`}
+            style={{ width: 10, height: 10, borderRadius: 2, background: levelColor(level), flexShrink: 0 }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── TOGGLE ──────────────────────────────────────────────── */
+function Toggle({ on, color = L.indigo, onToggle }: { on: boolean; color?: string; onToggle?: (next: boolean) => void }) {
+  return (
     <div
-      onClick={() => setState((p) => !p)}
+      onClick={() => onToggle?.(!on)}
       style={{
         width: 40,
         height: 22,
         borderRadius: 11,
-        background: state ? color : L.border2,
+        background: on ? color : L.border2,
         position: 'relative',
         cursor: 'pointer',
         transition: 'background .2s',
@@ -365,7 +561,7 @@ function Toggle({ on, color = L.indigo }: { on: boolean; color?: string }) {
         style={{
           position: 'absolute',
           top: 3,
-          left: state ? 20 : 3,
+          left: on ? 20 : 3,
           width: 16,
           height: 16,
           borderRadius: '50%',
@@ -427,10 +623,21 @@ export default function SettingsPage({
   const [metaTmp, setMetaTmp] = useState(String(weeklyGoalMinutes || 1230));
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingNotifications, setSavingNotifications] = useState(false);
   const [tab, setTab] = useState('perfil');
   const [mounted, setMounted] = useState(false);
   const [hoverAch, setHoverAch] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [email, setEmail] = useState(userEmail || '');
+  const [heatmap, setHeatmap] = useState<NonNullable<ProfileLoadResponse['heatmap']>>([]);
+  const [cloudAchievements, setCloudAchievements] = useState<NonNullable<ProfileLoadResponse['achievements']>>([]);
+  const [statsSummary, setStatsSummary] = useState<{ streakDays?: number; totalHours?: number; sessions?: number; ranking?: number }>({});
+  const [notifStudy, setNotifStudy] = useState(true);
+  const [notifAchievements, setNotifAchievements] = useState(true);
+  const [notifGroup, setNotifGroup] = useState(false);
+  const [notifWeekly, setNotifWeekly] = useState(true);
 
   const [prefTheme, setPrefTheme] = useState<PrefThemeValues>(darkMode ? 'Escuro' : 'Claro');
   const [prefLang, setPrefLang] = useState<PrefLanguageValues>('Português');
@@ -449,12 +656,44 @@ export default function SettingsPage({
 
   const stats = useMemo(
     () => [
-      { label: 'Streak', val: userData.currentStreak || userData.streak || 0, unit: 'dias', Icon: Flame, color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
-      { label: 'Horas Estudadas', val: Math.floor((userData.totalPoints || 0) / 10), unit: 'horas', Icon: Timer, color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
-      { label: 'Simulados', val: sessionsCount, unit: 'sessões', Icon: FileText, color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-      { label: 'Ranking', val: Math.max(1, 120 - (userData.level || 1) * 3), unit: 'global', Icon: BarChart2, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+      {
+        label: 'Streak',
+        val: statsSummary.streakDays ?? userData.currentStreak ?? userData.streak ?? 0,
+        unit: 'dias',
+        Icon: Flame,
+        color: '#f97316',
+        bg: '#fff7ed',
+        border: '#fed7aa',
+      },
+      {
+        label: 'Horas Estudadas',
+        val: statsSummary.totalHours ?? Math.floor((userData.totalPoints || 0) / 10),
+        unit: 'horas',
+        Icon: Timer,
+        color: '#6366f1',
+        bg: '#eef2ff',
+        border: '#c7d2fe',
+      },
+      {
+        label: 'Simulados',
+        val: statsSummary.sessions ?? sessionsCount,
+        unit: 'sessões',
+        Icon: FileText,
+        color: '#16a34a',
+        bg: '#f0fdf4',
+        border: '#bbf7d0',
+      },
+      {
+        label: 'Ranking',
+        val: statsSummary.ranking ?? Math.max(1, 120 - (userData.level || 1) * 3),
+        unit: 'global',
+        Icon: BarChart2,
+        color: '#d97706',
+        bg: '#fffbeb',
+        border: '#fde68a',
+      },
     ],
-    [sessionsCount, userData.currentStreak, userData.level, userData.streak, userData.totalPoints],
+    [sessionsCount, statsSummary.ranking, statsSummary.sessions, statsSummary.streakDays, statsSummary.totalHours, userData.currentStreak, userData.level, userData.streak, userData.totalPoints],
   );
 
   useEffect(() => {
@@ -504,6 +743,10 @@ export default function SettingsPage({
   }, [userName]);
 
   useEffect(() => {
+    setEmail(userEmail || '');
+  }, [userEmail]);
+
+  useEffect(() => {
     setProva(profileExamGoal || 'ENEM');
   }, [profileExamGoal]);
 
@@ -521,10 +764,115 @@ export default function SettingsPage({
     setPhoto(initialPhoto);
   }, [initialAvatar, initialPhoto]);
 
+  useEffect(() => {
+    let alive = true;
+
+    const hydrateFromPayload = (data: ProfileLoadResponse) => {
+      const profile = data.profile || {};
+      const notifications = data.notifications || {};
+      const loadedName = profile.displayName || profile.display_name || '';
+      const loadedEmail = profile.email || '';
+      const loadedAvatarIcon = profile.avatarIcon || profile.avatar_icon || 'brain';
+      const loadedAvatarUrl = profile.avatarUrl || profile.avatar_url || '';
+      const loadedTheme = profile.theme || 'system';
+      const loadedLang = profile.language || 'pt';
+      const loadedDensity = profile.density || 'normal';
+      const loadedPeriod = profile.preferredPeriod || profile.preferred_period || 'morning';
+
+      setName(loadedName || userName || 'Lin');
+      setEmail(loadedEmail || userEmail || '');
+      setAvatarId(loadedAvatarIcon);
+      setPhoto(loadedAvatarUrl || null);
+
+      setPrefTheme(themeLabelFromMode(loadedTheme));
+      setPrefLang(langLabelFromCode(loadedLang));
+      setPrefDensity(densityLabelFromCode(loadedDensity));
+      setPrefTime(periodLabelFromCode(loadedPeriod));
+
+      setNotifStudy(Boolean(notifications.studyReminders ?? notifications.study_reminders ?? true));
+      setNotifAchievements(Boolean(notifications.unlockedAchievements ?? notifications.unlocked_achievements ?? true));
+      setNotifGroup(Boolean(notifications.groupActivity ?? notifications.group_activity ?? false));
+      setNotifWeekly(Boolean(notifications.weeklyReport ?? notifications.weekly_report ?? true));
+
+      setHeatmap(data.heatmap || []);
+      setCloudAchievements(data.achievements || []);
+
+      const totalMinutes = Number(data.stats?.totalMinutes365 || 0);
+      setStatsSummary({
+        streakDays: Number(data.stats?.currentStreakDays || 0),
+        totalHours: Math.floor(totalMinutes / 60),
+        sessions: Number(data.stats?.totalSessions365 || 0),
+        ranking: Number(data.stats?.ranking || Math.max(1, 120 - (userData.level || 1) * 3)),
+      });
+    };
+
+    const load = async () => {
+      setLoadingProfile(true);
+      try {
+        const data = await apiGet<ProfileLoadResponse>('/api/profile/load');
+        if (!alive) return;
+        hydrateFromPayload(data);
+        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data));
+      } catch {
+        const cached = localStorage.getItem(PROFILE_CACHE_KEY);
+        if (!cached || !alive) return;
+
+        try {
+          const cachedPayload = JSON.parse(cached) as ProfileLoadResponse;
+          hydrateFromPayload(cachedPayload);
+        } catch {
+          // noop: cache corrompido
+        }
+      } finally {
+        if (alive) setLoadingProfile(false);
+      }
+    };
+
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, [userData.level, userEmail, userName]);
+
+  useEffect(() => {
+    const run = async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const key = `zb_login_tracked_${today}`;
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+      try {
+        await apiPost('/api/activity/track', { date: today, loginCount: 1 });
+      } catch {
+        // sem bloqueio de UX
+      }
+    };
+    void run();
+  }, []);
+
   const mark = () => setDirty(true);
 
+  const applyDocumentPreferences = () => {
+    localStorage.setItem('settings-pref-theme', prefTheme);
+
+    const resolvedTheme = prefTheme === 'Escuro'
+      ? 'dark'
+      : prefTheme === 'Claro'
+        ? 'light'
+        : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+
+    document.documentElement.setAttribute('data-theme', resolvedTheme);
+    document.documentElement.setAttribute('lang', langCodeFromLabel(prefLang));
+  };
+
+  const parsePreferredTrack = (track: string): 'enem' | 'concursos' | 'hibrido' => {
+    if (track === 'enem' || track === 'hibrido' || track === 'concursos') {
+      return track;
+    }
+    return mapTrackFromTrilha(trilha);
+  };
+
   async function handleSave() {
-    const payload = {
+    const localPayload = {
       name: name.trim() || 'Estudante',
       avatar: photo || avatarId,
       examGoal: prova,
@@ -532,33 +880,107 @@ export default function SettingsPage({
       preferredTrack: mapTrackFromTrilha(trilha),
     };
 
+    const cloudPayload = {
+      displayName: name.trim() || 'Estudante',
+      email: email || undefined,
+      avatarIcon: avatarId,
+      avatarUrl: photo || null,
+      theme: themeModeFromLabel(prefTheme),
+      language: langCodeFromLabel(prefLang),
+      density: densityCodeFromLabel(prefDensity),
+      preferredPeriod: periodCodeFromLabel(prefTime),
+    };
+
+    let cloudOk = false;
+    let localOk = false;
+    let feedbackMessage = 'Perfil salvo com sucesso!';
+    setSavingProfile(true);
+
     try {
-      const result = await onSaveProfile(payload);
-      if (result.success) {
+      try {
+        await apiPost('/api/profile/save', cloudPayload);
+        cloudOk = true;
+      } catch {
+        localStorage.setItem(
+          PROFILE_CACHE_KEY,
+          JSON.stringify({
+            profile: {
+              displayName: cloudPayload.displayName,
+              email: cloudPayload.email || '',
+              avatarIcon: cloudPayload.avatarIcon,
+              avatarUrl: cloudPayload.avatarUrl,
+              theme: cloudPayload.theme,
+              language: cloudPayload.language,
+              density: cloudPayload.density,
+              preferredPeriod: cloudPayload.preferredPeriod,
+            },
+          } as ProfileLoadResponse),
+        );
+      }
+
+      const result = await onSaveProfile({
+        ...localPayload,
+        preferredTrack: parsePreferredTrack(localPayload.preferredTrack),
+      });
+
+      localOk = Boolean(result.success);
+      feedbackMessage = result.message || feedbackMessage;
+
+      if (cloudOk || localOk) {
+        applyDocumentPreferences();
         setDirty(false);
         setSaved(true);
-        toast.success(result.message || 'Perfil salvo com sucesso!');
+        toast.success(cloudOk ? feedbackMessage : 'Perfil salvo localmente (modo fallback).');
         setTimeout(() => setSaved(false), 2500);
-      } else {
-        toast.error(result.message || 'Não foi possível salvar o perfil.');
+        return;
       }
+
+      toast.error(feedbackMessage || 'Não foi possível salvar o perfil.');
     } catch {
       toast.error('Erro ao salvar perfil.');
+    } finally {
+      setSavingProfile(false);
     }
   }
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) {
+  async function handleSaveNotifications() {
+    setSavingNotifications(true);
+    try {
+      await apiPost('/api/profile/notifications', {
+        studyReminders: notifStudy,
+        unlockedAchievements: notifAchievements,
+        groupActivity: notifGroup,
+        weeklyReport: notifWeekly,
+      });
+      toast.success('Notificações salvas com sucesso!');
+      setDirty(false);
+    } catch {
+      localStorage.setItem(
+        `${PROFILE_CACHE_KEY}:notifications`,
+        JSON.stringify({
+          studyReminders: notifStudy,
+          unlockedAchievements: notifAchievements,
+          groupActivity: notifGroup,
+          weeklyReport: notifWeekly,
+        }),
+      );
+      toast.error('Falha na API. Preferências mantidas localmente.');
+    } finally {
+      setSavingNotifications(false);
+    }
+  }
+
+  async function handleAvatarUpload(file: File) {
+    if (!file) {
       return;
     }
 
-    if (!f.type.startsWith('image/')) {
+    if (!file.type.startsWith('image/')) {
       toast.error('Selecione um arquivo de imagem válido.');
       return;
     }
 
-    if (f.size > 2 * 1024 * 1024) {
+    if (file.size > 2 * 1024 * 1024) {
       toast.error('A imagem deve ter no máximo 2MB.');
       return;
     }
@@ -567,10 +989,78 @@ export default function SettingsPage({
       URL.revokeObjectURL(photo);
     }
 
-    setPhoto(URL.createObjectURL(f));
+    const localPreview = URL.createObjectURL(file);
+    setPhoto(localPreview);
     mark();
+
+    try {
+      const uploadedUrl = await uploadAvatarApi(file);
+      if (uploadedUrl) {
+        setPhoto(uploadedUrl);
+        toast.success('Avatar enviado e sincronizado!');
+      }
+    } catch {
+      toast.error('Upload em nuvem indisponível. Avatar salvo localmente.');
+    }
+
+  }
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) {
+      return;
+    }
+
+    await handleAvatarUpload(f);
     e.target.value = '';
   }
+
+  const achievementVisual = useMemo(
+    () => ({
+      first_session: { Icon: Flame, color: '#f97316', fallbackName: 'Primeira Chama', fallbackDesc: 'Complete sua primeira sessão', fallbackXp: 50 },
+      streak_7: { Icon: CalendarDays, color: '#6366f1', fallbackName: '7 Dias Seguidos', fallbackDesc: 'Streak de uma semana completa', fallbackXp: 150 },
+      top_100: { Icon: Trophy, color: '#d97706', fallbackName: 'Top 100', fallbackDesc: 'Entre no top 100 do ranking', fallbackXp: 300 },
+      default: { Icon: Award, color: '#16a34a', fallbackName: 'Conquista', fallbackDesc: 'Continue evoluindo para desbloquear.', fallbackXp: 100 },
+    }),
+    [],
+  );
+
+  const achievementsForView = useMemo(() => {
+    if (!cloudAchievements.length) {
+      return ACHIEVEMENTS.map((item) => ({
+        id: item.id,
+        key: `local-${item.id}`,
+        name: item.name,
+        desc: item.desc,
+        xp: item.xp,
+        done: item.done,
+        need: item.need,
+        date: item.date,
+        Icon: item.Icon,
+        color: item.color,
+      }));
+    }
+
+    return cloudAchievements.map((item, index) => {
+      const visual = achievementVisual[item.key as keyof typeof achievementVisual] || achievementVisual.default;
+      const unlockedAt = item.unlockedAt || item.unlocked_at || null;
+      const target = Number(item.progressTarget ?? item.progress_target ?? 1);
+      const progress = Number(item.progress ?? 0);
+
+      return {
+        id: index + 1,
+        key: item.key,
+        name: item.title || visual.fallbackName,
+        desc: item.description || visual.fallbackDesc,
+        xp: Number(item.xpReward || visual.fallbackXp),
+        done: Boolean(item.unlocked),
+        need: `${progress} / ${target}`,
+        date: unlockedAt ? new Date(unlockedAt).toLocaleDateString('pt-BR') : undefined,
+        Icon: visual.Icon,
+        color: visual.color,
+      };
+    });
+  }, [achievementVisual, cloudAchievements]);
 
   const daysLeft = dataProva
     ? Math.max(0, Math.round((new Date(dataProva).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
@@ -641,6 +1131,7 @@ export default function SettingsPage({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: accent, animation: 'pulse 2s infinite' }} />
               <span style={{ fontSize: 11, fontWeight: 700, color: L.muted, letterSpacing: 1.6, textTransform: 'uppercase' }}>Zero Base · Meu Perfil</span>
+              {loadingProfile && <span style={{ fontSize: 10.5, color: accent, fontWeight: 700 }}>Sincronizando...</span>}
             </div>
             <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 30, fontWeight: 800, color: L.text, letterSpacing: '-0.8px', lineHeight: 1.1 }}>
               Configurações de perfil
@@ -659,6 +1150,7 @@ export default function SettingsPage({
               <button
                 className="btn-primary"
                 onClick={handleSave}
+                disabled={savingProfile}
                 style={{
                   padding: '9px 20px',
                   borderRadius: 12,
@@ -671,9 +1163,10 @@ export default function SettingsPage({
                   alignItems: 'center',
                   gap: 7,
                   boxShadow: `0 4px 14px ${accent}44`,
+                  opacity: savingProfile ? 0.75 : 1,
                 }}
               >
-                <Save size={14} />Salvar perfil
+                <Save size={14} />{savingProfile ? 'Salvando...' : 'Salvar perfil'}
               </button>
             </div>
           )}
@@ -735,7 +1228,7 @@ export default function SettingsPage({
                     <Sparkles size={10} />Sincronizado
                   </span>
                 </div>
-                <p style={{ fontSize: 13, color: L.muted, marginBottom: 14 }}>{userEmail || 'conta@zero-base.app'}</p>
+                <p style={{ fontSize: 13, color: L.muted, marginBottom: 14 }}>{email || userEmail || 'conta@zero-base.app'}</p>
 
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -814,327 +1307,41 @@ export default function SettingsPage({
         </div>
 
         {tab === 'perfil' && (
-          <div className="two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, animation: 'fadeUp .3s ease' }}>
-            <Card accentTop={L.indigo} style={{ padding: '26px 28px' }}>
-              <SLabel color={L.indigo} icon={User}>Identidade</SLabel>
-              <Field label="Nome exibido">
-                <Input
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    mark();
-                  }}
-                />
-              </Field>
-              <Field label="Email" mb={0}>
-                <Input value={userEmail || 'conta@zero-base.app'} readOnly />
-              </Field>
-              <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-                <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <CheckCircle size={13} />Email verificado e sincronizado com a conta
-                </div>
-              </div>
-            </Card>
-
-            <Card accentTop={accent} style={{ padding: '26px 28px' }}>
-              <SLabel color={accent} icon={Palette}>Avatar</SLabel>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
-                <AvatarDisplay iconId={avatarId} photo={photo} size={58} />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: L.text, marginBottom: 2 }}>{AVATAR_ICONS.find((a) => a.id === avatarId)?.id || 'brain'}</div>
-                  <div style={{ fontSize: 12, color: L.muted }}>Selecione um ícone abaixo ou envie uma foto</div>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, marginBottom: 14 }}>
-                {AVATAR_ICONS.map((a) => {
-                  const sel = avatarId === a.id && !photo;
-                  return (
-                    <div
-                      key={a.id}
-                      className="av-chip"
-                      onClick={() => {
-                        setAvatarId(a.id);
-                        setPhoto(null);
-                        mark();
-                      }}
-                      style={{
-                        aspectRatio: '1',
-                        borderRadius: 12,
-                        background: sel ? `${a.color}14` : L.soft,
-                        border: `1.5px solid ${sel ? a.color : L.border}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: sel ? `0 0 0 3px ${a.color}22` : 'none',
-                      }}
-                    >
-                      <a.Icon size={18} color={sel ? a.color : L.muted} strokeWidth={1.8} />
-                    </div>
-                  );
-                })}
-              </div>
-              <button
-                className="btn"
-                onClick={() => fileRef.current?.click()}
-                style={{
-                  width: '100%',
-                  background: L.soft,
-                  border: `1px solid ${L.border2}`,
-                  borderRadius: 11,
-                  padding: '10px',
-                  color: L.sub,
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}
-              >
-                <Upload size={14} />Enviar foto (máx. 2MB)
-              </button>
-            </Card>
-
-            <Card accentTop={L.green} style={{ padding: '26px 28px' }}>
-              <SLabel color={L.green} icon={Target}>Meta Semanal</SLabel>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-                <div style={{ position: 'relative', width: 86, height: 86, flexShrink: 0 }}>
-                  <svg width={86} height={86} viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
-                    <circle cx="50" cy="50" r="40" fill="none" stroke={L.soft2} strokeWidth="8" />
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      fill="none"
-                      stroke={L.green}
-                      strokeWidth="8"
-                      strokeLinecap="round"
-                      strokeDasharray={`${2 * Math.PI * 40}`}
-                      strokeDashoffset={`${2 * Math.PI * 40 * (1 - metaPct / 100)}`}
-                      style={{ transition: 'stroke-dashoffset 1s ease', filter: `drop-shadow(0 0 5px ${L.green}55)` }}
-                    />
-                  </svg>
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: L.green, fontFamily: "'Syne',sans-serif" }}>{Math.round(metaPct)}%</div>
-                  </div>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: L.text, fontFamily: "'Syne',sans-serif", marginBottom: 2 }}>
-                    {studiedMin}
-                    <span style={{ fontSize: 13, fontWeight: 500, color: L.muted }}>/ {metaMin} min</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: L.muted, marginBottom: 14 }}>{studiedMin === 0 ? 'Nenhuma sessão esta semana' : 'Ótimo progresso!'}</div>
-                  {editMeta ? (
-                    <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
-                      <input
-                        type="number"
-                        value={metaTmp}
-                        autoFocus
-                        onChange={(e) => setMetaTmp(e.target.value)}
-                        className="pf-input"
-                        style={{ width: 80, border: `1px solid ${L.green}`, borderRadius: 10, padding: '7px 10px', color: L.text, fontSize: 13, background: L.surface }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            setMeta(Number(metaTmp) || 1230);
-                            setEditMeta(false);
-                            mark();
-                          }
-
-                          if (e.key === 'Escape') {
-                            setEditMeta(false);
-                          }
-                        }}
-                      />
-                      <span style={{ fontSize: 12, color: L.muted }}>min</span>
-                      <button
-                        onClick={() => {
-                          setMeta(Number(metaTmp) || 1230);
-                          setEditMeta(false);
-                          mark();
-                        }}
-                        style={{
-                          background: L.green,
-                          border: 'none',
-                          borderRadius: 9,
-                          padding: '7px 14px',
-                          color: '#fff',
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 5,
-                        }}
-                      >
-                        <Check size={13} />OK
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      className="btn"
-                      onClick={() => {
-                        setMetaTmp(String(metaMin));
-                        setEditMeta(true);
-                      }}
-                      style={{
-                        background: '#f0fdf4',
-                        border: '1px solid #bbf7d0',
-                        borderRadius: 10,
-                        padding: '7px 16px',
-                        color: L.green,
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      <Pencil size={12} />Editar meta
-                    </button>
-                  )}
-                </div>
-              </div>
-            </Card>
-
-            <Card accentTop={L.amber} style={{ padding: '26px 28px' }}>
-              <SLabel color={L.amber} icon={CalendarDays}>Preferências da Prova</SLabel>
-              <Field label="Prova alvo">
-                <Select
-                  value={prova}
-                  onChange={(e) => {
-                    setProva(e.target.value);
-                    mark();
-                  }}
-                  options={PROVAS}
-                />
-              </Field>
-              <Field
-                label={
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    Data da prova
-                    {daysLeft !== null && daysLeft > 0 && <span style={{ color: L.amber, fontWeight: 700, fontSize: 11 }}>· {daysLeft} dias restantes</span>}
-                    {daysLeft === 0 && <span style={{ color: L.red, fontWeight: 700, fontSize: 11 }}>· É hoje!</span>}
-                  </span>
-                }
-              >
-                <Input
-                  type="date"
-                  value={dataProva}
-                  onChange={(e) => {
-                    setData(e.target.value);
-                    mark();
-                  }}
-                  style={{ colorScheme: 'light' }}
-                />
-              </Field>
-              <Field label="Trilha principal" mb={0}>
-                <Select
-                  value={trilha}
-                  onChange={(e) => {
-                    setTrilha(e.target.value);
-                    mark();
-                  }}
-                  options={TRILHAS}
-                />
-              </Field>
-            </Card>
-          </div>
+          <ProfileV2
+            displayName={name}
+            email={email || userEmail || ''}
+            avatarIcon={avatarId}
+            avatarUrl={photo || ''}
+            onChangeDisplayName={(value) => {
+              setName(value);
+              mark();
+            }}
+            onSelectAvatar={(value) => {
+              setAvatarId(value);
+              setPhoto(null);
+              mark();
+            }}
+            onUploadAvatar={handleAvatarUpload}
+            onSave={handleSave}
+            saving={savingProfile}
+          />
         )}
 
         {tab === 'estatísticas' && (
-          <div style={{ animation: 'fadeUp .3s ease' }}>
-            <div className="four-col" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
-              {stats.map((s, i) => (
-                <div
-                  key={s.label}
-                  className="stat-card"
-                  style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 18, padding: '22px 20px', animation: `badgePop .4s ${i * 0.07}s ease both`, boxShadow: '0 2px 12px rgba(0,0,0,.05)' }}
-                >
-                  <div style={{ width: 38, height: 38, borderRadius: 10, background: '#fff', border: `1px solid ${s.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
-                    <s.Icon size={18} color={s.color} strokeWidth={2} />
-                  </div>
-                  <div style={{ fontSize: 32, fontWeight: 800, color: s.color, fontFamily: "'Syne',sans-serif", lineHeight: 1, marginBottom: 3 }}>
-                    <Counter to={s.val} duration={800 + i * 120} />
-                  </div>
-                  <div style={{ fontSize: 12, color: s.color, opacity: 0.8, fontWeight: 600 }}>{s.unit}</div>
-                  <div style={{ fontSize: 11.5, color: L.sub, marginTop: 4 }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-
-            <Card style={{ padding: '28px 32px', marginBottom: 20 }}>
-              <SLabel color={accent} icon={TrendingUp}>Atividade — Últimas 4 Semanas</SLabel>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-                {Array.from({ length: 28 }, (_, i) => {
-                  const n = Math.random();
-                  const bg = n > 0.8 ? accent : n > 0.55 ? `${accent}99` : n > 0.3 ? `${accent}44` : L.soft2;
-                  const glow = n > 0.8 ? `0 0 8px ${accent}55` : 'none';
-                  return (
-                    <div
-                      key={i}
-                      style={{ width: 28, height: 28, borderRadius: 7, background: bg, boxShadow: glow, cursor: 'default', transition: 'transform .12s' }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'scale(1.2)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'scale(1)';
-                      }}
-                    />
-                  );
-                })}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11, color: L.muted }}>Menos</span>
-                {[L.soft2, `${accent}44`, `${accent}99`, accent].map((c) => (
-                  <div key={c} style={{ width: 16, height: 16, borderRadius: 4, background: c }} />
-                ))}
-                <span style={{ fontSize: 11, color: L.muted }}>Mais</span>
-              </div>
-            </Card>
-
-            <Card style={{ padding: '28px 32px' }}>
-              <SLabel color={L.indigo} icon={Clock}>Horas por Dia — Esta Semana</SLabel>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 100 }}>
-                {[
-                  ['Seg', 2.5],
-                  ['Ter', 4.1],
-                  ['Qua', 1.8],
-                  ['Qui', 5.2],
-                  ['Sex', 3.6],
-                  ['Sáb', 0.5],
-                  ['Dom', 0],
-                ].map(([d, h]) => {
-                  const hours = Number(h);
-                  const pct = hours / 6;
-                  return (
-                    <div key={String(d)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: L.indigo }}>{hours > 0 ? `${hours}h` : ''}</div>
-                      <div style={{ width: '100%', height: 70, display: 'flex', alignItems: 'flex-end' }}>
-                        <div
-                          style={{
-                            width: '100%',
-                            height: `${Math.max(pct * 100, hours > 0 ? 6 : 0)}%`,
-                            borderRadius: 6,
-                            background: hours > 0 ? `${L.indigo}` : L.soft2,
-                            transition: 'height 1s ease',
-                            boxShadow: hours > 0 ? `0 0 10px ${L.indigo}33` : 'none',
-                          }}
-                        />
-                      </div>
-                      <div style={{ fontSize: 11, color: L.muted, fontWeight: 600 }}>{String(d)}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          </div>
+          <ProfileStatsV2
+            heatmap={heatmap}
+            streakDays={statsSummary.streakDays || 0}
+            totalHours={statsSummary.totalHours || 0}
+            sessions={statsSummary.sessions || 0}
+            ranking={statsSummary.ranking || 0}
+          />
         )}
 
         {tab === 'conquistas' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16, animation: 'fadeUp .3s ease' }}>
-            {ACHIEVEMENTS.map((a, i) => (
+            {achievementsForView.map((a, i) => (
               <div
-                key={a.id}
+                key={a.key}
                 className="ach-card"
                 onMouseEnter={() => setHoverAch(a.id)}
                 onMouseLeave={() => setHoverAch(null)}
@@ -1194,7 +1401,7 @@ export default function SettingsPage({
                     <div style={{ fontSize: 12, color: L.muted, marginBottom: a.done ? 6 : 8, lineHeight: 1.5 }}>{a.desc}</div>
                     {a.done ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: L.green, fontWeight: 600 }}>
-                        <CheckCircle size={12} />Desbloqueado em {a.date}
+                        <CheckCircle size={12} />Desbloqueado {a.date ? `em ${a.date}` : ''}
                       </div>
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: L.muted }}>
@@ -1213,10 +1420,10 @@ export default function SettingsPage({
             <Card accentTop={L.indigo} style={{ padding: '26px 28px' }}>
               <SLabel color={L.indigo} icon={Bell}>Notificações</SLabel>
               {[
-                { label: 'Lembretes de estudo', desc: 'Aviso diário na hora configurada', Icon: BellRing, on: true },
-                { label: 'Conquistas desbloqueadas', desc: 'Notifique ao ganhar badges', Icon: Award, on: true },
-                { label: 'Atividade do grupo', desc: 'Mensagens e novidades nos grupos', Icon: Bell, on: false },
-                { label: 'Relatório semanal', desc: 'Resumo de desempenho todo domingo', Icon: FileText, on: true },
+                { label: 'Lembretes de estudo', desc: 'Aviso diário na hora configurada', Icon: BellRing, on: notifStudy, setter: setNotifStudy },
+                { label: 'Conquistas desbloqueadas', desc: 'Notifique ao ganhar badges', Icon: Award, on: notifAchievements, setter: setNotifAchievements },
+                { label: 'Atividade do grupo', desc: 'Mensagens e novidades nos grupos', Icon: Bell, on: notifGroup, setter: setNotifGroup },
+                { label: 'Relatório semanal', desc: 'Resumo de desempenho todo domingo', Icon: FileText, on: notifWeekly, setter: setNotifWeekly },
               ].map((n, i) => (
                 <div key={n.label} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 0', borderBottom: i < 3 ? `1px solid ${L.border}` : 'none' }}>
                   <div style={{ width: 34, height: 34, borderRadius: 10, background: n.on ? '#eef2ff' : L.soft, border: `1px solid ${n.on ? '#c7d2fe' : L.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1226,9 +1433,37 @@ export default function SettingsPage({
                     <div style={{ fontSize: 13, fontWeight: 600, color: L.text }}>{n.label}</div>
                     <div style={{ fontSize: 11.5, color: L.muted }}>{n.desc}</div>
                   </div>
-                  <Toggle on={n.on} color={L.indigo} />
+                  <Toggle
+                    on={n.on}
+                    color={L.indigo}
+                    onToggle={(next) => {
+                      n.setter(next);
+                      mark();
+                    }}
+                  />
                 </div>
               ))}
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  void handleSaveNotifications();
+                }}
+                disabled={savingNotifications}
+                style={{
+                  marginTop: 14,
+                  width: '100%',
+                  padding: '10px 16px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: L.indigo,
+                  color: '#fff',
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  opacity: savingNotifications ? 0.7 : 1,
+                }}
+              >
+                {savingNotifications ? 'Salvando notificações...' : 'Salvar notificações'}
+              </button>
             </Card>
 
             <Card accentTop={accent} style={{ padding: '26px 28px' }}>
@@ -1383,6 +1618,7 @@ export default function SettingsPage({
               <button
                 className="btn-primary"
                 onClick={handleSave}
+                disabled={savingProfile}
                 style={{
                   padding: '8px 20px',
                   borderRadius: 10,
@@ -1395,9 +1631,10 @@ export default function SettingsPage({
                   alignItems: 'center',
                   gap: 7,
                   boxShadow: `0 4px 14px ${accent}44`,
+                  opacity: savingProfile ? 0.75 : 1,
                 }}
               >
-                <Save size={14} />Salvar
+                <Save size={14} />{savingProfile ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
           </div>
