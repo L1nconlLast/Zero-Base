@@ -1,0 +1,135 @@
+name: Deploy Staging and Production
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Ambiente alvo
+        required: true
+        default: production
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:server
+      - run: npm run test
+      - run: npm run build
+
+  deploy-staging:
+    if: github.ref_name == 'develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'staging')
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Deploy Web to Vercel (staging)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ]; then
+            npx vercel deploy --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID" --yes
+          else
+            echo "VERCEL_TOKEN não configurado; deploy web staging ignorado"
+          fi
+      - name: Deploy API to Railway (staging)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_SERVICE_STAGING: ${{ secrets.RAILWAY_API_SERVICE_STAGING }}
+        run: |
+          if [ -n "$RAILWAY_TOKEN" ] && [ -n "$RAILWAY_API_SERVICE_STAGING" ]; then
+            npx @railway/cli up --service "$RAILWAY_API_SERVICE_STAGING" --detach
+          else
+            echo "Credenciais Railway staging ausentes; deploy API staging ignorado"
+          fi
+      - name: Deploy AI Service to Railway (staging)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_AI_SERVICE_STAGING: ${{ secrets.RAILWAY_AI_SERVICE_STAGING }}
+        run: |
+          if [ -n "$RAILWAY_TOKEN" ] && [ -n "$RAILWAY_AI_SERVICE_STAGING" ]; then
+            npx @railway/cli up --service "$RAILWAY_AI_SERVICE_STAGING" --detach
+          else
+            echo "Credenciais Railway staging ausentes; deploy AI staging ignorado"
+          fi
+      - name: Smoke test staging API
+        env:
+          STAGING_API_URL: ${{ secrets.STAGING_API_URL }}
+        run: |
+          if [ -n "$STAGING_API_URL" ]; then
+            curl --fail "$STAGING_API_URL/health"
+            curl --fail "$STAGING_API_URL/health/ready"
+          else
+            echo "STAGING_API_URL não configurado; smoke de staging ignorado"
+          fi
+
+  deploy-production:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production' && github.ref_name == 'main'
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Deploy Web to Vercel (production)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ]; then
+            npx vercel deploy --prod --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID" --yes
+          else
+            echo "VERCEL_TOKEN não configurado; deploy web produção ignorado"
+          fi
+      - name: Deploy API to Railway (production)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_API_SERVICE_PROD: ${{ secrets.RAILWAY_API_SERVICE_PROD }}
+        run: |
+          if [ -n "$RAILWAY_TOKEN" ] && [ -n "$RAILWAY_API_SERVICE_PROD" ]; then
+            npx @railway/cli up --service "$RAILWAY_API_SERVICE_PROD" --detach
+          else
+            echo "Credenciais Railway produção ausentes; deploy API produção ignorado"
+          fi
+      - name: Deploy AI Service to Railway (production)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_AI_SERVICE_PROD: ${{ secrets.RAILWAY_AI_SERVICE_PROD }}
+        run: |
+          if [ -n "$RAILWAY_TOKEN" ] && [ -n "$RAILWAY_AI_SERVICE_PROD" ]; then
+            npx @railway/cli up --service "$RAILWAY_AI_SERVICE_PROD" --detach
+          else
+            echo "Credenciais Railway produção ausentes; deploy AI produção ignorado"
+          fi
+      - name: Smoke test production API
+        env:
+          PROD_API_URL: ${{ secrets.PROD_API_URL }}
+        run: |
+          if [ -n "$PROD_API_URL" ]; then
+            curl --fail "$PROD_API_URL/health"
+            curl --fail "$PROD_API_URL/health/ready"
+          else
+            echo "PROD_API_URL não configurado; smoke de produção ignorado"
+          fi
