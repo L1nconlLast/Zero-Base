@@ -36,8 +36,6 @@ export interface MentorAdminMetrics {
 }
 
 const COST_PER_MILLION_TOKENS_USD = 0.15;
-const TREND_DAYS = 15;
-const KPI_DAYS = 30;
 
 const supabaseUrl = process.env.SUPABASE_URL?.trim();
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -45,12 +43,6 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 const supabase = supabaseUrl && serviceRoleKey
   ? createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
   : null;
-
-const startOfDayIso = (date: Date): string => {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy.toISOString();
-};
 
 const formatDay = (date: Date): string => date.toISOString().slice(0, 10);
 
@@ -77,8 +69,10 @@ export const parsePeriod = (period: string): { startDate: string; trendDays: num
       break;
     case 'current_month':
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-      trendDays = daysInMonth;
+      {
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        trendDays = daysInMonth;
+      }
       break;
     case '30d':
     default:

@@ -1,0 +1,202 @@
+[
+  {
+    "id": "portugues",
+    "nome": "Portugues",
+    "modalidade": "ENEM",
+    "icone": "Languages",
+    "cor_hex": "#2563EB",
+    "ordem": 1,
+    "targetCount": 350,
+    "areas": ["Interpretacao", "Semantica", "Gramatica", "Morfologia", "Sintaxe", "Literatura"]
+  },
+  {
+    "id": "matematica",
+    "nome": "Matematica",
+    "modalidade": "ENEM",
+    "icone": "Sigma",
+    "cor_hex": "#DC2626",
+    "ordem": 2,
+    "targetCount": 500,
+    "areas": ["Aritmetica", "Algebra", "Funcoes", "Geometria", "Estatistica", "Probabilidade", "Financeira"]
+  },
+  {
+    "id": "fisica",
+    "nome": "Fisica",
+    "modalidade": "ENEM",
+    "icone": "Atom",
+    "cor_hex": "#D97706",
+    "ordem": 3,
+    "targetCount": 300,
+    "areas": ["Mecanica", "Termologia", "Ondulatoria", "Optica", "Eletricidade", "Fisica Moderna"]
+  },
+  {
+    "id": "quimica",
+    "nome": "Quimica",
+    "modalidade": "ENEM",
+    "icone": "FlaskConical",
+    "cor_hex": "#059669",
+    "ordem": 4,
+    "targetCount": 350,
+    "areas": ["Atomistica", "Ligacoes", "Inorganica", "Fisico-Quimica", "Organica", "Ambiental"]
+  },
+  {
+    "id": "biologia",
+    "nome": "Biologia",
+    "modalidade": "ENEM",
+    "icone": "Dna",
+    "cor_hex": "#16A34A",
+    "ordem": 5,
+    "targetCount": 350,
+    "areas": ["Citologia", "Genetica", "Evolucao", "Ecologia", "Botanica", "Zoologia", "Fisiologia Humana"]
+  },
+  {
+    "id": "historia",
+    "nome": "Historia",
+    "modalidade": "ENEM",
+    "icone": "ScrollText",
+    "cor_hex": "#7C3AED",
+    "ordem": 6,
+    "targetCount": 300,
+    "areas": ["Antiga", "Medieval", "Moderna", "Contemporanea", "Brasil Colonia", "Brasil Republica"]
+  },
+  {
+    "id": "geografia",
+    "nome": "Geografia",
+    "modalidade": "ENEM",
+    "icone": "Globe2",
+    "cor_hex": "#0284C7",
+    "ordem": 7,
+    "targetCount": 250,
+    "areas": ["Cartografia", "Geografia Fisica", "Populacao", "Geopolitica", "Economia", "Brasil"]
+  },
+  {
+    "id": "filosofia",
+    "nome": "Filosofia",
+    "modalidade": "ENEM",
+    "icone": "Brain",
+    "cor_hex": "#4F46E5",
+    "ordem": 8,
+    "targetCount": 150,
+    "areas": ["Antiga", "Medieval", "Moderna", "Contemporanea", "Etica", "Politica"]
+  },
+  {
+    "id": "sociologia",
+    "nome": "Sociologia",
+    "modalidade": "ENEM",
+    "icone": "Users",
+    "cor_hex": "#7C3AED",
+    "ordem": 9,
+    "targetCount": 150,
+    "areas": ["Sociedade", "Cultura", "Politica", "Trabalho", "Movimentos Sociais"]
+  },
+  {
+    "id": "redacao",
+    "nome": "Redacao",
+    "modalidade": "ENEM",
+    "icone": "PenTool",
+    "cor_hex": "#DB2777",
+    "ordem": 10,
+    "targetCount": 100,
+    "areas": ["Competencia 1", "Competencia 2", "Competencia 3", "Competencia 4", "Competencia 5"]
+  },
+  {
+    "id": "ingles",
+    "nome": "Ingles",
+    "modalidade": "ENEM",
+    "icone": "Languages",
+    "cor_hex": "#0891B2",
+    "ordem": 11,
+    "targetCount": 150,
+    "areas": ["Reading", "Grammar", "Vocabulary", "Interpretation"]
+  },
+  {
+    "id": "atualidades",
+    "nome": "Atualidades",
+    "modalidade": "ENEM",
+    "icone": "Newspaper",
+    "cor_hex": "#EA580C",
+    "ordem": 12,
+    "targetCount": 100,
+    "areas": ["Politica", "Economia", "Meio Ambiente", "Tecnologia", "Sociedade"]
+  },
+  {
+    "id": "direito_constitucional",
+    "nome": "Direito Constitucional",
+    "modalidade": "CONCURSOS",
+    "icone": "Scale",
+    "cor_hex": "#1D4ED8",
+    "ordem": 20,
+    "targetCount": 400,
+    "areas": ["Constituicao", "Principios Fundamentais", "Direitos Fundamentais", "Organizacao do Estado", "Poderes", "Controle de Constitucionalidade"]
+  },
+  {
+    "id": "direito_administrativo",
+    "nome": "Direito Administrativo",
+    "modalidade": "CONCURSOS",
+    "icone": "Landmark",
+    "cor_hex": "#1E40AF",
+    "ordem": 21,
+    "targetCount": 350,
+    "areas": ["Atos", "Poderes", "Servicos Publicos", "Licitacoes", "Contratos", "Responsabilidade do Estado"]
+  },
+  {
+    "id": "direito_penal",
+    "nome": "Direito Penal",
+    "modalidade": "CONCURSOS",
+    "icone": "Shield",
+    "cor_hex": "#0F766E",
+    "ordem": 22,
+    "targetCount": 325,
+    "areas": ["Parte Geral", "Teoria do Crime", "Penas", "Crimes em Especie", "Legislacao Especial"]
+  },
+  {
+    "id": "direito_civil",
+    "nome": "Direito Civil",
+    "modalidade": "CONCURSOS",
+    "icone": "BookText",
+    "cor_hex": "#155E75",
+    "ordem": 23,
+    "targetCount": 325,
+    "areas": ["Parte Geral", "Obrigacoes", "Contratos", "Responsabilidade Civil", "Direitos Reais", "Familia", "Sucessoes"]
+  },
+  {
+    "id": "direito_previdenciario",
+    "nome": "Direito Previdenciario",
+    "modalidade": "CONCURSOS",
+    "icone": "ReceiptText",
+    "cor_hex": "#0369A1",
+    "ordem": 24,
+    "targetCount": 225,
+    "areas": ["Seguridade", "RGPS", "Beneficios", "Custeio", "Processo Previdenciario"]
+  },
+  {
+    "id": "informatica",
+    "nome": "Informatica",
+    "modalidade": "CONCURSOS",
+    "icone": "MonitorSmartphone",
+    "cor_hex": "#4338CA",
+    "ordem": 25,
+    "targetCount": 325,
+    "areas": ["Windows", "Office", "Internet", "Redes", "Seguranca", "Banco de Dados", "Programacao"]
+  },
+  {
+    "id": "administracao",
+    "nome": "Administracao",
+    "modalidade": "CONCURSOS",
+    "icone": "BriefcaseBusiness",
+    "cor_hex": "#6D28D9",
+    "ordem": 26,
+    "targetCount": 250,
+    "areas": ["Teorias", "Planejamento", "Organizacao", "Direcao", "Controle", "Gestao de Pessoas", "Processos"]
+  },
+  {
+    "id": "raciocinio_logico",
+    "nome": "Raciocinio Logico",
+    "modalidade": "CONCURSOS",
+    "icone": "Puzzle",
+    "cor_hex": "#7E22CE",
+    "ordem": 27,
+    "targetCount": 300,
+    "areas": ["Proposicoes", "Conectivos", "Equivalencias", "Argumentacao", "Diagramas", "Combinatoria", "Probabilidade"]
+  }
+]

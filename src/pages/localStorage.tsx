@@ -36,7 +36,7 @@ const LocalStoragePage: React.FC<LocalStoragePageProps> = ({
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `medicina-do-zero-backup-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `zero-base-backup-${new Date().toISOString().split('T')[0]}.json`;
     link.click();
     URL.revokeObjectURL(url);
     toast.success('Dados exportados com sucesso!');

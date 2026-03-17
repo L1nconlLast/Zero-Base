@@ -10,25 +10,35 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+  BookOpen,
   ArrowRightCircle,
   Brain,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Circle,
   Compass,
+  Eye,
   GitBranch,
+  Lock,
+  Orbit,
+  RefreshCw,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import {
   GLOBAL_KNOWLEDGE_ROOTS,
   KNOWLEDGE_GRAPH_EDGES,
-  PORTUGUESE_KNOWLEDGE_TREE,
+  getKnowledgeTreeByDiscipline,
   type KnowledgeNode,
 } from '../../data/knowledgeTreeBlueprint';
 import {
   learningGraphApiService,
   type LearningGraphDiscipline,
+  type LearningGraphNode,
   type LearningGraphNextTopic,
   type LearningGraphPrerequisiteEdge,
+  type LearningGraphPayload,
   type LearningGraphTopic,
   type LearningGraphUserProgress,
   type LearningProgressStatus,
@@ -169,14 +179,6 @@ const statusStyle: Record<LearningProgressStatus, string> = {
   review: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
 };
 
-const statusEmoji: Record<LearningProgressStatus, string> = {
-  locked: '🔒',
-  available: '⚪',
-  studying: '🟡',
-  completed: '🟢',
-  review: '🟣',
-};
-
 const statusFlow: LearningProgressStatus[] = ['locked', 'available', 'studying', 'completed', 'review'];
 const statusColorHex: Record<LearningProgressStatus, string> = {
   locked: '#94a3b8',
@@ -222,6 +224,21 @@ const getDisciplineTrack = (discipline: LearningGraphDiscipline): TrackMode | nu
   }
 
   return null;
+};
+
+const statusIconByStatus: Record<LearningProgressStatus, React.ComponentType<{ className?: string }>> = {
+  locked: Lock,
+  available: Circle,
+  studying: Sparkles,
+  completed: CheckCircle2,
+  review: RefreshCw,
+};
+
+const nodeIconByType: Record<string, React.ComponentType<{ className?: string }>> = {
+  discipline: BookOpen,
+  area: Compass,
+  topic: Circle,
+  subtopic: Orbit,
 };
 
 const KnowledgeNodeRow: React.FC<{ node: KnowledgeNode; level: number }> = ({ node, level }) => {
@@ -277,6 +294,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
   const [selectedDisciplineId, setSelectedDisciplineId] = React.useState<string>('');
   const [topics, setTopics] = React.useState<LearningGraphTopic[]>([]);
   const [prerequisiteEdges, setPrerequisiteEdges] = React.useState<LearningGraphPrerequisiteEdge[]>([]);
+  const [graphPayload, setGraphPayload] = React.useState<LearningGraphPayload>({ nodes: [], edges: [], stats: { totalNodes: 0, totalEdges: 0, totalTopics: 0 } });
   const [progressByTopicId, setProgressByTopicId] = React.useState<Record<string, LearningGraphUserProgress>>({});
   const [isLoadingMap, setIsLoadingMap] = React.useState(false);
   const [isAutoUnlocking, setIsAutoUnlocking] = React.useState(false);
@@ -331,9 +349,10 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
       setMapError(null);
 
       try {
-        const [topicRows, edgeRows, progressRows] = await Promise.all([
+        const [topicRows, edgeRows, graphRows, progressRows] = await Promise.all([
           learningGraphApiService.listTopics(selectedDisciplineId || undefined),
           learningGraphApiService.listPrerequisiteEdges(selectedDisciplineId || undefined),
+          learningGraphApiService.getSkillTree({ disciplineId: selectedDisciplineId || undefined, track: trackMode, limit: 1200 }),
           supabaseUserId ? learningGraphApiService.getUserProgress(selectedDisciplineId || undefined) : Promise.resolve([]),
         ]);
 
@@ -341,18 +360,20 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
 
         setTopics(topicRows);
         setPrerequisiteEdges(edgeRows);
+        setGraphPayload(graphRows);
 
-        const nextProgressByTopic = (progressRows || []).reduce<Record<string, LearningGraphUserProgress>>((acc, row) => {
+        const normalizedProgress = (progressRows || []).reduce<Record<string, LearningGraphUserProgress>>((acc, row) => {
           acc[row.topico_id] = row;
           return acc;
         }, {});
 
-        setProgressByTopicId(nextProgressByTopic);
+        setProgressByTopicId(normalizedProgress);
       } catch (error) {
         if (!active) return;
         setMapError(error instanceof Error ? error.message : 'Nao foi possivel carregar o mapa de topicos.');
         setTopics([]);
         setPrerequisiteEdges([]);
+        setGraphPayload({ nodes: [], edges: [], stats: { totalNodes: 0, totalEdges: 0, totalTopics: 0 } });
         setProgressByTopicId({});
       } finally {
         if (active) setIsLoadingMap(false);
@@ -364,7 +385,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
     return () => {
       active = false;
     };
-  }, [selectedDisciplineId, supabaseUserId]);
+  }, [selectedDisciplineId, supabaseUserId, trackMode]);
 
   React.useEffect(() => {
     if (!supabaseUserId || topics.length === 0 || isAutoUnlocking) return;
@@ -513,106 +534,107 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
 
   const displayedTopics = React.useMemo(() => topics.slice(0, 16), [topics]);
   const stages = TRACK_STAGE_MAP[trackMode];
+  const selectedDiscipline = React.useMemo(
+    () => trackDisciplines.find((discipline) => discipline.id === selectedDisciplineId),
+    [trackDisciplines, selectedDisciplineId],
+  );
+  const selectedReferenceTree = React.useMemo(() => {
+    if (selectedDiscipline?.nome) {
+      return getKnowledgeTreeByDiscipline(selectedDiscipline.nome);
+    }
+
+    return trackMode === 'concurso'
+      ? getKnowledgeTreeByDiscipline('direito_constitucional')
+      : getKnowledgeTreeByDiscipline('portugues');
+  }, [selectedDiscipline, trackMode]);
 
   const graphData = React.useMemo(() => {
-    const selectedTopicIds = new Set(topics.map((topic) => topic.id));
-
-    const incomingMap = prerequisiteEdges.reduce<Record<string, string[]>>((acc, edge) => {
-      if (!selectedTopicIds.has(edge.topico_id) || !selectedTopicIds.has(edge.prerequisito_id)) {
-        return acc;
-      }
-
-      if (!acc[edge.topico_id]) {
-        acc[edge.topico_id] = [];
-      }
-
-      acc[edge.topico_id].push(edge.prerequisito_id);
+    const hierarchyEdges = graphPayload.edges.filter((edge) => edge.type === 'hierarchy');
+    const depthByNodeId = new Map<string, number>();
+    const incoming = hierarchyEdges.reduce<Record<string, string[]>>((acc, edge) => {
+      if (!acc[edge.target]) acc[edge.target] = [];
+      acc[edge.target].push(edge.source);
       return acc;
     }, {});
 
-    const depthMemo = new Map<string, number>();
-
-    const getDepth = (topicId: string, trail: Set<string> = new Set()): number => {
-      if (depthMemo.has(topicId)) {
-        return depthMemo.get(topicId) || 0;
-      }
-
-      if (trail.has(topicId)) {
-        return 0;
-      }
-
-      trail.add(topicId);
-      const deps = incomingMap[topicId] || [];
-
-      const depth = deps.length === 0
-        ? 0
-        : Math.max(...deps.map((depId) => getDepth(depId, new Set(trail)))) + 1;
-
-      depthMemo.set(topicId, depth);
+    const computeDepth = (nodeId: string, trail: Set<string> = new Set()): number => {
+      if (depthByNodeId.has(nodeId)) return depthByNodeId.get(nodeId) || 0;
+      if (trail.has(nodeId)) return 0;
+      trail.add(nodeId);
+      const parents = incoming[nodeId] || [];
+      const depth = parents.length === 0 ? 0 : Math.max(...parents.map((parentId) => computeDepth(parentId, new Set(trail)))) + 1;
+      depthByNodeId.set(nodeId, depth);
       return depth;
     };
 
-    const columns = new Map<number, string[]>();
-    topics.forEach((topic) => {
-      const depth = getDepth(topic.id);
+    const columns = new Map<number, LearningGraphNode[]>();
+    graphPayload.nodes.forEach((node) => {
+      const depth = computeDepth(node.id);
       const list = columns.get(depth) || [];
-      list.push(topic.id);
+      list.push(node);
       columns.set(depth, list);
     });
 
-    const topicById = new Map(topics.map((topic) => [topic.id, topic]));
-
     const nodes: Node[] = [];
-    [...columns.entries()].forEach(([depth, ids]) => {
-      ids.forEach((topicId, index) => {
-        const topic = topicById.get(topicId);
-        if (!topic) {
-          return;
-        }
-
-        const status = getTopicStatus(topic.id);
+    [...columns.entries()].forEach(([depth, groupedNodes]) => {
+      groupedNodes.forEach((node, index) => {
+        const nodeStatus = node.data.status || 'locked';
+        const StatusIcon = statusIconByStatus[nodeStatus as LearningProgressStatus] || Circle;
+        const NodeIcon = nodeIconByType[node.type] || Circle;
 
         nodes.push({
-          id: topic.id,
+          id: node.id,
           type: 'default',
-          position: { x: depth * 280, y: index * 110 },
+          position: { x: depth * 300, y: index * 98 },
           data: {
-            label: `${statusEmoji[status]} ${topic.nome}`,
+            label: (
+              <div className="flex items-center gap-2">
+                <NodeIcon className="w-4 h-4 text-slate-500" />
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate text-left text-xs font-semibold text-slate-900">{node.data.label}</span>
+                  {node.type === 'topic' || node.type === 'subtopic' ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+                      <StatusIcon className="w-3 h-3" />
+                      {statusLabel[nodeStatus as LearningProgressStatus]}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ),
           },
           draggable: false,
+          selectable: true,
           style: {
             borderRadius: 12,
-            border: `1px solid ${statusColorHex[status]}`,
+            border: `1px solid ${node.type === 'topic' || node.type === 'subtopic' ? statusColorHex[nodeStatus as LearningProgressStatus] : '#cbd5e1'}`,
             background: '#ffffff',
             color: '#0f172a',
-            fontSize: 12,
-            fontWeight: 600,
-            width: 210,
+            width: node.type === 'discipline' ? 220 : node.type === 'area' ? 210 : 240,
             boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
           },
         });
       });
     });
 
-    const edges: Edge[] = prerequisiteEdges
-      .filter((edge) => selectedTopicIds.has(edge.topico_id) && selectedTopicIds.has(edge.prerequisito_id))
-      .map((edge) => ({
-        id: `${edge.prerequisito_id}->${edge.topico_id}`,
-        source: edge.prerequisito_id,
-        target: edge.topico_id,
-        animated: false,
-        style: {
-          stroke: '#64748b',
-          strokeWidth: 1.5,
-        },
-      }));
+    const edges: Edge[] = graphPayload.edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      animated: edge.type === 'related',
+      style: {
+        stroke: edge.type === 'prerequisite' ? '#64748b' : edge.type === 'related' ? '#c084fc' : '#cbd5e1',
+        strokeWidth: edge.type === 'hierarchy' ? 1.2 : 1.8,
+        strokeDasharray: edge.type === 'related' ? '4 4' : undefined,
+      },
+    }));
 
     return { nodes, edges };
-  }, [topics, prerequisiteEdges, getTopicStatus]);
+  }, [graphPayload]);
 
   const handleGraphNodeClick = React.useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      const linkedTopic = topics.find((topic) => topic.id === node.id);
+      const normalizedId = node.id.startsWith('topic:') ? node.id.replace('topic:', '') : node.id;
+      const linkedTopic = topics.find((topic) => topic.id === normalizedId);
       if (!linkedTopic) {
         return;
       }
@@ -750,7 +772,7 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
                   return (
                     <div key={stageTopic.title} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5">
                       <div className="flex items-center gap-2">
-                        <span>{statusEmoji[status]}</span>
+                        {React.createElement(statusIconByStatus[status], { className: 'w-4 h-4 text-slate-500' })}
                         <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{stageTopic.title}</p>
                         <span className={`ml-auto text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]}`}>{statusLabel[status]}</span>
                       </div>
@@ -811,11 +833,14 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
             </div>
 
             <div className="mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">Linha do tempo de progressao</p>
+              <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2 inline-flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" />Linha do tempo de progressao</p>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {statusFlow.map((status, index) => (
                   <React.Fragment key={status}>
-                    <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]}`}>{statusLabel[status]}</span>
+                    <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${statusStyle[status]} inline-flex items-center gap-1`}>
+                      {React.createElement(statusIconByStatus[status], { className: 'w-3 h-3' })}
+                      {statusLabel[status]}
+                    </span>
                     {index < statusFlow.length - 1 && <span className="text-slate-400">→</span>}
                   </React.Fragment>
                 ))}
@@ -883,7 +908,16 @@ const KnowledgeGenealogyTree: React.FC<KnowledgeGenealogyTreeProps> = ({ supabas
           </div>
 
           <div className="space-y-2">
-            <KnowledgeNodeRow node={PORTUGUESE_KNOWLEDGE_TREE} level={0} />
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-[0.12em]">
+              Mapa de referencia: {selectedReferenceTree?.name || 'Disciplina nao mapeada'}
+            </p>
+            {selectedReferenceTree ? (
+              <KnowledgeNodeRow node={selectedReferenceTree} level={0} />
+            ) : (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                <p className="text-sm text-slate-500 dark:text-slate-400">Ainda nao existe blueprint detalhado para esta disciplina.</p>
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-3">

@@ -79,8 +79,8 @@ export function useGlobalRanking(userId?: string): UseGlobalRankingReturn {
   }, [currentCategory, handleCategoryChange, loadData]);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void loadData();
+  }, [loadData]);
 
   return {
     categories,

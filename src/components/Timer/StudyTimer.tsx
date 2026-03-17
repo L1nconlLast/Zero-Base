@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, RotateCcw, CheckCircle, Clock3, Lightbulb } from 'lucide-react';
+import { Play, Pause, RotateCcw, CheckCircle, Clock3, Lightbulb, BookOpen } from 'lucide-react';
 import { useTimer } from '../../hooks/useTimer';
 import { formatTime } from '../../utils/helpers';
 import { MATERIAS_CONFIG, MateriaTipo } from '../../types';
@@ -151,17 +151,19 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
 
       <div className="p-6">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
-          <span className="inline-flex items-center gap-2"><Clock3 className="w-6 h-6" /> ⏱️ Cronômetro de Estudos</span>
+          <span className="inline-flex items-center gap-2"><Clock3 className="w-6 h-6" /> Cronômetro de Estudos</span>
         </h2>
 
         <div className="mb-6">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 text-center">
-            📚 Matéria do Ciclo
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 text-center inline-flex items-center justify-center gap-2 w-full">
+            <BookOpen className="w-3.5 h-3.5" />
+            Matéria do Ciclo
           </p>
           <div className="flex gap-1.5 sm:gap-2 flex-wrap justify-center">
             {(Object.keys(MATERIAS_CONFIG) as MateriaTipo[]).map((key) => {
               const config = MATERIAS_CONFIG[key];
               const discipline = cycleDisciplineLabels[key];
+              const DisciplineIcon = discipline.Icon;
               const isSelected = selectedSubject === key;
               return (
                 <button
@@ -177,7 +179,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
                     ${isRunning ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'}
                   `}
                 >
-                  <span className="text-lg sm:text-xl mb-0.5 sm:mb-1">{discipline.icon}</span>
+                  <DisciplineIcon className="w-4 h-4 sm:w-5 sm:h-5 mb-0.5 sm:mb-1" />
                   <span className={`text-[9px] sm:text-[10px] font-medium ${isSelected ? config.color : 'text-gray-500'}`}>
                     {discipline.label}
                   </span>
@@ -186,7 +188,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
             })}
           </div>
           <p className="text-center text-xs mt-3 text-gray-400">
-            Estudando: <strong className={MATERIAS_CONFIG[selectedSubject].color}>{cycleDisciplineLabels[selectedSubject].icon} {cycleDisciplineLabels[selectedSubject].label}</strong>
+            Estudando: <strong className={`${MATERIAS_CONFIG[selectedSubject].color} inline-flex items-center gap-1`}>{React.createElement(cycleDisciplineLabels[selectedSubject].Icon, { className: 'w-3.5 h-3.5' })}{cycleDisciplineLabels[selectedSubject].label}</strong>
           </p>
         </div>
 

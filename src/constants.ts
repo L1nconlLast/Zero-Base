@@ -7,10 +7,10 @@ import type { UserData } from './types';
 
 // ── Armazenamento ────────────────────────────────────────────
 export const STORAGE_KEYS = {
-  USER: 'medicinaUser',
-  DATA_PREFIX: 'medicinaData_', // uso: `${STORAGE_KEYS.DATA_PREFIX}${email}`
-  THEME: 'medicinaTheme',
-  SESSION: 'medicinaSession',
+  USER: 'zeroBaseUser',
+  DATA_PREFIX: 'zeroBaseData_', // uso: `${STORAGE_KEYS.DATA_PREFIX}${email}`
+  THEME: 'zeroBaseTheme',
+  SESSION: 'zeroBaseSession',
 } as const;
 
 // ── Autenticação ─────────────────────────────────────────────

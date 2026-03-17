@@ -1,27 +1,42 @@
 import { useEffect, useRef, useState } from 'react';
 import { logger } from '../utils/logger';
 
-function readLocalStorageValue<T>(key: string, initialValue: T): T {
+function readLocalStorageValue<T>(key: string, initialValue: T, legacyKeys?: string[]): T {
   try {
     const item = window.localStorage.getItem(key);
-    return item ? JSON.parse(item) : initialValue;
+    if (item) {
+      return JSON.parse(item);
+    }
+
+    for (const legacyKey of legacyKeys || []) {
+      const legacyItem = window.localStorage.getItem(legacyKey);
+      if (!legacyItem) continue;
+
+      const parsedLegacy = JSON.parse(legacyItem);
+      window.localStorage.setItem(key, JSON.stringify(parsedLegacy));
+      return parsedLegacy;
+    }
+
+    return initialValue;
   } catch (error) {
     logger.error(`Erro ao carregar ${key}`, 'LocalStorage', error);
     return initialValue;
   }
 }
 
-export function useLocalStorage<T>(key: string, initialValue: T) {
-  const shouldSkipNextSaveRef = useRef(false);
-  const [storedValue, setStoredValue] = useState<T>(() => readLocalStorageValue(key, initialValue));
+interface UseLocalStorageOptions {
+  legacyKeys?: string[];
+}
 
-  // Usar JSON.stringify para evitar loops infinitos quando initialValue for objeto
-  const initialValueString = JSON.stringify(initialValue);
+export function useLocalStorage<T>(key: string, initialValue: T, options?: UseLocalStorageOptions) {
+  const shouldSkipNextSaveRef = useRef(false);
+  const legacyKeys = options?.legacyKeys;
+  const [storedValue, setStoredValue] = useState<T>(() => readLocalStorageValue(key, initialValue, legacyKeys));
 
   useEffect(() => {
     shouldSkipNextSaveRef.current = true;
-    setStoredValue(readLocalStorageValue(key, initialValue));
-  }, [key, initialValueString]); // Depende da string, não da referência do objeto
+    setStoredValue(readLocalStorageValue(key, initialValue, legacyKeys));
+  }, [initialValue, key, legacyKeys]);
 
   // Salvar no localStorage quando o valor mudar
   useEffect(() => {

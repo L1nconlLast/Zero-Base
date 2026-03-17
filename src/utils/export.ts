@@ -17,7 +17,7 @@ export const exportToCSV = (sessions: StudySession[]): void => {
   
   downloadFile(
     csv, 
-    `medicina-do-zero-${formatDateFile(new Date())}.csv`, 
+    `zero-base-${formatDateFile(new Date())}.csv`, 
     'text/csv'
   );
 };
@@ -32,7 +32,7 @@ export const exportToJSON = (userData: UserData): void => {
   const json = JSON.stringify(exportData, null, 2);
   downloadFile(
     json, 
-    `medicina-do-zero-backup-${formatDateFile(new Date())}.json`, 
+    `zero-base-backup-${formatDateFile(new Date())}.json`, 
     'application/json'
   );
 };

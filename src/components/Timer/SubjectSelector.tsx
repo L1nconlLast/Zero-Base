@@ -29,7 +29,7 @@ export function SubjectSelector({ selected, onChange, className = '' }: SubjectS
               }
             `}
           >
-            <span className="text-xl">{CYCLE_DISCIPLINE_LABELS[materia].icon}</span>
+            {React.createElement(CYCLE_DISCIPLINE_LABELS[materia].Icon, { className: 'w-5 h-5' })}
             <span className="text-sm font-semibold">{CYCLE_DISCIPLINE_LABELS[materia].label}</span>
           </button>
         ))}
@@ -42,7 +42,7 @@ export function SubjectSelector({ selected, onChange, className = '' }: SubjectS
         ${MATERIAS_CONFIG[selected].borderColor}
       `}>
         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          <span className="text-lg mr-2">{CYCLE_DISCIPLINE_LABELS[selected].icon}</span>
+          {React.createElement(CYCLE_DISCIPLINE_LABELS[selected].Icon, { className: 'w-4 h-4 inline mr-2' })}
           Estudando: <span className={`font-bold ${MATERIAS_CONFIG[selected].color}`}>{CYCLE_DISCIPLINE_LABELS[selected].label}</span>
         </p>
       </div>

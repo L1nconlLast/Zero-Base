@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { pushNotificationService } from '../services/pushNotification.service';
+import { logger } from '../services/logger.service';
+import { sendError, sendInternalError, sendUnauthorized, sendValidationError } from '../utils/apiResponse';
 
 const SubscribeSchema = z.object({
   endpoint: z.string().url(),
@@ -25,7 +27,7 @@ export class NotificationsController {
   getVapidPublicKey(_req: Request, res: Response): void {
     const key = pushNotificationService.getPublicKey();
     if (!key) {
-      res.status(503).json({ error: 'Push notifications nao configuradas no servidor.' });
+      sendError(res.req, res, 503, 'PUSH_NOT_CONFIGURED', 'Push notifications nao configuradas no servidor.');
       return;
     }
 
@@ -35,13 +37,13 @@ export class NotificationsController {
   async subscribe(req: Request, res: Response): Promise<void> {
     const userId = req.auth?.userId;
     if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      sendUnauthorized(req, res);
       return;
     }
 
     const parsed = SubscribeSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: 'Payload invalido', details: parsed.error.flatten().fieldErrors });
+      sendValidationError(req, res, parsed.error);
       return;
     }
 
@@ -56,20 +58,21 @@ export class NotificationsController {
 
       res.status(204).send();
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao salvar assinatura' });
+      logger.error('Erro ao salvar assinatura', error, { requestId: req.id, userId, route: req.originalUrl });
+      sendInternalError(req, res, 'Erro ao salvar assinatura');
     }
   }
 
   async sendTest(req: Request, res: Response): Promise<void> {
     const userId = req.auth?.userId;
     if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      sendUnauthorized(req, res);
       return;
     }
 
     const parsed = TestPushSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ error: 'Payload invalido', details: parsed.error.flatten().fieldErrors });
+      sendValidationError(req, res, parsed.error);
       return;
     }
 
@@ -86,13 +89,13 @@ export class NotificationsController {
   async heartbeat(req: Request, res: Response): Promise<void> {
     const userId = req.auth?.userId;
     if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      sendUnauthorized(req, res);
       return;
     }
 
     const parsed = HeartbeatSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ error: 'Payload invalido', details: parsed.error.flatten().fieldErrors });
+      sendValidationError(req, res, parsed.error);
       return;
     }
 

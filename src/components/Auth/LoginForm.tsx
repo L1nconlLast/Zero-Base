@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useEffect, useState } from 'react';
-import { Mail, Lock, LogIn, Stethoscope, KeyRound, Sparkles, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, LogIn, Layers, KeyRound, Sparkles, ShieldCheck } from 'lucide-react';
 
 type SocialProvider = 'google' | 'facebook';
 
@@ -108,10 +108,10 @@ export const LoginForm = ({
       <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl border border-blue-100 dark:border-gray-700 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center">
-            <Stethoscope className="w-8 h-8 text-blue-700 dark:text-blue-200" />
+            <Layers className="w-8 h-8 text-blue-700 dark:text-blue-200" />
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white mb-2">Entrar</h1>
-          <p className="text-gray-600 dark:text-gray-400">Acesse sua jornada rumo à medicina com foco e consistência</p>
+          <p className="text-gray-600 dark:text-gray-400">Acesse seu plano no Zero Base e evolua com foco e consistência</p>
           <div className="mt-3 flex items-center justify-center gap-2">
             <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
               <ShieldCheck className="w-3 h-3" /> Acesso seguro
@@ -123,8 +123,8 @@ export const LoginForm = ({
         </div>
 
         {resetSent && (
-          <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg text-sm text-green-700 dark:text-green-300">
-            📧 Email de recuperação enviado! Verifique sua caixa de entrada.
+          <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg text-sm text-green-700 dark:text-green-300 inline-flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" /> Email de recuperação enviado! Verifique sua caixa de entrada.
           </div>
         )}
 

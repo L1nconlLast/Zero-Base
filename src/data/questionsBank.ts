@@ -2,7 +2,7 @@ import { EXTRA_ENEM_QUESTIONS } from './questionsBank.enem.extra';
 
 // ============================================================
 // src/data/questionsBank.ts
-// Banco de questões local — Medicina / ENEM / Concursos
+// Banco de questões local — Zero Base / ENEM / Concursos
 // ============================================================
 
 export type Difficulty = 'facil' | 'medio' | 'dificil';

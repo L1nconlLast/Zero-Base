@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Zap, BookOpen, Brain, Clock, ChevronRight, CheckCircle } from 'lucide-react';
+import { Zap, Trophy, BookOpen, Brain, Clock, ChevronRight, CheckCircle, Languages, Globe2, Microscope, Calculator, PenTool } from 'lucide-react';
 
 interface EveOfExamPageProps {
   onStartQuiz?: (subject?: string) => void;
@@ -10,7 +10,7 @@ interface EveOfExamPageProps {
 const TOPICS_REVIEW = [
   {
     subject: 'Linguagens',
-    icon: '📝',
+    icon: Languages,
     key_points: [
       'Interpretação de texto: identificar tese e argumento central',
       'Reconhecer função de figuras de linguagem no contexto',
@@ -21,7 +21,7 @@ const TOPICS_REVIEW = [
   },
   {
     subject: 'Ciências Humanas',
-    icon: '🌍',
+    icon: Globe2,
     key_points: [
       'Revisar processos históricos do Brasil (Colônia → República)',
       'Interpretar temas de geopolítica contemporânea',
@@ -32,7 +32,7 @@ const TOPICS_REVIEW = [
   },
   {
     subject: 'Ciências da Natureza',
-    icon: '🔬',
+    icon: Microscope,
     key_points: [
       'Revisar leitura de gráficos e experimentos em Física',
       'Identificar funções orgânicas e reações mais cobradas em Química',
@@ -43,7 +43,7 @@ const TOPICS_REVIEW = [
   },
   {
     subject: 'Matemática',
-    icon: '📐',
+    icon: Calculator,
     key_points: [
       'Funções (afim e quadrática): leitura e interpretação de gráfico',
       'Razão, proporção e porcentagem em problemas contextualizados',
@@ -54,7 +54,7 @@ const TOPICS_REVIEW = [
   },
   {
     subject: 'Português',
-    icon: '📚',
+    icon: BookOpen,
     key_points: [
       'Concordância verbal e nominal em estruturas frequentes',
       'Regência e uso de crase em contextos de prova',
@@ -65,7 +65,7 @@ const TOPICS_REVIEW = [
   },
   {
     subject: 'Redação',
-    icon: '✍️',
+    icon: PenTool,
     key_points: [
       'Estruturar introdução com tese clara e recorte temático',
       'Construir repertório sociocultural pertinente ao tema',
@@ -140,6 +140,7 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
       {/* Tópicos por matéria */}
       <div className="space-y-3">
         {TOPICS_REVIEW.map((topic) => {
+          const TopicIcon = topic.icon;
           const checkedInTopic = topic.key_points.filter((_, i) => checked[`${topic.subject}-${i}`]).length;
           const allDone = checkedInTopic === topic.key_points.length;
 
@@ -150,7 +151,7 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">{topic.icon}</span>
+                  <TopicIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" />
                   <h3 className="font-bold text-gray-900 dark:text-white">{topic.subject}</h3>
                 </div>
                 <div className="flex items-center gap-2">
@@ -191,7 +192,7 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
 
       {pct === 100 && (
         <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-200 dark:border-green-800 p-5 text-center">
-          <div className="text-4xl mb-2">🎉</div>
+          <div className="flex justify-center mb-2"><Trophy className="w-10 h-10 text-green-600 dark:text-green-400" /></div>
           <p className="font-bold text-green-700 dark:text-green-400 text-lg">Revisão completa!</p>
           <p className="text-sm text-green-600 dark:text-green-500">Boa prova! Você está pronto(a) para arrasar!</p>
         </div>

@@ -47,7 +47,7 @@ const validBackup = {
   exportedAt: '2024-06-10T10:00:00.000Z',
   user: {
     nome: 'João Silva',
-    email: 'joao@medicina.com',
+    email: 'joao@zerobase.com',
     dataCadastro: '2024-01-01',
     foto: '',
   },

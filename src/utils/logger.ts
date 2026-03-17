@@ -5,6 +5,8 @@
 // Integração com Sentry (quando VITE_SENTRY_DSN estiver disponível).
 // ============================================================
 
+import { STORAGE_KEYS } from '../constants';
+
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -21,7 +23,7 @@ interface LogEntry {
 
 const IS_DEV = import.meta.env.DEV;
 const MAX_STORED_LOGS = 50;                     // máx de erros no localStorage
-const STORAGE_KEY = 'medicina_error_log';
+const STORAGE_KEY = 'zero_base_error_log';
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
 
 // ── Sentry (lazy init) ──────────────────────────────────────
@@ -60,7 +62,7 @@ void initSentry();
 
 function getStoredLogs(): LogEntry[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('medicina_error_log');
     return raw ? (JSON.parse(raw) as LogEntry[]) : [];
   } catch {
     return [];
@@ -77,7 +79,7 @@ function saveLogs(logs: LogEntry[]): void {
 
 function getUserEmail(): string | undefined {
   try {
-    const raw = localStorage.getItem('medicinaUser');
+    const raw = localStorage.getItem(STORAGE_KEYS.USER) || localStorage.getItem('medicinaUser');
     if (!raw) return undefined;
     const user = JSON.parse(raw) as { email?: string };
     return user?.email;

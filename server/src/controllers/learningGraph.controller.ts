@@ -1,13 +1,26 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { learningGraphService } from '../services/learningGraph.service';
+import { logger } from '../services/logger.service';
+import { sendError, sendInternalError, sendUnauthorized, sendValidationError } from '../utils/apiResponse';
 
 const UuidSchema = z.string().uuid();
 
 const TopicsQuerySchema = z.object({
   disciplinaId: z.string().uuid().optional(),
+  disciplina: z.string().max(120).optional(),
   search: z.string().max(120).optional(),
   level: z.enum(['iniciante', 'intermediario', 'avancado']).optional(),
+  limit: z.coerce.number().int().min(1).max(5000).optional(),
+});
+
+const GraphQuerySchema = z.object({
+  disciplinaId: z.string().uuid().optional(),
+  disciplina: z.string().max(120).optional(),
+  track: z.enum(['enem', 'concurso']).optional(),
+  search: z.string().max(120).optional(),
+  level: z.enum(['iniciante', 'intermediario', 'avancado']).optional(),
+  limit: z.coerce.number().int().min(1).max(5000).optional(),
 });
 
 const ProgressPayloadSchema = z.object({
@@ -18,32 +31,63 @@ const ProgressPayloadSchema = z.object({
   attemptsDelta: z.number().int().min(0).max(50).optional(),
 });
 
+const handleControllerError = (req: Request, res: Response, error: unknown, message: string): void => {
+  logger.error(message, error, { requestId: req.id, userId: req.auth?.userId, route: req.originalUrl });
+  sendInternalError(req, res, message);
+};
+
 export class LearningGraphController {
-  async listDisciplines(_req: Request, res: Response): Promise<void> {
+  async listDisciplines(req: Request, res: Response): Promise<void> {
     try {
       const rows = await learningGraphService.listDisciplines();
       res.status(200).json({ disciplines: rows });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao listar disciplinas' });
+      handleControllerError(req, res, error, 'Erro ao listar disciplinas');
     }
   }
 
   async listTopics(req: Request, res: Response): Promise<void> {
     const parsed = TopicsQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: 'Query invalida', details: parsed.error.flatten().fieldErrors });
+      sendValidationError(req, res, parsed.error, 'Query invalida.');
       return;
     }
 
     try {
       const rows = await learningGraphService.listTopics({
         disciplineId: parsed.data.disciplinaId,
+        disciplineSlug: parsed.data.disciplina,
         search: parsed.data.search,
         level: parsed.data.level,
+        limit: parsed.data.limit,
       });
       res.status(200).json({ topics: rows });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao listar topicos' });
+      handleControllerError(req, res, error, 'Erro ao listar topicos');
+    }
+  }
+
+  async getGraph(req: Request, res: Response): Promise<void> {
+    const parsed = GraphQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      sendValidationError(req, res, parsed.error, 'Query invalida.');
+      return;
+    }
+
+    try {
+      const graph = await learningGraphService.buildGraphPayload({
+        disciplineId: parsed.data.disciplinaId,
+        disciplineSlug: parsed.data.disciplina,
+        track: parsed.data.track,
+        search: parsed.data.search,
+        level: parsed.data.level,
+        limit: parsed.data.limit,
+        userId: req.auth?.userId,
+      });
+
+      res.status(200).json(graph);
+    } catch (error) {
+      handleControllerError(req, res, error, 'Erro ao montar payload do grafo');
     }
   }
 
@@ -53,7 +97,7 @@ export class LearningGraphController {
     if (disciplineId) {
       const disciplineParsed = UuidSchema.safeParse(disciplineId);
       if (!disciplineParsed.success) {
-        res.status(400).json({ error: 'disciplinaId invalido' });
+        sendError(req, res, 400, 'INVALID_DISCIPLINE_ID', 'disciplinaId invalido');
         return;
       }
     }
@@ -62,33 +106,33 @@ export class LearningGraphController {
       const edges = await learningGraphService.listPrerequisiteEdges(disciplineId);
       res.status(200).json({ edges });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao listar arestas de prerequisito' });
+      handleControllerError(req, res, error, 'Erro ao listar arestas de prerequisito');
     }
   }
 
   async getTopic(req: Request, res: Response): Promise<void> {
     const parsed = UuidSchema.safeParse(req.params.topicId);
     if (!parsed.success) {
-      res.status(400).json({ error: 'topicId invalido' });
+      sendError(req, res, 400, 'INVALID_TOPIC_ID', 'topicId invalido');
       return;
     }
 
     try {
       const topic = await learningGraphService.getTopic(parsed.data);
       if (!topic) {
-        res.status(404).json({ error: 'Topico nao encontrado' });
+        sendError(req, res, 404, 'TOPIC_NOT_FOUND', 'Topico nao encontrado');
         return;
       }
       res.status(200).json({ topic });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao buscar topico' });
+      handleControllerError(req, res, error, 'Erro ao buscar topico');
     }
   }
 
   async getPrerequisites(req: Request, res: Response): Promise<void> {
     const parsed = UuidSchema.safeParse(req.params.topicId);
     if (!parsed.success) {
-      res.status(400).json({ error: 'topicId invalido' });
+      sendError(req, res, 400, 'INVALID_TOPIC_ID', 'topicId invalido');
       return;
     }
 
@@ -96,14 +140,14 @@ export class LearningGraphController {
       const prerequisites = await learningGraphService.getTopicPrerequisites(parsed.data);
       res.status(200).json({ prerequisites });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao buscar prerequisitos' });
+      handleControllerError(req, res, error, 'Erro ao buscar prerequisitos');
     }
   }
 
   async getDependents(req: Request, res: Response): Promise<void> {
     const parsed = UuidSchema.safeParse(req.params.topicId);
     if (!parsed.success) {
-      res.status(400).json({ error: 'topicId invalido' });
+      sendError(req, res, 400, 'INVALID_TOPIC_ID', 'topicId invalido');
       return;
     }
 
@@ -111,26 +155,26 @@ export class LearningGraphController {
       const dependents = await learningGraphService.getTopicDependents(parsed.data);
       res.status(200).json({ dependents });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao buscar dependentes' });
+      handleControllerError(req, res, error, 'Erro ao buscar dependentes');
     }
   }
 
   async upsertProgress(req: Request, res: Response): Promise<void> {
     const userId = req.auth?.userId;
     if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      sendUnauthorized(req, res);
       return;
     }
 
     const userIdParsed = UuidSchema.safeParse(userId);
     if (!userIdParsed.success) {
-      res.status(400).json({ error: 'Usuario invalido para progresso (somente conta autenticada real)' });
+      sendError(req, res, 400, 'INVALID_USER', 'Usuario invalido para progresso (somente conta autenticada real)');
       return;
     }
 
     const parsed = ProgressPayloadSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: 'Payload invalido', details: parsed.error.flatten().fieldErrors });
+      sendValidationError(req, res, parsed.error);
       return;
     }
 
@@ -146,20 +190,20 @@ export class LearningGraphController {
 
       res.status(200).json({ progress });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao salvar progresso' });
+      handleControllerError(req, res, error, 'Erro ao salvar progresso');
     }
   }
 
   async getUserProgress(req: Request, res: Response): Promise<void> {
     const userId = req.auth?.userId;
     if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      sendUnauthorized(req, res);
       return;
     }
 
     const userIdParsed = UuidSchema.safeParse(userId);
     if (!userIdParsed.success) {
-      res.status(400).json({ error: 'Usuario invalido para progresso (somente conta autenticada real)' });
+      sendError(req, res, 400, 'INVALID_USER', 'Usuario invalido para progresso (somente conta autenticada real)');
       return;
     }
 
@@ -168,7 +212,7 @@ export class LearningGraphController {
     if (disciplineId) {
       const disciplineParsed = UuidSchema.safeParse(disciplineId);
       if (!disciplineParsed.success) {
-        res.status(400).json({ error: 'disciplinaId invalido' });
+        sendError(req, res, 400, 'INVALID_DISCIPLINE_ID', 'disciplinaId invalido');
         return;
       }
     }
@@ -177,20 +221,20 @@ export class LearningGraphController {
       const progress = await learningGraphService.getUserProgress(userIdParsed.data, disciplineId);
       res.status(200).json({ progress });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao buscar progresso' });
+      handleControllerError(req, res, error, 'Erro ao buscar progresso');
     }
   }
 
   async getNextTopic(req: Request, res: Response): Promise<void> {
     const userId = req.auth?.userId;
     if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      sendUnauthorized(req, res);
       return;
     }
 
     const userIdParsed = UuidSchema.safeParse(userId);
     if (!userIdParsed.success) {
-      res.status(400).json({ error: 'Usuario invalido para recomendacao (somente conta autenticada real)' });
+      sendError(req, res, 400, 'INVALID_USER', 'Usuario invalido para recomendacao (somente conta autenticada real)');
       return;
     }
 
@@ -199,7 +243,7 @@ export class LearningGraphController {
     if (disciplineId) {
       const disciplineParsed = UuidSchema.safeParse(disciplineId);
       if (!disciplineParsed.success) {
-        res.status(400).json({ error: 'disciplinaId invalido' });
+        sendError(req, res, 400, 'INVALID_DISCIPLINE_ID', 'disciplinaId invalido');
         return;
       }
     }
@@ -208,7 +252,7 @@ export class LearningGraphController {
       const nextTopic = await learningGraphService.getNextTopic(userIdParsed.data, disciplineId);
       res.status(200).json({ nextTopic });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao calcular proximo topico' });
+      handleControllerError(req, res, error, 'Erro ao calcular proximo topico');
     }
   }
 }

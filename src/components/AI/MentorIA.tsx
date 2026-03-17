@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { AlertTriangle, Lightbulb, Rocket, Target, Flame, Pin, MessageSquareText } from 'lucide-react';
 import type { UserData } from '../../types';
 import { mentorIAService, type MentorMessage } from '../../services/mentorIA.service';
 import { mentorBriefingService } from '../../services/mentorBriefing.service';
@@ -24,7 +26,7 @@ type TabId = 'alertas' | 'analise' | 'chat';
 
 interface AlertItem {
   id: number;
-  icon: string;
+  Icon: LucideIcon;
   title: string;
   body: string;
   action: string;
@@ -145,7 +147,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
     return [
       {
         id: 1,
-        icon: '⚠️',
+        Icon: AlertTriangle,
         title: `${weakArea} com baixa frequência`,
         body: `Essa área está entre as menos praticadas. Recomendo 20 minutos hoje para recuperar ritmo.`,
         action: `Iniciar foco em ${weakArea}`,
@@ -153,7 +155,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
       },
       {
         id: 2,
-        icon: '💡',
+        Icon: Lightbulb,
         title: `Meta semanal em ${weeklyPct}%`,
         body: weeklyPct >= 50
           ? 'Bom progresso. Manter sessões curtas diárias deve garantir sua meta.'
@@ -163,7 +165,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
       },
       {
         id: 3,
-        icon: '🚀',
+        Icon: Rocket,
         title: `${strongArea} em evolução`,
         body: `Seu melhor desempenho recente está em ${strongArea}. Use isso para ganhar XP com consistência.`,
         action: 'Continuar trilha forte',
@@ -270,6 +272,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
     secondWeakArea,
     engineDecision,
     trigger,
+    userEmail,
   ]);
 
   useEffect(() => {
@@ -456,7 +459,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
       const lowerErrorMessage = errorMessage.toLowerCase();
 
       if (errorMessage.includes('401') || lowerErrorMessage.includes('unauthorized') || lowerErrorMessage.includes('sessao ausente')) {
-        const authMessage = '⚠️ Voce precisa estar logado para usar o Mentor IA online. Entre na sua conta para continuar.';
+        const authMessage = 'Voce precisa estar logado para usar o Mentor IA online. Entre na sua conta para continuar.';
         setMessages((prev) => prev.map((message) => (
           message.id === assistantMessage.id
             ? { ...message, content: authMessage }
@@ -482,7 +485,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
         || lowerErrorMessage.includes('faturamento')
       ) {
         const fallback = getLocalFallbackReply(content);
-        const quotaMessage = `${fallback}\n\n⚠️ Aviso: cota da IA atingida. Estou respondendo em modo local temporário.`;
+        const quotaMessage = `${fallback}\n\nAviso: cota da IA atingida. Estou respondendo em modo local temporário.`;
         setMessages((prev) => prev.map((message) => (
           message.id === assistantMessage.id
             ? { ...message, content: quotaMessage }
@@ -499,7 +502,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
 
         toast.error('Cota da IA esgotada. Verifique plano/faturamento.');
       } else if (errorMessage.includes('429')) {
-        const blockMessage = '⚠️ Atingiu o limite diario de uso do Mentor IA. Volte amanha para continuarmos a sua evolucao!';
+        const blockMessage = 'Atingiu o limite diario de uso do Mentor IA. Volte amanha para continuarmos a sua evolucao!';
         setMessages((prev) => prev.map((message) => (
           message.id === assistantMessage.id
             ? { ...message, content: blockMessage }
@@ -552,8 +555,8 @@ const MentorIA: React.FC<MentorIAProps> = ({
             <p className="text-sm text-gray-600 dark:text-gray-400">Ações personalizadas para acelerar seu progresso semanal.</p>
           </div>
           <div className="flex items-center gap-2 text-xs font-semibold">
-            <span className="px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30">🎯 {daysToExam}d para prova</span>
-            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">🔥 {userData.currentStreak || userData.streak} dias</span>
+            <span className="px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30 inline-flex items-center gap-1"><Target className="w-3.5 h-3.5" /> {daysToExam}d para prova</span>
+            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1"><Flame className="w-3.5 h-3.5" /> {userData.currentStreak || userData.streak} dias</span>
           </div>
         </div>
 
@@ -581,7 +584,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
       {briefing && (
         <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-4 sm:p-5 space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">📌 Briefing semanal do Mentor</p>
+            <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1"><Pin className="w-3.5 h-3.5" /> Briefing semanal do Mentor</p>
             <span className="text-[11px] px-2 py-1 rounded-full bg-indigo-100 dark:bg-indigo-800/50 text-indigo-700 dark:text-indigo-200">
               {modeLabel}
             </span>
@@ -612,7 +615,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           {alerts.map((alert) => (
             <div key={alert.id} className={`rounded-xl border p-4 ${colorByLevel[alert.level]}`}>
-              <p className="text-lg mb-1">{alert.icon}</p>
+              <alert.Icon className="w-5 h-5 mb-1" />
               <h3 className="font-bold text-sm mb-1">{alert.title}</h3>
               <p className="text-xs leading-relaxed opacity-80">{alert.body}</p>
               <button
@@ -655,7 +658,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
           </div>
 
           <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-200">
-            <p className="font-semibold mb-1">💬 Análise do Mentor</p>
+            <p className="font-semibold mb-1 inline-flex items-center gap-1"><MessageSquareText className="w-4 h-4" /> Análise do Mentor</p>
             <p>
               Bom avanço em <strong>{strongArea}</strong>. Para equilibrar desempenho, priorize <strong>{weakArea}</strong> nos próximos 3 dias.
             </p>

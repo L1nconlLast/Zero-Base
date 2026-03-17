@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Trophy, Medal, Award } from 'lucide-react';
 import { rankingService } from '../../services/ranking.service';
 import type { CategoryRankingEntry, UserRankInfo } from '../../types/ranking';
 import { useAuth } from '../../hooks/useAuth';
@@ -18,11 +19,7 @@ export function GlobalRankingPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadRankingData();
-  }, []);
-
-  const loadRankingData = async () => {
+  const loadRankingData = useCallback(async () => {
     setLoading(true);
     try {
       // Get all categories
@@ -62,7 +59,11 @@ export function GlobalRankingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCategory, supabaseUserId]);
+
+  useEffect(() => {
+    void loadRankingData();
+  }, [loadRankingData]);
 
   if (loading) {
     return <div className="global-ranking loading">Carregando rankings...</div>;
@@ -73,7 +74,7 @@ export function GlobalRankingPage() {
   return (
     <div className="global-ranking-page">
       <div className="ranking-header">
-        <h1>🏆 Ranking Global por Categoria</h1>
+        <h1 className="inline-flex items-center gap-2"><Trophy className="w-6 h-6" /> Ranking Global por Categoria</h1>
         <p>Veja os melhores estudantes em cada prova</p>
       </div>
 
@@ -144,16 +145,16 @@ export function GlobalRankingPage() {
                         </td>
                       </tr>
                     ) : (
-                      currentStats.ranking.map((entry, idx) => (
+                      currentStats.ranking.map((entry) => (
                         <tr
                           key={entry.user_id}
                           className={supabaseUserId === entry.user_id ? 'current-user' : ''}
                         >
                           <td className="rank-col">
                             <span className="rank-badge">
-                              {entry.rank_position === 1 && '🥇'}
-                              {entry.rank_position === 2 && '🥈'}
-                              {entry.rank_position === 3 && '🥉'}
+                              {entry.rank_position === 1 && <Trophy className="w-4 h-4 text-yellow-500 inline" />}
+                              {entry.rank_position === 2 && <Medal className="w-4 h-4 text-slate-400 inline" />}
+                              {entry.rank_position === 3 && <Award className="w-4 h-4 text-amber-700 inline" />}
                               {entry.rank_position > 3 && `#${entry.rank_position}`}
                             </span>
                           </td>

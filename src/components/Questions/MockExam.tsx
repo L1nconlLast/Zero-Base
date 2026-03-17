@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Clock, AlertTriangle, CheckCircle, XCircle, RotateCcw, Play, Trophy, ChevronRight, Filter } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { BarChart3, BookOpen, Brain, Clock, AlertTriangle, CheckCircle, XCircle, RotateCcw, Play, Trophy, ChevronRight, Filter, Landmark, Sigma, Target, Zap } from 'lucide-react';
 import { QUESTIONS_BANK, type Question, type QuestionTrack } from '../../data/questionsBank';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { suggestMockExamTopics } from '../../utils/enemCurriculum';
@@ -175,21 +176,21 @@ const distributeEvenly = (total: number, subjects: string[]) => {
 
 const getQuestionTopicKey = (question: Question) => `${question.subject}::${question.tags[0] || question.subject}`;
 
-const EXAM_CONFIGS_BY_TRACK: Record<QuestionTrack | 'ambos', Array<{ label: string; questions: number; minutes: number; icon: string }>> = {
+const EXAM_CONFIGS_BY_TRACK: Record<QuestionTrack | 'ambos', Array<{ label: string; questions: number; minutes: number; icon: LucideIcon }>> = {
   enem: [
-    { label: 'ENEM Rápido', questions: 20, minutes: 40, icon: '⚡' },
-    { label: 'ENEM Padrão', questions: 45, minutes: 90, icon: '🎓' },
-    { label: 'ENEM Intensivo', questions: 90, minutes: 180, icon: '🏁' },
+    { label: 'ENEM Rápido', questions: 20, minutes: 40, icon: Zap },
+    { label: 'ENEM Padrão', questions: 45, minutes: 90, icon: BookOpen },
+    { label: 'ENEM Intensivo', questions: 90, minutes: 180, icon: Trophy },
   ],
   concurso: [
-    { label: 'Concurso Rápido', questions: 20, minutes: 30, icon: '⚡' },
-    { label: 'Concurso Padrão', questions: 40, minutes: 60, icon: '📘' },
-    { label: 'Concurso Intensivo', questions: 60, minutes: 90, icon: '🏛️' },
+    { label: 'Concurso Rápido', questions: 20, minutes: 30, icon: Zap },
+    { label: 'Concurso Padrão', questions: 40, minutes: 60, icon: BookOpen },
+    { label: 'Concurso Intensivo', questions: 60, minutes: 90, icon: Landmark },
   ],
   ambos: [
-    { label: 'Misto Rápido', questions: 15, minutes: 25, icon: '⚡' },
-    { label: 'Misto Padrão', questions: 30, minutes: 45, icon: '📝' },
-    { label: 'Misto Intensivo', questions: 50, minutes: 75, icon: '🎯' },
+    { label: 'Misto Rápido', questions: 15, minutes: 25, icon: Zap },
+    { label: 'Misto Padrão', questions: 30, minutes: 45, icon: Brain },
+    { label: 'Misto Intensivo', questions: 50, minutes: 75, icon: Target },
   ],
 };
 
@@ -206,7 +207,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
   const [adaptiveMode, setAdaptiveMode] = useLocalStorage<boolean>('mock_exam_adaptive_mode', true);
   const [daysToExam, setDaysToExam] = useLocalStorage<number>('mock_exam_days_to_exam', 120);
   const [errorHistoryByTopic, setErrorHistoryByTopic] = useLocalStorage<Record<string, number>>('mock_exam_error_history_by_topic', {});
-  const [examHistory, setExamHistory] = useLocalStorage<MockExamHistoryEntry[]>('mock_exam_history', []);
+  const [, setExamHistory] = useLocalStorage<MockExamHistoryEntry[]>('mock_exam_history', []);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -511,7 +512,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
     return (
       <div className="max-w-2xl mx-auto space-y-6">
         <div className="text-center">
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">🎓 Simulado Cronometrado</h2>
+          <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2"><BookOpen className="w-6 h-6" />Simulado Cronometrado</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Simule uma prova real por trilha, banca e edital.</p>
         </div>
 
@@ -570,8 +571,11 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
 
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Disciplina</p>
           <div className="flex flex-wrap gap-2">
-            {['Todas', ...subjectsByTrack].map((subject) => (
-              <button
+            {['Todas', ...subjectsByTrack].map((subject) => {
+              const discipline = getDisplayDiscipline(subject);
+              const DisciplineIcon = discipline.Icon;
+
+              return (<button
                 key={subject}
                 onClick={() => setSelectedSubject(subject)}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${subject === 'Todas'
@@ -581,9 +585,9 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
                   : getSubjectChipClass(subject, selectedSubject === subject)
                   }`}
               >
-                {subject === 'Todas' ? 'Todas' : `${getDisplayDiscipline(subject).icon} ${getDisplayDiscipline(subject).label}`}
-              </button>
-            ))}
+                {subject === 'Todas' ? 'Todas' : <span className="inline-flex items-center gap-1.5"><DisciplineIcon className="w-3.5 h-3.5" />{discipline.label}</span>}
+              </button>);
+            })}
           </div>
 
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tópico</p>
@@ -644,8 +648,10 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
 
         {!selectedModel && (
           <div className="space-y-3">
-            {configsForTrack.map((cfg, i) => (
-              <button
+            {configsForTrack.map((cfg, i) => {
+              const ConfigIcon = cfg.icon;
+
+              return (<button
                 key={cfg.label}
                 onClick={() => setSelectedConfig(i)}
                 className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 ${selectedConfig === i
@@ -653,7 +659,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
                   : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
                   }`}
               >
-                <span className="text-3xl">{cfg.icon}</span>
+                <ConfigIcon className="w-8 h-8" />
                 <div className="text-left flex-1">
                   <p className={`font-bold ${selectedConfig === i ? 'text-blue-700 dark:text-blue-300' : 'text-slate-900 dark:text-slate-100'}`}>
                     {cfg.label}
@@ -661,8 +667,8 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
                   <p className="text-sm text-slate-500 dark:text-slate-400">{cfg.questions} questões · {cfg.minutes} minutos</p>
                 </div>
                 {selectedConfig === i && <CheckCircle className="w-5 h-5 text-blue-500 shrink-0" />}
-              </button>
-            ))}
+              </button>);
+            })}
           </div>
         )}
 
@@ -681,11 +687,16 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
           </p>
           <div className="flex flex-wrap gap-2">
             {plannedDistribution.length > 0 ? (
-              plannedDistribution.map((item) => (
-                <span key={item.subject} className="px-2.5 py-1 rounded-full text-xs font-medium border bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700">
-                  {item.subject === 'Aleatório' ? '🎲 Aleatório' : `${getDisplayDiscipline(item.subject).icon} ${getDisplayDiscipline(item.subject).label}`} · {item.count}
-                </span>
-              ))
+              plannedDistribution.map((item) => {
+                const discipline = getDisplayDiscipline(item.subject);
+                const DisciplineIcon = discipline.Icon;
+
+                return (
+                  <span key={item.subject} className="px-2.5 py-1 rounded-full text-xs font-medium border bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700">
+                    {item.subject === 'Aleatório' ? <span className="inline-flex items-center gap-1.5"><Sigma className="w-3.5 h-3.5" />Aleatório</span> : <span className="inline-flex items-center gap-1.5"><DisciplineIcon className="w-3.5 h-3.5" />{discipline.label}</span>} · {item.count}
+                  </span>
+                );
+              })
             ) : (
               <span className="text-xs text-slate-500 dark:text-slate-400">Sem questões disponíveis para os filtros atuais.</span>
             )}
@@ -701,11 +712,11 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
   }
 
   if (examState === 'finished') {
-    const grade = pct >= 70 ? 'Aprovado ✅' : pct >= 50 ? 'Regular ⚠️' : 'Reprovado ❌';
+    const grade = pct >= 70 ? 'Aprovado' : pct >= 50 ? 'Regular' : 'Reprovado';
     return (
       <div className="max-w-2xl mx-auto space-y-5">
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 text-center shadow-sm">
-          <div className="text-5xl mb-3">{pct >= 70 ? '🏆' : pct >= 50 ? '📊' : '💪'}</div>
+          <div className="flex justify-center mb-3">{pct >= 70 ? <Trophy className="w-12 h-12 text-amber-500" /> : pct >= 50 ? <BarChart3 className="w-12 h-12 text-blue-500" /> : <Brain className="w-12 h-12 text-violet-500" />}</div>
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{grade}</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 mb-5">{pct}% de acerto</p>
           <div className="grid grid-cols-4 gap-3 mb-5">
@@ -761,6 +772,8 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
 
   const currentQuestion = questions[currentIdx];
   const userAnswer = answers[currentQuestion?.id];
+  const currentDiscipline = getDisplayDiscipline(currentQuestion?.subject || '');
+  const CurrentDisciplineIcon = currentDiscipline.Icon;
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
@@ -780,7 +793,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-sm">
         <div className="flex gap-2 flex-wrap">
           <span className="text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 px-2.5 py-1 rounded-full border border-blue-100 dark:border-blue-800">
-            {getDisplayDiscipline(currentQuestion?.subject || '').icon} {getDisplayDiscipline(currentQuestion?.subject || '').label}
+            <CurrentDisciplineIcon className="w-3.5 h-3.5 inline" /> {currentDiscipline.label}
           </span>
           {selectedModel && (
             <span className="text-xs font-medium bg-violet-50 dark:bg-violet-900/20 text-violet-600 px-2.5 py-1 rounded-full border border-violet-100 dark:border-violet-800">

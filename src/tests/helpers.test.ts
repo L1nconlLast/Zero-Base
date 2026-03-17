@@ -17,11 +17,11 @@ import {
 // ── validateEmail ─────────────────────────────────────────────
 describe('validateEmail', () => {
   it('aceita e-mail válido', () => {
-    expect(validateEmail('joao@medicina.com')).toBe(true);
+    expect(validateEmail('joao@zerobase.com')).toBe(true);
   });
 
   it('rejeita e-mail sem @', () => {
-    expect(validateEmail('joaomedicina.com')).toBe(false);
+    expect(validateEmail('joaozerobase.com')).toBe(false);
   });
 
   it('rejeita e-mail sem domínio', () => {
@@ -155,7 +155,7 @@ describe('getDayOfWeek', () => {
 
 // ── checkRateLimit / resetRateLimit ───────────────────────────
 describe('checkRateLimit / resetRateLimit', () => {
-  const email = 'teste@medicina.com';
+  const email = 'teste@zerobase.com';
 
   beforeEach(() => {
     resetRateLimit(email);

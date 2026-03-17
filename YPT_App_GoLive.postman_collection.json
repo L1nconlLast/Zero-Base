@@ -1,0 +1,744 @@
+{
+  "info": {
+    "_postman_id": "ypt-app-golive-2026",
+    "name": "YPT App — Ranking · Grupos · Settings (Go-Live)",
+    "description": "Collection completa de API para go-live. Inclui todos endpoints dos 3 módulos com exemplos e validações.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "⚙️ SETUP",
+      "item": [
+        {
+          "name": "Set environment variables",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('baseUrl', 'http://localhost:3001');\n",
+                  "pm.environment.set('token', 'YOUR_JWT_TOKEN_HERE');\n",
+                  "pm.environment.set('workerSecret', 'YOUR_WORKER_SECRET_HERE');\n",
+                  "pm.environment.set('userId', 'YOUR_USER_ID_HERE');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏆 RANKING",
+      "item": [
+        {
+          "name": "GET /api/ranking — List geral (paginado)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ranking?period=weekly&page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ranking"],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "weekly",
+                  "description": "daily | weekly | monthly"
+                },
+                {
+                  "key": "category",
+                  "value": "REP-ENEM",
+                  "disabled": true,
+                  "description": "Filter by category"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Max 100"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/ranking/me — Meu ranking (rate limited 1/10s)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ranking/me?period=weekly",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ranking", "me"],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "weekly"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/ranking/now-studying — Quantos estudando agora",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/ranking/now-studying"
+          }
+        },
+        {
+          "name": "POST /api/ranking/sessions/start — Inicia sessão",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"REP-ENEM\",\n  \"camera_on\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ranking/sessions/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ranking", "sessions", "start"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/ranking/sessions/end — Encerra sessão",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"started_at\": \"2026-03-17T14:00:00Z\",\n  \"ended_at\": \"2026-03-17T14:45:00Z\",\n  \"category\": \"REP-ENEM\",\n  \"camera_on\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ranking/sessions/end",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ranking", "sessions", "end"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/ranking/recalculate — Worker: recalcula snapshot",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-worker-secret",
+                "value": "{{workerSecret}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"period\": \"weekly\",\n  \"ref_date\": \"2026-03-16\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ranking/recalculate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ranking", "recalculate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⚙️ SETTINGS",
+      "item": [
+        {
+          "name": "GET /api/settings — Minha configuração",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "settings"]
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/settings — Atualizar configuração",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"dark\",\n  \"pomodoro_enabled\": true,\n  \"pomodoro_work_min\": 25,\n  \"weekly_goal_minutes\": 420,\n  \"reminder_enabled\": true,\n  \"reminder_time\": \"08:00\",\n  \"d_day_event_name\": \"ENEM 2026\",\n  \"d_day_event_date\": \"2026-10-15\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "settings"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/settings/schedule — Cronograma semanal",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/schedule",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "settings", "schedule"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/settings/schedule — Adicionar horário",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"day_of_week\": 1,\n  \"start_time\": \"08:00\",\n  \"end_time\": \"10:00\",\n  \"subject_label\": \"Matemática\",\n  \"enabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/schedule",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "settings", "schedule"]
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/settings/schedule/:id — Editar horário",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_time\": \"09:00\",\n  \"end_time\": \"11:00\",\n  \"subject_label\": \"Português\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/schedule/{{scheduleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "settings", "schedule", "{{scheduleId}}"]
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/settings/schedule/:id — Remover horário",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/schedule/{{scheduleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "settings", "schedule", "{{scheduleId}}"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/settings/reset-data — Resetar dados (confirmação obrigatória)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirm\": \"CONFIRMAR\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/reset-data",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "settings", "reset-data"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 GROUPS",
+      "item": [
+        {
+          "name": "GET /api/groups — Lista grupos (paginado, filtrado)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/groups?period=weekly&category=REP-ENEM&sortBy=presence&page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups"],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "REP-ENEM",
+                  "disabled": true
+                },
+                {
+                  "key": "visibility",
+                  "value": "public",
+                  "disabled": true
+                },
+                {
+                  "key": "sortBy",
+                  "value": "presence",
+                  "disabled": true,
+                  "description": "presence | score | time | camera"
+                },
+                {
+                  "key": "search",
+                  "value": "ENEM",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/groups — Criar grupo (rate limited 1/min)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Grupo ENEM 2026\",\n  \"description\": \"Preparação conjunta para o ENEM\",\n  \"category\": \"REP-ENEM\",\n  \"is_public\": true,\n  \"goal_minutes_daily\": 360,\n  \"max_members\": 30\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/groups",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/groups/:id — Detalhes do grupo + membros",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{groupId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{groupId}}"]
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/groups/:id — Editar grupo (líder/admin only)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Grupo ENEM 2026 — Turma A\",\n  \"description\": \"Preparação intensiva\",\n  \"goal_minutes_daily\": 480\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{groupId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{groupId}}"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/groups/:id/join — Entrar no grupo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{groupId}}/join",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{groupId}}", "join"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/groups/:id/leave — Sair do grupo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{groupId}}/leave",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{groupId}}", "leave"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/groups/:id/stats — Stats do grupo",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{groupId}}/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{groupId}}", "stats"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/groups/:id/missions — Missões da semana",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{groupId}}/missions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{groupId}}", "missions"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/groups/:id/missions/:missionId/progress — Atualizar progresso",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_value\": 150\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/groups/{{groupId}}/missions/{{missionId}}/progress",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "groups", "{{groupId}}", "missions", "{{missionId}}", "progress"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏥 HEALTH & OBSERVABILITY",
+      "item": [
+        {
+          "name": "GET /api/health — Health check básico",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health"
+          }
+        },
+        {
+          "name": "GET /api/health/ready — Readiness check (DB, redis)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health/ready"
+          }
+        },
+        {
+          "name": "GET /api/metrics — Métricas em tempo real",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "❌ ERROR CASES (testing)",
+      "item": [
+        {
+          "name": "❌ POST ranking/sessions/start — categoria inválida",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"INVALID\",\n  \"camera_on\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ranking/sessions/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ranking", "sessions", "start"]
+            }
+          }
+        },
+        {
+          "name": "❌ POST ranking/sessions/end — ended_at antes de started_at",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"started_at\": \"2026-03-17T14:30:00Z\",\n  \"ended_at\": \"2026-03-17T14:00:00Z\",\n  \"category\": \"REP-ENEM\",\n  \"camera_on\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ranking/sessions/end",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ranking", "sessions", "end"]
+            }
+          }
+        },
+        {
+          "name": "❌ POST /api/settings/reset-data — sem confirmação",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirm\": \"WRONG\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/settings/reset-data",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "settings", "reset-data"]
+            }
+          }
+        },
+        {
+          "name": "❌ GET /api/ranking/me — sem autenticação",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/ranking/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ranking", "me"]
+            }
+          }
+        },
+        {
+          "name": "❌ POST /api/ranking/recalculate — worker secret inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-worker-secret",
+                "value": "WRONG_SECRET",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"period\": \"daily\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ranking/recalculate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ranking", "recalculate"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "Bearer YOUR_JWT_TOKEN_HERE",
+      "type": "string"
+    },
+    {
+      "key": "workerSecret",
+      "value": "YOUR_WORKER_SECRET_HERE",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "YOUR_USER_ID_HERE",
+      "type": "string"
+    },
+    {
+      "key": "groupId",
+      "value": "GROUP_ID_FROM_PREVIOUS_REQUEST",
+      "type": "string"
+    },
+    {
+      "key": "scheduleId",
+      "value": "SCHEDULE_ID_FROM_POST",
+      "type": "string"
+    },
+    {
+      "key": "missionId",
+      "value": "MISSION_ID_FROM_GET_MISSIONS",
+      "type": "string"
+    }
+  ]
+}

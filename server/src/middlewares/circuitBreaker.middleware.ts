@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
+import { sendTooManyRequests, sendUnauthorized } from '../utils/apiResponse';
+import { logger } from '../services/logger.service';
 
 const MAX_DAILY_TOKENS = Number(process.env.MENTOR_MAX_DAILY_TOKENS || '25000');
 
@@ -15,12 +17,12 @@ export const circuitBreakerMiddleware = async (req: Request, res: Response, next
     const userId = req.auth?.userId;
 
     if (!userId) {
-      res.status(401).json({ error: 'Unauthorized: usuario nao autenticado.' });
+      sendUnauthorized(req, res, 'Usuario nao autenticado.');
       return;
     }
 
     if (!supabase) {
-      console.warn('[circuit-breaker] Supabase nao configurado. Permitindo requisicao.');
+      logger.warn('mentor.circuit_breaker.supabase_missing', { requestId: req.id, userId });
       next();
       return;
     }
@@ -36,7 +38,7 @@ export const circuitBreakerMiddleware = async (req: Request, res: Response, next
       .gte('created_at', todayIso);
 
     if (error) {
-      console.warn('[circuit-breaker] erro ao consultar tokens:', error.message);
+      logger.warn('mentor.circuit_breaker.lookup_failed', { requestId: req.id, userId, errorMessage: error.message });
       next();
       return;
     }
@@ -44,18 +46,19 @@ export const circuitBreakerMiddleware = async (req: Request, res: Response, next
     const tokensUsedToday = (data || []).reduce((sum, row) => sum + (row.total_tokens || 0), 0);
 
     if (tokensUsedToday >= MAX_DAILY_TOKENS) {
-      console.warn(
-        `[circuit-breaker] bloqueio ativado para user ${userId}. tokens hoje: ${tokensUsedToday}/${MAX_DAILY_TOKENS}`
-      );
-      res.status(429).json({
-        error: 'Atingiu o limite diario de uso do Mentor IA. Volte amanha para continuarmos a sua evolucao!',
+      logger.warn('mentor.circuit_breaker.blocked', {
+        requestId: req.id,
+        userId,
+        tokensUsedToday,
+        maxDailyTokens: MAX_DAILY_TOKENS,
       });
+      sendTooManyRequests(req, res, 'Atingiu o limite diario de uso do Mentor IA. Volte amanha para continuarmos a sua evolucao.');
       return;
     }
 
     next();
   } catch (err) {
-    console.error('[circuit-breaker] erro inesperado:', err);
+    logger.error('mentor.circuit_breaker.unexpected_error', err, { requestId: req.id, userId: req.auth?.userId });
     next();
   }
 };

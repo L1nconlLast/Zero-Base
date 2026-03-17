@@ -47,7 +47,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ data, onClear })
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `medicina-dados-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `zero-base-dados-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -72,6 +72,10 @@ export const DataManagement: React.FC<DataManagementProps> = ({ data, onClear })
     // Dados validados, agora insere no localStorage
     const backup = result.data;
     const importedData = backup.data;
+    localStorage.setItem('zero-base-sessions', JSON.stringify(importedData.sessions));
+    localStorage.setItem('zero-base-level', importedData.level.toString());
+    localStorage.setItem('zero-base-xp', importedData.totalPoints.toString());
+    // Legacy fallback para versões antigas do app.
     localStorage.setItem('medicina-sessions', JSON.stringify(importedData.sessions));
     localStorage.setItem('medicina-level', importedData.level.toString());
     localStorage.setItem('medicina-xp', importedData.totalPoints.toString());

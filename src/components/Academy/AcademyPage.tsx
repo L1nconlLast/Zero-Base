@@ -326,7 +326,7 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
       if (completionRate >= 70) {
         return {
           label: 'Forte',
-          icon: '👑',
+          Icon: Crown,
           className: 'text-emerald-700 bg-emerald-100 dark:text-emerald-200 dark:bg-emerald-900/30',
           borderClass: 'border-emerald-300 dark:border-emerald-700',
         };
@@ -335,7 +335,7 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
       if (daysWithoutStudy === null || daysWithoutStudy >= 5) {
         return {
           label: 'Parada',
-          icon: '⚠',
+          Icon: AlertTriangle,
           className: 'text-rose-700 bg-rose-100 dark:text-rose-200 dark:bg-rose-900/30',
           borderClass: 'border-rose-300 dark:border-rose-700',
         };
@@ -343,7 +343,7 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
 
       return {
         label: 'Evoluindo',
-        icon: '📈',
+        Icon: TrendingUp,
         className: 'text-sky-700 bg-sky-100 dark:text-sky-200 dark:bg-sky-900/30',
         borderClass: 'border-sky-300 dark:border-sky-700',
       };
@@ -449,7 +449,7 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
       { userEmail },
     );
 
-    toast.success(`🚀 Iniciando sessão de ${subDepartment}`);
+    toast.success(`Iniciando sessão de ${subDepartment}`);
 
     if (onStartStudyNow) {
       onStartStudyNow({
@@ -689,7 +689,7 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${stat.statusMeta.className}`}>
-                        {stat.statusMeta.icon} {stat.statusMeta.label}
+                        <stat.statusMeta.Icon className="w-3.5 h-3.5" /> {stat.statusMeta.label}
                       </span>
                       {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
                     </div>

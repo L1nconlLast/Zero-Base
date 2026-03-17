@@ -122,7 +122,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       >
         <div>
           <h1 className="text-3xl font-bold mb-1 inline-flex items-center gap-2"><Hand className="w-6 h-6" />Olá, {userName}!</h1>
-          <p className="text-white/90">Pronto para dominar a Medicina hoje?</p>
+          <p className="text-white/90">Pronto para avançar no Zero Base hoje?</p>
         </div>
         <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm px-5 py-3 rounded-xl border border-white/20 mt-4 md:mt-0">
           <Flame className="w-8 h-8 text-orange-400" />
@@ -233,8 +233,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           )}
         </div>
         {levelPrediction.daysToNextLevel !== null && levelPrediction.daysToNextLevel <= 7 && (
-          <span className="shrink-0 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-full">
-            🚀 {levelPrediction.daysToNextLevel}d
+          <span className="shrink-0 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
+            <Zap className="w-3.5 h-3.5" /> {levelPrediction.daysToNextLevel}d
           </span>
         )}
       </div>
@@ -339,14 +339,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     ? (minutes / totalMinutesAllTime) * 100 
                     : 0;
                   const materiaConfig = MATERIAS_CONFIG[subject as MateriaTipo] || MATERIAS_CONFIG['Outra'];
+                  const discipline = getDisplayDiscipline(subject);
+                  const DisciplineIcon = discipline.Icon;
                   
                   return (
                     <div key={subject} className="space-y-2">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                          <span className="text-xl">{getDisplayDiscipline(subject).icon}</span>
+                          <DisciplineIcon className="w-4 h-4 text-slate-300" />
                           <span className="text-sm font-medium text-slate-200">
-                            {getDisplayDiscipline(subject).label}
+                            {discipline.label}
                           </span>
                         </div>
                         <span className="text-xs font-bold text-slate-400">

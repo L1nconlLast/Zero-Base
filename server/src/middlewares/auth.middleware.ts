@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { sendError, sendUnauthorized } from '../utils/apiResponse';
 
 const getBearerToken = (req: Request): string | null => {
   const header = req.headers.authorization;
@@ -54,7 +55,7 @@ const verifyJwt = async (token: string): Promise<JWTPayload> => {
   return payload;
 };
 
-const isDev = process.env.NODE_ENV === 'development';
+const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
 const guestAllowed = isDev && process.env.MENTOR_ALLOW_GUEST === 'true';
 
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
@@ -72,7 +73,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
         return;
       }
 
-      res.status(401).json({ error: 'Unauthorized: token ausente.' });
+      sendUnauthorized(req, res, 'Token de acesso ausente.');
       return;
     }
 
@@ -80,7 +81,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     const userId = payload.sub;
 
     if (!userId) {
-      res.status(401).json({ error: 'Unauthorized: token invalido.' });
+      sendError(req, res, 401, 'INVALID_TOKEN', 'Token invalido.');
       return;
     }
 
@@ -92,6 +93,6 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
 
     next();
   } catch {
-    res.status(401).json({ error: 'Unauthorized: token invalido ou expirado.' });
+    sendError(req, res, 401, 'INVALID_TOKEN', 'Token invalido ou expirado.');
   }
 };

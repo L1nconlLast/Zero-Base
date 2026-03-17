@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-03-16T22:32:58.576Z",
+  "disciplineCount": 20,
+  "topicCount": 5550,
+  "edgeCount": 8315,
+  "countsByDiscipline": {
+    "portugues": 350,
+    "matematica": 500,
+    "fisica": 300,
+    "quimica": 350,
+    "biologia": 350,
+    "historia": 300,
+    "geografia": 250,
+    "filosofia": 150,
+    "sociologia": 150,
+    "redacao": 100,
+    "ingles": 150,
+    "atualidades": 100,
+    "direito_constitucional": 400,
+    "direito_administrativo": 350,
+    "direito_penal": 325,
+    "direito_civil": 325,
+    "direito_previdenciario": 225,
+    "informatica": 325,
+    "administracao": 250,
+    "raciocinio_logico": 300
+  }
+}

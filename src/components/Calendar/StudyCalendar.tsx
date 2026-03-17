@@ -74,7 +74,7 @@ const StudyCalendar: React.FC<StudyCalendarProps> = ({
   return (
     <div className="max-w-xl mx-auto space-y-5">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">📅 Calendário de Estudos</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><CalendarIcon className="w-6 h-6" /> Calendário de Estudos</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Visualize e mantenha sua consistência diária</p>
       </div>
 

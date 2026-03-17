@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { RotateCcw, ChevronRight, Brain, AlertCircle, Filter } from 'lucide-react';
+import { RotateCcw, ChevronRight, Brain, AlertCircle, Filter, BookOpen, Frown, Meh, Smile, Rocket, Landmark, Flame, Trophy } from 'lucide-react';
 import { FLASHCARDS_BANK, type Flashcard } from '../../data/flashcardsBank';
 import { calcSRS, isDue, createNewCard, getIntervalLabel, type SRSCard } from '../../utils/srsAlgorithm';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { getDisplayDiscipline } from '../../utils/disciplineLabels';
 
 type FlashcardTrack = 'enem' | 'concurso' | 'ambos';
 
@@ -29,59 +30,6 @@ const CONCURSO_SUBJECT_ORDER = [
   'Atualidades',
 ];
 
-const SUBJECT_ICON: Record<string, string> = {
-  Matemática: '📐',
-  Linguagens: '📝',
-  'Ciências Humanas': '🌍',
-  'Ciências da Natureza': '🧪',
-  Redação: '✍️',
-  Português: '📖',
-  'Raciocínio Lógico': '🧠',
-  'Direito Constitucional': '⚖️',
-  'Direito Administrativo': '🏛️',
-  Informática: '💻',
-  Atualidades: '📰',
-};
-
-const disciplinas = {
-  enem: [
-    { id: 'port', label: 'Português', icon: '🇧🇷' },
-    { id: 'lit', label: 'Literatura', icon: '📖' },
-    { id: 'red', label: 'Redação', icon: '✍️' },
-    { id: 'ing', label: 'Inglês', icon: '🇬🇧' },
-    { id: 'esp', label: 'Espanhol', icon: '🇪🇸' },
-    { id: 'art', label: 'Artes', icon: '🎨' },
-    { id: 'edf', label: 'Educação Física', icon: '🏃‍♂️' },
-    { id: 'hist', label: 'História', icon: '🏰' },
-    { id: 'geo', label: 'Geografia', icon: '🌎' },
-    { id: 'fil', label: 'Filosofia', icon: '🧠' },
-    { id: 'soc', label: 'Sociologia', icon: '👥' },
-    { id: 'fis', label: 'Física', icon: '🔬' },
-    { id: 'qui', label: 'Química', icon: '⚗️' },
-    { id: 'bio', label: 'Biologia', icon: '🧬' },
-    { id: 'mat', label: 'Matemática', icon: '📐' },
-  ],
-  concurso: [
-    { id: 'port', label: 'Português', icon: '🇧🇷' },
-    { id: 'raci', label: 'Raciocínio Lógico', icon: '🧩' },
-    { id: 'info', label: 'Informática', icon: '💻' },
-    { id: 'admPub', label: 'Administração Pública', icon: '🏛️' },
-    { id: 'atual', label: 'Atualidades', icon: '📰' },
-    { id: 'dirConst', label: 'Direito Constitucional', icon: '⚖️' },
-    { id: 'dirAdm', label: 'Direito Administrativo', icon: '🏢' },
-    { id: 'dirPen', label: 'Direito Penal', icon: '🚔' },
-    { id: 'dirProcPen', label: 'Direito Processual Penal', icon: '📜' },
-    { id: 'dirCivil', label: 'Direito Civil', icon: '🏠' },
-    { id: 'dirProcCivil', label: 'Direito Processual Civil', icon: '📑' },
-    { id: 'dirTrib', label: 'Direito Tributário', icon: '💰' },
-    { id: 'dirTrab', label: 'Direito do Trabalho', icon: '🛠️' },
-    { id: 'cont', label: 'Contabilidade', icon: '📊' },
-    { id: 'contPub', label: 'Contabilidade Pública', icon: '🏦' },
-    { id: 'adm', label: 'Administração Geral', icon: '🗂️' },
-    { id: 'gestPes', label: 'Gestão de Pessoas', icon: '👔' },
-    { id: 'arquiv', label: 'Arquivologia', icon: '🗃️' },
-  ],
-};
 
 const ENEM_SUBJECTS = new Set(ENEM_SUBJECT_ORDER);
 const CONCURSO_SUBJECTS = new Set(CONCURSO_SUBJECT_ORDER);
@@ -152,7 +100,7 @@ const FlashcardsPage: React.FC = () => {
   const subjectsForTrack = useMemo(() => {
     const unique = [...new Set(trackCards.map((card) => card.subject))];
     return getOrderedSubjects(unique, selectedTrack);
-  }, [trackCards]);
+  }, [selectedTrack, trackCards]);
 
   const cardsBySubject = useMemo(() => {
     return selectedSubject === 'Todas'
@@ -262,7 +210,7 @@ const FlashcardsPage: React.FC = () => {
     if (currentIdx >= sessionCards.length) {
       return (
         <div className="max-w-xl mx-auto text-center py-12 space-y-4">
-          <div className="text-5xl">🎉</div>
+          <div className="flex justify-center"><Trophy className="w-12 h-12 text-amber-500" /></div>
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Sessão concluída!</h2>
           <p className="text-slate-500 dark:text-slate-400">{sessionDone} cards revisados</p>
           <button
@@ -284,7 +232,7 @@ const FlashcardsPage: React.FC = () => {
         <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
           <span>{currentIdx + 1}/{sessionCards.length}</span>
           <span className="text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 px-2 py-1 rounded-full">
-            {(SUBJECT_ICON[card.subject] || '📚')} {card.subject}
+            {React.createElement(getDisplayDiscipline(card.subject).Icon, { className: 'w-3.5 h-3.5' })} {card.subject}
           </span>
         </div>
 
@@ -342,25 +290,25 @@ const FlashcardsPage: React.FC = () => {
                 onClick={() => handleQuality(1)}
                 className="py-2.5 rounded-xl text-sm font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 hover:bg-red-100 transition"
               >
-                😞 Não recordei
+                <span className="inline-flex items-center gap-1.5"><Frown className="w-4 h-4" />Não recordei</span>
               </button>
               <button
                 onClick={() => handleQuality(2)}
                 className="py-2.5 rounded-xl text-sm font-semibold bg-orange-50 dark:bg-orange-900/20 text-orange-600 border border-orange-200 dark:border-orange-800 hover:bg-orange-100 transition"
               >
-                😐 Difícil
+                <span className="inline-flex items-center gap-1.5"><Meh className="w-4 h-4" />Difícil</span>
               </button>
               <button
                 onClick={() => handleQuality(4)}
                 className="py-2.5 rounded-xl text-sm font-semibold bg-green-50 dark:bg-green-900/20 text-green-600 border border-green-200 dark:border-green-800 hover:bg-green-100 transition"
               >
-                😊 Bom
+                <span className="inline-flex items-center gap-1.5"><Smile className="w-4 h-4" />Bom</span>
               </button>
               <button
                 onClick={() => handleQuality(5)}
                 className="py-2.5 rounded-xl text-sm font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-700 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition"
               >
-                🚀 Fácil!
+                <span className="inline-flex items-center gap-1.5"><Rocket className="w-4 h-4" />Fácil</span>
               </button>
             </div>
           </div>
@@ -383,7 +331,7 @@ const FlashcardsPage: React.FC = () => {
   return (
     <div className="max-w-xl mx-auto space-y-6">
       <div className="text-center">
-        <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">🗂️ Flashcards — Revisão Espaçada</h2>
+        <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2"><BookOpen className="w-6 h-6" />Flashcards — Revisão Espaçada</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           Algoritmo SM-2 (Anki-like) — os cards vencidos aparecem automaticamente
         </p>
@@ -437,7 +385,8 @@ const FlashcardsPage: React.FC = () => {
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Matéria</p>
         <div className="flex flex-wrap gap-2">
           {['Todas', ...subjectsForTrack].map((s) => {
-            const icon = SUBJECT_ICON[s] || '📚';
+            const discipline = getDisplayDiscipline(s);
+            const DisciplineIcon = discipline.Icon;
             return (
               <button
                 key={s}
@@ -450,7 +399,7 @@ const FlashcardsPage: React.FC = () => {
                     : getSubjectChipClass(s, selectedSubject === s)
                 }`}
               >
-                {s === 'Todas' ? 'Todas' : `${icon} ${s}`}
+                {s === 'Todas' ? 'Todas' : <span className="inline-flex items-center gap-1.5"><DisciplineIcon className="w-3.5 h-3.5" />{s}</span>}
               </button>
             );
           })}
@@ -460,7 +409,7 @@ const FlashcardsPage: React.FC = () => {
         {selectedTrack === 'ambos' && (
           <div className="space-y-2">
             <div>
-              <p className="text-[11px] font-semibold text-blue-600 dark:text-blue-300 mb-1">🔥 Mais cobrados ENEM</p>
+              <p className="text-[11px] font-semibold text-blue-600 dark:text-blue-300 mb-1 inline-flex items-center gap-1"><Flame className="w-3.5 h-3.5" />Mais cobrados ENEM</p>
               <div className="flex flex-wrap gap-2">
                 {topTopicsEnem.map((topic) => (
                   <button
@@ -478,7 +427,7 @@ const FlashcardsPage: React.FC = () => {
               </div>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-violet-600 dark:text-violet-300 mb-1">🏛️ Mais cobrados Concurso</p>
+              <p className="text-[11px] font-semibold text-violet-600 dark:text-violet-300 mb-1 inline-flex items-center gap-1"><Landmark className="w-3.5 h-3.5" />Mais cobrados Concurso</p>
               <div className="flex flex-wrap gap-2">
                 {topTopicsConcurso.map((topic) => (
                   <button
@@ -532,7 +481,7 @@ const FlashcardsPage: React.FC = () => {
         <p className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
           <AlertCircle className="w-4 h-4" /> Como funciona?
         </p>
-        <p>• Avalie cada card de 😞 a 🚀 após ver a resposta</p>
+        <p>• Avalie cada card de difícil a fácil após ver a resposta</p>
         <p>• O algoritmo SM-2 calcula quando você deve revisar cada card</p>
         <p>• Cards fáceis aparecem em semanas; difíceis, no dia seguinte</p>
         <p>• Progresso salvo automaticamente no seu navegador</p>

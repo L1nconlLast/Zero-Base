@@ -1,6 +1,6 @@
 // ============================================================
 // src/data/flashcardsBank.ts
-// Flashcards para revisão espaçada — Medicina
+// Flashcards para revisão espaçada — Zero Base
 // ============================================================
 
 import { EXTRA_FLASHCARDS_BANK } from './flashcardsBank.extra';

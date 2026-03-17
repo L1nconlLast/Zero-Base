@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',       // simula o browser (localStorage, DOM)
+    environmentMatchGlobs: [['server/src/tests/**', 'node']],
     globals: true,              // describe/it/expect sem import
     setupFiles: ['./src/tests/setup.ts'],
     coverage: {

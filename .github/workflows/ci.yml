@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
+  quality:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,7 +25,12 @@ jobs:
 
     - name: Run Linter
       run: npm run lint
-      continue-on-error: true
+
+    - name: Run Typecheck
+      run: npm run typecheck
+
+    - name: Run Server Tests
+      run: npm run test:server
 
     - name: Run Unit Tests (Vitest)
       run: npm run test

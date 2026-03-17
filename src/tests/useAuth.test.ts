@@ -45,7 +45,7 @@ import { useAuth } from '../hooks/useAuth';
 
 const FAKE_USER = {
   id: 'uuid-123',
-  email: 'joao@medicina.com',
+  email: 'joao@zerobase.com',
   created_at: '2026-01-01T00:00:00Z',
   user_metadata: { name: 'João Silva' },
 };
@@ -95,7 +95,7 @@ describe('useAuth — estado inicial', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.isLoggedIn).toBe(true);
-    expect(result.current.user?.email).toBe('joao@medicina.com');
+    expect(result.current.user?.email).toBe('joao@zerobase.com');
     expect(result.current.user?.nome).toBe('João Silva');
     expect(result.current.supabaseUserId).toBe('uuid-123');
   });
@@ -108,7 +108,7 @@ describe('useAuth — estado inicial', () => {
         email: 'joao@local.com',
         dataCadastro: '2026-03-14T00:00:00.000Z',
         foto: '🧑‍⚕️',
-        examGoal: 'ENEM Medicina',
+        examGoal: 'ENEM',
         examDate: '',
         preferredTrack: 'enem',
       },
@@ -141,14 +141,14 @@ describe('useAuth — register', () => {
 
     let res: { success: boolean; message: string } = { success: false, message: '' };
     await act(async () => {
-      res = await result.current.register('João Silva', 'joao@medicina.com', 'Senha@123');
+      res = await result.current.register('João Silva', 'joao@zerobase.com', 'Senha@123');
     });
 
     expect(res.success).toBe(true);
     expect(mockSignUp).toHaveBeenCalledWith({
-      email: 'joao@medicina.com',
+      email: 'joao@zerobase.com',
       password: 'Senha@123',
-      options: { data: { name: 'João Silva' } },
+      options: { data: { name: 'João Silva', language: 'pt' } },
     });
   });
 
@@ -250,12 +250,12 @@ describe('useAuth — login', () => {
 
     let res: { success: boolean; message: string } = { success: false, message: '' };
     await act(async () => {
-      res = await result.current.login('joao@medicina.com', 'Senha@123');
+      res = await result.current.login('joao@zerobase.com', 'Senha@123');
     });
 
     expect(res.success).toBe(true);
     expect(mockSignInWithPassword).toHaveBeenCalledWith({
-      email: 'joao@medicina.com',
+      email: 'joao@zerobase.com',
       password: 'Senha@123',
     });
   });
@@ -359,7 +359,7 @@ describe('useAuth — onAuthStateChange', () => {
     });
 
     expect(result.current.isLoggedIn).toBe(true);
-    expect(result.current.user?.email).toBe('joao@medicina.com');
+    expect(result.current.user?.email).toBe('joao@zerobase.com');
     expect(result.current.supabaseUserId).toBe('uuid-123');
 
     // Simula logout via onAuthStateChange

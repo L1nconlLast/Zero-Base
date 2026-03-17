@@ -29,7 +29,7 @@ import { logger } from '../utils/logger';
 const secureStorage = new SecureLS({
   encodingType: 'aes', // Criptografia AES
   isCompression: true,  // Compressão para reduzir tamanho
-  encryptionSecret: import.meta.env.VITE_STORAGE_SECRET || 'medicina-do-zero-2025-secret-key',
+  encryptionSecret: import.meta.env.VITE_STORAGE_SECRET || 'zero-base-2026-secret-key',
 });
 
 // ═══════════════════════════════════════════════════════════════

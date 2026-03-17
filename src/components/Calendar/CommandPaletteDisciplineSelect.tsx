@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
+import { ChevronDown, Search } from 'lucide-react';
+import { getDisciplineIconById } from '../../utils/disciplineLabels';
 
 const DISCIPLINES = [
-  { value: 'anatomia', label: 'Matemática', icon: '📐' },
-  { value: 'fisiologia', label: 'Linguagens', icon: '📝' },
-  { value: 'farmacologia', label: 'Humanas', icon: '🌍' },
-  { value: 'patologia', label: 'Natureza', icon: '🔬' },
-  { value: 'bioquimica', label: 'Redação', icon: '✍️' },
-  { value: 'histologia', label: 'Atualidades', icon: '🗞️' },
-  { value: 'outra', label: 'Outras', icon: '📚' },
+  { value: 'anatomia', label: 'Matemática' },
+  { value: 'fisiologia', label: 'Linguagens' },
+  { value: 'farmacologia', label: 'Humanas' },
+  { value: 'patologia', label: 'Natureza' },
+  { value: 'bioquimica', label: 'Redação' },
+  { value: 'histologia', label: 'Atualidades' },
+  { value: 'outra', label: 'Outras' },
 ];
 
 interface CommandPaletteDisciplineSelectProps {
@@ -23,6 +25,7 @@ const CommandPaletteDisciplineSelect: React.FC<CommandPaletteDisciplineSelectPro
     d.label.toLowerCase().includes(search.toLowerCase()) ||
     d.value.toLowerCase().includes(search.toLowerCase())
   );
+  const SelectedIcon = getDisciplineIconById(value || 'outra');
 
   return (
     <div className="relative">
@@ -31,19 +34,20 @@ const CommandPaletteDisciplineSelect: React.FC<CommandPaletteDisciplineSelectPro
         onClick={() => setOpen(v => !v)}
         type="button"
       >
-        <span className="text-xl">{DISCIPLINES.find(d => d.value === value)?.icon || '🔎'}</span>
+        <SelectedIcon className="w-5 h-5" />
         <span>{DISCIPLINES.find(d => d.value === value)?.label || 'Escolha uma disciplina'}</span>
-        <span className="ml-auto text-xs text-slate-400">▼</span>
+        <ChevronDown className="ml-auto w-4 h-4 text-slate-400" />
       </button>
       {open && (
         <div className="absolute z-50 left-0 mt-2 w-full rounded-xl shadow-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur-sm p-3 animate-fade-in">
           <input
             autoFocus
             className="w-full mb-2 px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-sm border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="🔎 Buscar disciplina..."
+            placeholder="Buscar disciplina..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          <Search className="absolute left-6 top-[22px] w-4 h-4 text-slate-400 pointer-events-none" />
           <div className="max-h-60 overflow-y-auto">
             {filtered.length === 0 ? (
               <div className="py-3 text-center text-slate-400">Nenhuma disciplina encontrada</div>
@@ -55,7 +59,7 @@ const CommandPaletteDisciplineSelect: React.FC<CommandPaletteDisciplineSelectPro
                   onClick={() => { onChange(d.value); setOpen(false); setSearch(''); }}
                   type="button"
                 >
-                  <span className="text-xl">{d.icon}</span>
+                  {React.createElement(getDisciplineIconById(d.value), { className: 'w-5 h-5' })}
                   <span>{d.label}</span>
                 </button>
               ))

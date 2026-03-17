@@ -4,7 +4,8 @@
 // ============================================================
 
 import React, { useState } from 'react';
-import { MessageSquarePlus, Send, X, Star } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { MessageSquarePlus, Send, X, Star, Bug, Lightbulb, Heart, MessageCircle } from 'lucide-react';
 import { feedbackService, type FeedbackPayload } from '../../services/feedback.service';
 import toast from 'react-hot-toast';
 
@@ -13,11 +14,11 @@ interface FeedbackButtonProps {
   currentPage?: string;
 }
 
-const FEEDBACK_TYPES: { value: FeedbackPayload['type']; label: string; emoji: string }[] = [
-  { value: 'bug', label: 'Bug', emoji: '🐛' },
-  { value: 'feature', label: 'Sugestão', emoji: '💡' },
-  { value: 'elogio', label: 'Elogio', emoji: '❤️' },
-  { value: 'outro', label: 'Outro', emoji: '💬' },
+const FEEDBACK_TYPES: { value: FeedbackPayload['type']; label: string; Icon: LucideIcon }[] = [
+  { value: 'bug', label: 'Bug', Icon: Bug },
+  { value: 'feature', label: 'Sugestão', Icon: Lightbulb },
+  { value: 'elogio', label: 'Elogio', Icon: Heart },
+  { value: 'outro', label: 'Outro', Icon: MessageCircle },
 ];
 
 const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, currentPage }) => {
@@ -52,7 +53,7 @@ const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, currentPage }) 
         page: currentPage,
         rating: rating > 0 ? rating : undefined,
       });
-      toast.success('Feedback enviado! Obrigado 🙏');
+      toast.success('Feedback enviado! Obrigado.');
       resetForm();
       setOpen(false);
     } catch {
@@ -85,6 +86,7 @@ const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, currentPage }) 
           {/* Type selector */}
           <div className="flex gap-1.5 mb-3">
             {FEEDBACK_TYPES.map((t) => (
+              <>
               <button
                 key={t.value}
                 onClick={() => setType(t.value)}
@@ -94,8 +96,11 @@ const FeedbackButton: React.FC<FeedbackButtonProps> = ({ userId, currentPage }) 
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 }`}
               >
-                {t.emoji} {t.label}
+                <span className="inline-flex items-center gap-1">
+                  <t.Icon className="w-3.5 h-3.5" /> {t.label}
+                </span>
               </button>
+              </>
             ))}
           </div>
 

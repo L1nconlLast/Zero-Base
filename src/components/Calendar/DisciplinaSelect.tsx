@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { getDisciplineIconById } from '../../utils/disciplineLabels';
 
 interface DisciplinaSelectProps {
   modalidade: string | null;
@@ -30,7 +32,7 @@ const DisciplinaSelect: React.FC<DisciplinaSelectProps> = ({ modalidade, value, 
     setSearch('');
     setOpen(false);
     onChange(null);
-  }, [modalidade]);
+  }, [modalidade, onChange]);
 
   const filtered = disciplinas.filter(d =>
     d.label.toLowerCase().includes(search.toLowerCase())
@@ -44,16 +46,16 @@ const DisciplinaSelect: React.FC<DisciplinaSelectProps> = ({ modalidade, value, 
         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:ring-2 focus:ring-indigo-500/30 outline-none transition font-medium ${!modalidade ? 'opacity-60 cursor-not-allowed' : ''}`}
         onClick={() => modalidade && setOpen(v => !v)}
       >
-        <span className="text-lg">🔎</span>
+        {React.createElement(getDisciplineIconById(value || 'outra'), { className: 'w-5 h-5' })}
         <span>{value ? disciplinas.find(d => d.id === value)?.label : 'Buscar disciplina'}</span>
-        <span className="ml-auto text-xs text-slate-400">▼</span>
+        <ChevronDown className="ml-auto w-4 h-4 text-slate-400" />
       </button>
       {open && modalidade && (
         <div className="absolute z-50 left-0 mt-2 w-full rounded-xl shadow-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur-sm p-3 animate-fade-in">
           <input
             autoFocus
             className="w-full mb-2 px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-sm border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="🔎 Buscar disciplina..."
+            placeholder="Buscar disciplina..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -63,41 +65,7 @@ const DisciplinaSelect: React.FC<DisciplinaSelectProps> = ({ modalidade, value, 
             ) : (
               filtered.map(d => {
                 // Ícones padronizados
-                const icons: Record<string, string> = {
-                  port: '🇧🇷',
-                  lit: '📖',
-                  red: '✍️',
-                  ing: '🇬🇧',
-                  esp: '🇪🇸',
-                  art: '🎨',
-                  edf: '🏃‍♂️',
-                  hist: '🏰',
-                  geo: '🌎',
-                  fil: '🧠',
-                  soc: '👥',
-                  fis: '🔬',
-                  qui: '⚗️',
-                  bio: '🧬',
-                  mat: '📐',
-                  raci: '🧩',
-                  info: '💻',
-                  admPub: '🏛️',
-                  atual: '📰',
-                  dirConst: '⚖️',
-                  dirAdm: '🏢',
-                  dirPen: '🚔',
-                  dirProcPen: '📜',
-                  dirCivil: '🏠',
-                  dirProcCivil: '📑',
-                  dirTrib: '💰',
-                  dirTrab: '🛠️',
-                  cont: '📊',
-                  contPub: '🏦',
-                  adm: '🗂️',
-                  gestPes: '👔',
-                  arquiv: '🗃️',
-                  outra: '📚',
-                };
+                const OptionIcon = getDisciplineIconById(d.id);
                 return (
                   <button
                     key={d.id}
@@ -105,7 +73,7 @@ const DisciplinaSelect: React.FC<DisciplinaSelectProps> = ({ modalidade, value, 
                     onClick={() => { onChange(d.id); setOpen(false); setSearch(''); }}
                     type="button"
                   >
-                    <span className="text-lg">{icons[d.id] || '📚'}</span>
+                    <OptionIcon className="w-5 h-5" />
                     <span>{d.label}</span>
                   </button>
                 );

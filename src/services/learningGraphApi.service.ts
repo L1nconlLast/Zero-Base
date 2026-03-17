@@ -12,6 +12,9 @@ export interface LearningGraphTopic {
   nome: string;
   descricao?: string | null;
   disciplina_id: string;
+  area?: string | null;
+  subarea?: string | null;
+  tipo_no?: 'topic' | 'subtopic' | null;
   nivel_dificuldade?: string | null;
   ordem?: number | null;
 }
@@ -20,6 +23,45 @@ export interface LearningGraphPrerequisiteEdge {
   topico_id: string;
   prerequisito_id: string;
   mastery_required: number;
+}
+
+export interface LearningGraphNode {
+  id: string;
+  type: 'discipline' | 'area' | 'topic' | 'subtopic' | string;
+  data: {
+    label: string;
+    topicoId?: string;
+    disciplinaId?: string;
+    modalidade?: string;
+    area?: string | null;
+    subarea?: string | null;
+    dificuldade?: number | null;
+    frequencia_enem?: number | null;
+    frequencia_concurso?: number | null;
+    tempo_estimado?: number | null;
+    status?: LearningProgressStatus;
+  };
+}
+
+export interface LearningGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: 'hierarchy' | 'prerequisite' | 'related' | string;
+  data?: {
+    mastery_required?: number;
+    peso?: number;
+  };
+}
+
+export interface LearningGraphPayload {
+  nodes: LearningGraphNode[];
+  edges: LearningGraphEdge[];
+  stats?: {
+    totalNodes: number;
+    totalEdges: number;
+    totalTopics: number;
+  };
 }
 
 export type LearningProgressStatus = 'locked' | 'available' | 'studying' | 'completed' | 'review';
@@ -147,6 +189,88 @@ class LearningGraphApiService {
         'Falha ao listar arestas de prerequisito',
       );
       return data.edges || [];
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  async getGraph(params?: {
+    disciplineId?: string;
+    discipline?: string;
+    track?: 'enem' | 'concurso';
+    search?: string;
+    level?: 'iniciante' | 'intermediario' | 'avancado';
+    limit?: number;
+  }, timeoutMs = 20000): Promise<LearningGraphPayload> {
+    const accessToken = await this.getAccessToken();
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const url = new URL(`${this.baseEndpoint}/graph`, window.location.origin);
+      if (params?.disciplineId) url.searchParams.set('disciplinaId', params.disciplineId);
+      if (params?.discipline) url.searchParams.set('disciplina', params.discipline);
+      if (params?.track) url.searchParams.set('track', params.track);
+      if (params?.search) url.searchParams.set('search', params.search);
+      if (params?.level) url.searchParams.set('level', params.level);
+      if (typeof params?.limit === 'number') url.searchParams.set('limit', String(params.limit));
+
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+      };
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+
+      return await this.parseJsonResponse<LearningGraphPayload>(response, 'Falha ao carregar grafo completo');
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  async getSkillTree(params?: {
+    disciplineId?: string;
+    discipline?: string;
+    track?: 'enem' | 'concurso';
+    search?: string;
+    level?: 'iniciante' | 'intermediario' | 'avancado';
+    limit?: number;
+  }, timeoutMs = 20000): Promise<LearningGraphPayload> {
+    const accessToken = await this.getAccessToken();
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const url = new URL(`${this.baseEndpoint}/skill-tree`, window.location.origin);
+      if (params?.disciplineId) url.searchParams.set('disciplinaId', params.disciplineId);
+      if (params?.discipline) url.searchParams.set('disciplina', params.discipline);
+      if (params?.track) url.searchParams.set('track', params.track);
+      if (params?.search) url.searchParams.set('search', params.search);
+      if (params?.level) url.searchParams.set('level', params.level);
+      if (typeof params?.limit === 'number') url.searchParams.set('limit', String(params.limit));
+
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+      };
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+
+      return await this.parseJsonResponse<LearningGraphPayload>(response, 'Falha ao carregar skill tree');
     } finally {
       window.clearTimeout(timer);
     }

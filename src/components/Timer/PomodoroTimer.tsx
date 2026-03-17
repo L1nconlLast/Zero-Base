@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, RotateCcw, Coffee, Brain, Bell, Info } from 'lucide-react';
+import { Play, Pause, RotateCcw, Coffee, Brain, Bell, BookOpen, Info } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { MATERIAS_CONFIG, MateriaTipo } from '../../types';
 import { STUDY_METHODS, getStudyMethodById } from '../../data/studyMethods';
@@ -56,21 +56,21 @@ const getPersistedOverrideForMethod = (methodId: string): number | null => {
 
 const MODE_STYLES: Record<TimerMode, { label: string; accent: string; ring: string; bg: string; icon: LucideIcon }> = {
   focus: {
-    label: '🧠 Foco',
+    label: 'Foco',
     accent: 'text-gray-900 dark:text-white',
     ring: 'ring-gray-800 dark:ring-white',
     bg: 'bg-gray-900 dark:bg-white',
     icon: Brain,
   },
   shortBreak: {
-    label: '☕ Pausa Curta',
+    label: 'Pausa Curta',
     accent: 'text-teal-600',
     ring: 'ring-teal-500',
     bg: 'bg-teal-500',
     icon: Coffee,
   },
   longBreak: {
-    label: '🔔 Pausa Longa',
+    label: 'Pausa Longa',
     accent: 'text-blue-600',
     ring: 'ring-blue-500',
     bg: 'bg-blue-500',
@@ -166,7 +166,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
       subject,
       source: 'department_focus_cta',
     });
-  }, [quickStartSignal, methodId]);
+  }, [quickStartSignal, methodId, subject]);
 
   const getModeMinutes = useCallback((phase: TimerMode): number => {
     if (phase === 'focus') return selectedMethod.focusMinutes;
@@ -482,13 +482,15 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
 
         {mode === 'focus' && (
           <div className="mb-6">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 text-center">
-                📚 Matéria do Ciclo
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 text-center inline-flex items-center justify-center gap-2 w-full">
+              <BookOpen className="w-3.5 h-3.5" />
+              Matéria do Ciclo
             </p>
             <div className="flex gap-1.5 sm:gap-2 flex-wrap justify-center">
               {(Object.keys(MATERIAS_CONFIG) as MateriaTipo[]).map((key) => {
                 const config = MATERIAS_CONFIG[key];
                 const discipline = cycleDisciplineLabels[key];
+                const DisciplineIcon = discipline.Icon;
                 const isSelected = subject === key;
                 return (
                   <button
@@ -505,7 +507,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
                       ${isActive ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'}
                     `}
                   >
-                    <span className="text-lg sm:text-xl mb-0.5 sm:mb-1">{discipline.icon}</span>
+                    <DisciplineIcon className="w-4 h-4 sm:w-5 sm:h-5 mb-0.5 sm:mb-1" />
                     <span className={`text-[9px] sm:text-[10px] font-medium ${isSelected ? config.color : 'text-gray-500'}`}>
                       {discipline.label}
                     </span>
@@ -514,7 +516,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
               })}
             </div>
             <p className="text-center text-xs mt-3 text-gray-400">
-              Estudando: <strong className={MATERIAS_CONFIG[subject].color}>{cycleDisciplineLabels[subject].icon} {cycleDisciplineLabels[subject].label}</strong>
+              Estudando: <strong className={`${MATERIAS_CONFIG[subject].color} inline-flex items-center gap-1`}>{React.createElement(cycleDisciplineLabels[subject].Icon, { className: 'w-3.5 h-3.5' })}{cycleDisciplineLabels[subject].label}</strong>
             </p>
           </div>
         )}

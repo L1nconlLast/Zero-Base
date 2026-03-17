@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { User, Mail, Lock, UserPlus, Stethoscope, Sparkles, ShieldCheck, CheckCircle2, Circle } from 'lucide-react';
+import { User, Mail, Lock, UserPlus, Layers, Sparkles, ShieldCheck, CheckCircle2, Circle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getPasswordChecks, validateStrongPassword } from '../../utils/passwordPolicy';
 
@@ -102,13 +102,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl border border-purple-100 dark:border-gray-700 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-100 to-pink-100 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center">
-            <Stethoscope className="w-8 h-8 text-purple-700 dark:text-purple-200" />
+            <Layers className="w-8 h-8 text-purple-700 dark:text-purple-200" />
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white mb-2">
             Criar Conta
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Comece sua jornada rumo à medicina com método e clareza
+            Comece sua jornada no Zero Base com método, clareza e evolução contínua
           </p>
           <div className="mt-3 flex items-center justify-center gap-2">
             <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">

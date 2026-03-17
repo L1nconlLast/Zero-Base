@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { ScheduleEntry, MateriaTipo } from '../types';
+import type { ScheduleEntry } from '../types';
 import { studyScheduleService } from '../services/studySchedule.service.ts';
 import { isSupabaseConfigured } from '../services/supabase.client';
 import { adaptSchedule, type StudyBlock } from '../engine/adaptiveScheduleAdapter.ts';

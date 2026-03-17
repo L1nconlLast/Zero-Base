@@ -2,6 +2,8 @@ import React from 'react';
 import { History, LogOut, Moon, RefreshCw, Sun, User } from 'lucide-react';
 import { ThemeSelector } from './ThemeSelector';
 import { ZeroBaseLogo } from './ZeroBaseLogo';
+import { StudyModeToggle } from '../Dashboard/StudyModeToggle';
+import type { StudyMode } from '../../hooks/useStudyMode';
 
 interface HeaderProps {
   userName: string;
@@ -16,6 +18,8 @@ interface HeaderProps {
   onToggleDarkMode: () => void;
   onSelectTheme: (theme: string) => void;
   onLogout: () => void;
+  studyMode?: StudyMode;
+  onToggleStudyMode?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -30,8 +34,11 @@ export const Header: React.FC<HeaderProps> = ({
   onShowConflictHistory,
   onToggleDarkMode,
   onSelectTheme,
-  onLogout 
+  onLogout,
+  studyMode = 'exploration',
+  onToggleStudyMode,
 }) => {
+  const isFocused = studyMode === 'focus';
   const avatarIsImage = Boolean(userAvatar && (/^data:image\//i.test(userAvatar) || /^https?:\/\//i.test(userAvatar) || /^blob:/i.test(userAvatar)));
   const syncClass =
     syncStatusTone === 'success'
@@ -47,6 +54,13 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center gap-2 sm:gap-3">
         {/* Logo e Título */}
         <ZeroBaseLogo />
+
+        {/* Toggle de modo (sempre visível) */}
+        {onToggleStudyMode && (
+          <div className="hidden sm:block">
+            <StudyModeToggle mode={studyMode} onToggle={onToggleStudyMode} />
+          </div>
+        )}
 
         {/* Usuário e Ações */}
         <div className="ml-auto flex items-center gap-1.5 sm:gap-3 flex-wrap justify-end">
@@ -66,32 +80,39 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          {/* Seletor de Tema */}
-          <ThemeSelector currentTheme={currentTheme} onSelectTheme={onSelectTheme} />
+          {/* Seletor de Tema — oculto no modo focado */}
+          {!isFocused && (
+            <ThemeSelector currentTheme={currentTheme} onSelectTheme={onSelectTheme} />
+          )}
 
-          {syncStatusLabel && (
+          {/* Status de sync — oculto no modo focado */}
+          {!isFocused && syncStatusLabel && (
             <span className={`hidden lg:inline-flex px-2.5 py-1 rounded-md text-xs font-semibold ${syncClass}`}>
               {syncStatusLabel}
             </span>
           )}
 
-          {onSyncNow && (
+          {/* Sincronizar agora — oculto no modo focado */}
+          {!isFocused && onSyncNow && (
             <button
               onClick={onSyncNow}
               disabled={disableSyncNow}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-xs font-semibold disabled:opacity-50"
               title="Sincronizar agora"
+              aria-label="Sincronizar agora"
             >
               <RefreshCw size={14} />
               <span className="hidden sm:inline">Sincronizar agora</span>
             </button>
           )}
 
-          {onShowConflictHistory && (
+          {/* Conflitos — oculto no modo focado */}
+          {!isFocused && onShowConflictHistory && (
             <button
               onClick={onShowConflictHistory}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-xs font-semibold"
               title="Ver conflitos resolvidos"
+              aria-label="Ver conflitos resolvidos"
             >
               <History size={14} />
               <span className="hidden sm:inline">Conflitos</span>
@@ -103,6 +124,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onToggleDarkMode}
             className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
             title={darkMode ? 'Modo Claro' : 'Modo Escuro'}
+            aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
           >
             {darkMode ? (
               <Sun className="text-yellow-500" size={20} />
@@ -115,6 +137,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onLogout}
             className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors font-semibold"
+            aria-label="Sair da conta"
           >
             <LogOut size={18} />
             <span className="hidden md:inline">Sair</span>
@@ -124,3 +147,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+

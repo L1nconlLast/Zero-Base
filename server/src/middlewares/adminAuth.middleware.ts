@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { sendForbidden, sendUnauthorized } from '../utils/apiResponse';
 
 const parseAdminEmails = (): string[] => {
   const raw = [
@@ -25,7 +26,7 @@ export const adminAuthMiddleware = (req: Request, res: Response, next: NextFunct
   const claims = req.auth?.claims;
 
   if (!claims) {
-    res.status(401).json({ error: 'Unauthorized.' });
+    sendUnauthorized(req, res, 'Autenticacao administrativa ausente.');
     return;
   }
 
@@ -43,7 +44,7 @@ export const adminAuthMiddleware = (req: Request, res: Response, next: NextFunct
   const isAdminRole = role === 'admin' || appRole === 'admin' || userRole === 'admin';
 
   if (!isAdminRole && !isEmailAllowed) {
-    res.status(403).json({ error: 'Forbidden: acesso restrito ao admin.' });
+    sendForbidden(req, res, 'Acesso restrito ao admin.');
     return;
   }
 

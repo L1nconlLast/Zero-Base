@@ -1,15 +1,15 @@
 import React from 'react';
-import { Hand, Zap, Target, PartyPopper, Flame, BookOpen, TrendingUp } from 'lucide-react';
+import { Hand, Zap, Target, PartyPopper, Flame, BookOpen, TrendingUp, AlertTriangle } from 'lucide-react';
 import { ACADEMY_CONTENT } from '../../data/academyContent';
 import { getLevelByPoints } from '../../data/levels';
 import { predictNextLevel } from '../../utils/levelPrediction';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import type { StudySession } from '../../types';
 import { buildWeeklyRetentionSnapshot } from '../../utils/weeklyRetention';
-import StudyHierarchyTree from './StudyHierarchyTree';
-import KnowledgeGenealogyTree from './KnowledgeGenealogyTree';
-import { learningHierarchyService, type StudyHierarchyAreaNode, type StudyHierarchyTrack } from '../../services/learningHierarchy.service';
 import { CYCLE_DISCIPLINE_LABELS } from '../../utils/disciplineLabels';
+import { StudyFocusPanel } from './StudyFocusPanel';
+import { StudyPrimaryCTA } from './StudyPrimaryCTA';
+import type { StudyMode } from '../../hooks/useStudyMode';
 
 interface MockExamHistoryEntry {
   date: string;
@@ -38,11 +38,14 @@ interface DashboardPageProps {
   totalPoints: number;
   level: number;
   todayMinutes: number;
+  dailyGoalMinutes?: number;
   completedContentIds: string[];
   currentStreak?: number;
   sessions?: StudySession[];
   supabaseUserId?: string | null;
+  studyMode?: StudyMode;
   onContinueNow: () => void;
+  onRecalculateAI?: () => void;
   onOpenRanks?: () => void;
   onNavigate?: (tab: string) => void;
   preferredTrack?: 'enem' | 'concursos' | 'hibrido';
@@ -54,27 +57,23 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
   totalPoints,
   level,
   todayMinutes,
+  dailyGoalMinutes = 90,
   completedContentIds,
   currentStreak = 0,
   sessions = [],
   supabaseUserId,
+  studyMode = 'exploration',
   onContinueNow,
+  onRecalculateAI,
   onOpenRanks,
   onNavigate,
   preferredTrack = 'enem',
   onOpenTopicQuestions,
 }) => {
+  const isFocused = studyMode === 'focus';
   const [mockExamHistory] = useLocalStorage<MockExamHistoryEntry[]>('mock_exam_history', []);
   const [dailyQuizHistory] = useLocalStorage<DailyQuizHistoryEntry[]>('daily_quiz_history', []);
-  const [hierarchyData, setHierarchyData] = React.useState<StudyHierarchyAreaNode[]>([]);
-  const [isHierarchyLoading, setIsHierarchyLoading] = React.useState(false);
-  const [focusedDisciplineName, setFocusedDisciplineName] = React.useState<string | null>(null);
-  const [hierarchyTrack, setHierarchyTrack] = React.useState<StudyHierarchyTrack>(preferredTrack);
   const weekDayLabels = React.useMemo(() => ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'], []);
-
-  React.useEffect(() => {
-    setHierarchyTrack(preferredTrack);
-  }, [preferredTrack]);
 
   const currentLevel = React.useMemo(() => getLevelByPoints(totalPoints), [totalPoints]);
   const levelPred = React.useMemo(() => predictNextLevel(totalPoints, sessions), [totalPoints, sessions]);
@@ -203,71 +202,25 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
 
   const weeklyRetention = React.useMemo(() => buildWeeklyRetentionSnapshot(sessions, 4), [sessions]);
 
-  const localHierarchyFallback = React.useMemo(
-    () => learningHierarchyService.buildLocalFallback(sessions, weakAreas, hierarchyTrack),
-    [sessions, weakAreas, hierarchyTrack],
-  );
-
-  React.useEffect(() => {
-    let active = true;
-
-    const loadHierarchy = async () => {
-      if (!supabaseUserId) {
-        if (active) {
-          setHierarchyData(localHierarchyFallback);
-          setIsHierarchyLoading(false);
-        }
-        return;
-      }
-
-      if (active) {
-        setIsHierarchyLoading(true);
-      }
-
-      try {
-        const cloudTree = await learningHierarchyService.listForUser(supabaseUserId);
-        if (!active) {
-          return;
-        }
-
-        if (cloudTree.length > 0) {
-          setHierarchyData(learningHierarchyService.normalizeHierarchyForTrack(cloudTree, hierarchyTrack));
-        } else {
-          setHierarchyData(localHierarchyFallback);
-        }
-      } catch {
-        if (active) {
-          setHierarchyData(localHierarchyFallback);
-        }
-      } finally {
-        if (active) {
-          setIsHierarchyLoading(false);
-        }
-      }
-    };
-
-    void loadHierarchy();
-
-    return () => {
-      active = false;
-    };
-  }, [supabaseUserId, localHierarchyFallback, hierarchyTrack]);
-
   const focusPriorityInTree = React.useCallback((disciplineName: string) => {
-    setFocusedDisciplineName(disciplineName);
-    const section = document.getElementById('study-tree-section');
-    section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+    onNavigate?.('arvore');
+    void disciplineName;
+  }, [onNavigate]);
 
-  const handleTopicSelect = React.useCallback(
-    (payload: { areaName: string; disciplineName: string; topicName: string; target: 'quiz' | 'simulado' }) => {
-      onOpenTopicQuestions?.(payload);
-    },
-    [onOpenTopicQuestions],
-  );
+
+  const currentDiscipline = React.useMemo(() => {
+    if (sessions.length === 0) return undefined;
+    const sorted = [...sessions].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+    const raw = sorted[0]?.subject as string | undefined;
+    if (!raw) return undefined;
+    return CYCLE_DISCIPLINE_LABELS[raw as keyof typeof CYCLE_DISCIPLINE_LABELS]?.label ?? raw;
+  }, [sessions]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className={`grid gap-6 ${isFocused ? 'xl:grid-cols-[minmax(0,1fr)_288px]' : ''}`}>
+      <div className="flex flex-col gap-6">
       <section
         className="rounded-[20px] p-6 sm:p-8"
         style={{
@@ -321,13 +274,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           )}
 
-          <button
-            onClick={onContinueNow}
-            className="mt-5 w-full sm:w-auto min-w-[260px] text-white font-bold text-[14px] py-3.5 px-6 rounded-xl flex justify-center items-center gap-2 transition-all hover:translate-y-[-1px] hover:shadow-lg shadow-[0_4px_14px_rgba(37,99,235,0.3)]"
-            style={{ backgroundColor: 'var(--color-primary)' }}
-          >
-            ▶ Começar sessão de estudo
-          </button>
+          <StudyPrimaryCTA
+            onContinue={onContinueNow}
+            onRecalculate={onRecalculateAI}
+          />
         </div>
       </section>
 
@@ -338,17 +288,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
             <h3 className="text-lg font-bold text-indigo-900 dark:text-indigo-100 mt-1">Retenção de 7 dias</h3>
             <p className="text-sm text-indigo-700 dark:text-indigo-300 mt-1">
               {weeklyRetention.isMaintained
-                ? '✅ Sequência semanal garantida. Continue para criar hábito.'
+                ? 'Sequência semanal garantida. Continue para criar hábito.'
                 : `Faltam ${weeklyRetention.remainingDays} dia(s) para fechar sua semana (${weeklyRetention.studiedDays}/${weeklyRetention.targetDays}).`}
             </p>
           </div>
-          <button
-            onClick={onContinueNow}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-            style={{ backgroundColor: 'var(--color-primary)' }}
-          >
-            Estudar 25 min
-          </button>
         </div>
 
         <div className="mt-4 grid grid-cols-7 gap-2">
@@ -377,8 +320,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
 
         {weeklyRetention.remainingDays === 1 && !weeklyRetention.isMaintained && (
-          <p className="mt-3 text-sm font-semibold text-amber-700 dark:text-amber-300">
-            ⚠ Falta 1 sessão para manter sua sequência semanal.
+          <p className="mt-3 text-sm font-semibold text-amber-700 dark:text-amber-300 inline-flex items-center gap-1">
+            <AlertTriangle className="w-4 h-4" /> Falta 1 sessão para manter sua sequência semanal.
           </p>
         )}
       </section>
@@ -436,107 +379,77 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-5">
-          <h3 className="text-base font-bold text-amber-800 dark:text-amber-300 mb-2">Prioridades da semana</h3>
-          <p className="text-xs text-amber-700 dark:text-amber-400 mb-3">Matérias sem estudo nos últimos 7 dias.</p>
-          {weakAreas.length > 0 ? (
-            <div className="space-y-2">
-              {weakAreas.map((area) => (
-                <div key={area} className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-amber-900 dark:text-amber-300">{CYCLE_DISCIPLINE_LABELS[area as keyof typeof CYCLE_DISCIPLINE_LABELS]?.label ?? area}</span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => focusPriorityInTree(area)}
-                      className="text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 rounded-lg transition"
-                    >
-                      Ver detalhe
-                    </button>
-                    <button
-                      onClick={() => onNavigate?.('foco')}
-                      className="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-lg transition"
-                    >
-                      Estudar
-                    </button>
+      {!isFocused && (
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-5">
+            <h3 className="text-base font-bold text-amber-800 dark:text-amber-300 mb-2">Prioridades da semana</h3>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mb-3">Matérias sem estudo nos últimos 7 dias.</p>
+            {weakAreas.length > 0 ? (
+              <div className="space-y-2">
+                {weakAreas.map((area) => (
+                  <div key={area} className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-amber-900 dark:text-amber-300">{CYCLE_DISCIPLINE_LABELS[area as keyof typeof CYCLE_DISCIPLINE_LABELS]?.label ?? area}</span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => focusPriorityInTree(area)}
+                        className="text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 rounded-lg transition"
+                      >
+                        Ver detalhe
+                      </button>
+                      <button
+                        onClick={() => onNavigate?.('foco')}
+                        className="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-lg transition"
+                      >
+                        Estudar
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-amber-700 dark:text-amber-400">Sem pendências críticas nesta semana. Mantenha o ritmo.</p>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
-          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Estatísticas e insights</h3>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Acurácia</p>
-              <p className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-1">{questionMetrics.accuracy}%</p>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Tempo médio/Q</p>
-              <p className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-1">{questionMetrics.avgTimePerQuestion}s</p>
-            </div>
-          </div>
-
-          <div className="space-y-2 text-sm">
-            <p className="inline-flex items-center gap-2 text-slate-700 dark:text-slate-300">
-              <TrendingUp className="w-4 h-4 text-blue-500" /> {studyInsights.trendLabel}
-            </p>
-            <p className="text-slate-600 dark:text-slate-300">Questões resolvidas: <span className="font-semibold">{questionMetrics.totalQuestions}</span></p>
-            <p className="text-slate-600 dark:text-slate-300">Melhor banca: <span className="font-semibold">{questionMetrics.topBanca ? `${questionMetrics.topBanca.name} (${questionMetrics.topBanca.accuracy}%)` : 'Sem dados'}</span></p>
-            <p className="text-slate-600 dark:text-slate-300">Streak diário máx (quiz): <span className="font-semibold">{questionMetrics.bestDailyStreak}</span></p>
-            {levelPred.avgPointsPerDay > 0 && (
-              <p className="text-blue-600 dark:text-blue-300 font-medium">{levelPred.label}</p>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-amber-700 dark:text-amber-400">Sem pendências críticas nesta semana. Mantenha o ritmo.</p>
             )}
           </div>
-        </div>
-      </section>
 
-      <section id="study-tree-section" className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm">
-        <div className="flex items-start justify-between gap-3 mb-4 flex-wrap sm:flex-nowrap">
-          <div>
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">Mapa de estudos por hierarquia</h3>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Área → Disciplina → Tópico</span>
-          </div>
-
-          <div className="w-full sm:w-auto sm:ml-auto">
-            <div className="inline-flex items-center gap-1 p-1.5 rounded-2xl border border-slate-300/80 dark:border-slate-600 bg-slate-100/90 dark:bg-slate-800/80 shadow-sm sm:float-right">
-              {([
-                { key: 'enem', label: 'ENEM' },
-                { key: 'concursos', label: 'Concurso' },
-                { key: 'hibrido', label: 'Híbrido' },
-              ] as const).map((option) => {
-                const selected = hierarchyTrack === option.key;
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => setHierarchyTrack(option.key)}
-                    className={`min-w-[92px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-slate-400 dark:focus-visible:ring-slate-500 ${selected
-                        ? 'text-white shadow-md border border-transparent'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/80 dark:hover:bg-slate-700/70'
-                      }`}
-                    style={selected ? { backgroundColor: 'var(--color-primary)', boxShadow: '0 6px 18px -10px var(--color-primary)' } : undefined}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Estatísticas e insights</h3>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Acurácia</p>
+                <p className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-1">{questionMetrics.accuracy}%</p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Tempo médio/Q</p>
+                <p className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-1">{questionMetrics.avgTimePerQuestion}s</p>
+              </div>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="inline-flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                <TrendingUp className="w-4 h-4 text-blue-500" /> {studyInsights.trendLabel}
+              </p>
+              <p className="text-slate-600 dark:text-slate-300">Questões resolvidas: <span className="font-semibold">{questionMetrics.totalQuestions}</span></p>
+              <p className="text-slate-600 dark:text-slate-300">Melhor banca: <span className="font-semibold">{questionMetrics.topBanca ? `${questionMetrics.topBanca.name} (${questionMetrics.topBanca.accuracy}%)` : 'Sem dados'}</span></p>
+              <p className="text-slate-600 dark:text-slate-300">Streak diário máx (quiz): <span className="font-semibold">{questionMetrics.bestDailyStreak}</span></p>
+              {levelPred.avgPointsPerDay > 0 && (
+                <p className="text-blue-600 dark:text-blue-300 font-medium">{levelPred.label}</p>
+              )}
             </div>
           </div>
-        </div>
+        </section>
+      )}
 
-        <StudyHierarchyTree
-          data={hierarchyData}
-          loading={isHierarchyLoading}
-          focusedDisciplineName={focusedDisciplineName}
-          onTopicSelect={handleTopicSelect}
+      </div>
+
+      {isFocused && (
+        <StudyFocusPanel
+          todayMinutes={todayMinutes}
+          dailyGoalMinutes={dailyGoalMinutes}
+          currentStreak={currentStreak}
+          currentDiscipline={currentDiscipline}
+          onStartFocus={onContinueNow}
+          studyMode={studyMode}
         />
-      </section>
-
-      <KnowledgeGenealogyTree supabaseUserId={supabaseUserId} />
+      )}
     </div>
   );
 };

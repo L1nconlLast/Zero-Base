@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ModalidadeSelect from './ModalidadeSelect';
 import DisciplinaSelect from './DisciplinaSelect';
-import CommandPaletteDisciplineSelect from './CommandPaletteDisciplineSelect';
 import {
   CalendarDays,
   Plus,
@@ -110,15 +109,6 @@ const addDays = (date: Date, days: number): Date => {
   return next;
 };
 
-const getSubjectCellClass = (subject?: string): string => {
-  if (!subject) return 'bg-slate-100 dark:bg-slate-800 text-slate-500';
-  if (subject.includes('Matem')) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
-  if (subject.includes('Lingu')) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
-  if (subject.includes('Human')) return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300';
-  if (subject.includes('Reda')) return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300';
-  return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300';
-};
-
 interface StudyScheduleCalendarProps {
   userId?: string | null;
 }
@@ -180,7 +170,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
 
   // já declarado acima
 
-  const disciplinas: Record<'enem' | 'concurso', { id: string; label: string }[]> = {
+  const disciplinas = useMemo<Record<'enem' | 'concurso', { id: string; label: string }[]>>(() => ({
     enem: [
       { id: 'port', label: 'Português' },
       { id: 'lit', label: 'Literatura' },
@@ -218,7 +208,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
       { id: 'gestPes', label: 'Gestão de Pessoas' },
       { id: 'arquiv', label: 'Arquivologia' },
     ],
-  };
+  }), []);
 
   // Calendar grid
   const calendarDays = useMemo(() => {
@@ -255,7 +245,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     setFormNote('');
   };
 
-  const handleGenerateBaseSchedule = () => {
+  const handleGenerateBaseSchedule = useCallback(() => {
     const horizonDays = 30;
     const generated = generateBasePlan(smartProfile, todayStr, horizonDays);
 
@@ -288,7 +278,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
       `Cronograma base gerado para ${horizonDays} dias.`,
       `Distribuição baseada em dificuldade, peso por matéria e dias disponíveis.`,
     ]);
-  };
+  }, [addEntry, entries, removeEntry, smartProfile, todayStr, userId]);
 
   const handleAiAdjust = () => {
     applyAdaptiveSchedule(smartProfile.hoursPerDay);
@@ -410,7 +400,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
 
     handleGenerateBaseSchedule();
     window.localStorage.removeItem(autoGenerateKey);
-  }, [entries.length, autoGenerateKey]);
+  }, [entries.length, autoGenerateKey, handleGenerateBaseSchedule]);
 
   const selectedDateObj = selectedDate ? new Date(`${selectedDate}T12:00:00`) : new Date(`${todayStr}T12:00:00`);
   const weekStart = getWeekStart(selectedDateObj);
@@ -638,9 +628,9 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
           <button
             type="button"
             onClick={handleAiAdjust}
-            className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900"
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 inline-flex items-center gap-2"
           >
-            🤖 Ajustar cronograma automaticamente
+            <Sparkles className="w-4 h-4" /> Ajustar cronograma automaticamente
           </button>
         </div>
 
@@ -660,7 +650,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4" role="dialog" aria-modal="true">
           <div className="w-full max-w-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl p-5 space-y-4">
             <div className="flex items-start justify-between gap-3">
-              <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100">Como funciona o nosso Cronograma Pomodoro? 🍅</h4>
+              <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2"><BookOpen className="w-5 h-5" /> Como funciona o nosso Cronograma Pomodoro?</h4>
               <button
                 type="button"
                 onClick={() => setIsPomodoroHelpOpen(false)}
@@ -739,9 +729,9 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
           <button
             type="button"
             onClick={clearGrid}
-            className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500 text-white"
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500 text-white inline-flex items-center gap-2"
           >
-            🧹 Limpar tudo
+            <Trash2 className="w-3.5 h-3.5" /> Limpar tudo
           </button>
         </div>
       </div>

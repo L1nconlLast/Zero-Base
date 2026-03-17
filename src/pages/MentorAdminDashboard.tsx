@@ -109,6 +109,7 @@ const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }
           <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 font-semibold">Admin</p>
           <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">Dashboard Financeiro Mentor IA</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Monitoramento de consumo de tokens e custo estimado da operacao.</p>
+          {userEmail ? <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Sessão: {userEmail}</p> : null}
         </div>
       </div>
 
@@ -116,7 +117,7 @@ const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }
         <div className="flex-1 flex gap-2">
           <select
             value={period}
-            onChange={(e) => setPeriod(e.target.value as any)}
+            onChange={(e) => setPeriod(e.target.value as '7d' | '15d' | '30d' | 'current_month')}
             className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-500"
           >
             <option value="7d">Últimos 7 Dias</option>

@@ -1,14 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { XCircle, RotateCcw, BookOpen } from 'lucide-react';
+import { XCircle, RotateCcw, BookOpen, PartyPopper } from 'lucide-react';
 import type { Question } from '../../data/questionsBank';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
-
-interface ErrorEntry {
-    questionId: string;
-    date: string;
-    subject: string;
-    tags: string[];
-}
 
 interface QuizErrorReviewProps {
     /** Called when the user wants to start a quiz filtered to error topics */
@@ -43,7 +36,7 @@ const QuizErrorReview: React.FC<QuizErrorReviewProps> = ({ onStartReview }) => {
     if (topEntries.length === 0) {
         return (
             <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 text-center">
-                <p className="text-4xl mb-2">🎉</p>
+                <PartyPopper className="w-10 h-10 mx-auto mb-2 text-emerald-500" />
                 <p className="font-semibold text-slate-700 dark:text-slate-200">Sem erros registrados ainda!</p>
                 <p className="text-sm text-slate-400 mt-1">Complete alguns quizzes ou simulados para ver seus pontos fracos aqui.</p>
             </div>

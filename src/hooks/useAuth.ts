@@ -51,7 +51,7 @@ const mapSupabaseUser = (su: SupabaseUser): User => ({
   email: su.email || '',
   dataCadastro: su.created_at || new Date().toISOString(),
   foto: su.user_metadata?.avatar_url || '🧑‍⚕️',
-  examGoal: su.user_metadata?.exam_goal || '',
+  examGoal: su.user_metadata?.exam_goal || 'ENEM',
   examDate: su.user_metadata?.exam_date || '',
   preferredTrack: su.user_metadata?.preferred_track || 'enem',
 });
@@ -66,7 +66,7 @@ const createLocalUser = (email: string, name?: string): User => {
     email: normalizedEmail,
     dataCadastro: new Date().toISOString(),
     foto: '🧑‍⚕️',
-    examGoal: 'ENEM Medicina',
+    examGoal: 'ENEM',
     examDate: '',
     preferredTrack: 'enem',
   };
@@ -74,11 +74,12 @@ const createLocalUser = (email: string, name?: string): User => {
 
 const persistLocalSession = (session: LocalSessionPayload) => {
   localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+  localStorage.removeItem('medicinaSession');
 };
 
 const readLocalSession = (): LocalSessionPayload | null => {
   try {
-    const rawSession = localStorage.getItem(STORAGE_KEYS.SESSION);
+    const rawSession = localStorage.getItem(STORAGE_KEYS.SESSION) || localStorage.getItem('medicinaSession');
     if (!rawSession) return null;
 
     const parsed = JSON.parse(rawSession) as Partial<LocalSessionPayload>;
@@ -189,7 +190,7 @@ export const useAuth = () => {
 
       const cleanEmail = email.trim().toLowerCase();
 
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: senha,
       });
@@ -260,7 +261,10 @@ export const useAuth = () => {
         email: cleanEmail,
         password: senha,
         options: {
-          data: { name: cleanName },
+          data: {
+            name: cleanName,
+            language: 'pt',
+          },
         },
       });
 

@@ -39,11 +39,11 @@ export const predictNextLevel = (
   if (avgPointsPerDay <= 0) {
     label = 'Estude hoje para ver a previsão!';
   } else if (pointsToNext <= 0) {
-    label = 'Nível máximo atingido! 🏆';
+    label = 'Nível máximo atingido!';
   } else {
     daysToNextLevel = Math.ceil(pointsToNext / avgPointsPerDay);
     if (daysToNextLevel <= 1) {
-      label = 'Você pode atingir o próximo nível hoje! 🚀';
+      label = 'Você pode atingir o próximo nível hoje!';
     } else if (daysToNextLevel <= 7) {
       label = `No seu ritmo, você atinge o Nível ${nextLevel} em ${daysToNextLevel} dias`;
     } else if (daysToNextLevel <= 30) {

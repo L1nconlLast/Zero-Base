@@ -22,7 +22,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onModeC
           `}
           style={currentMode === 'pomodoro' ? { backgroundColor: 'var(--color-primary)' } : undefined}
         >
-          <Clock3 className="w-4 h-4" /> 🍅 Pomodoro
+          <Clock3 className="w-4 h-4" /> Pomodoro
         </button>
 
         <button
@@ -35,7 +35,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onModeC
           `}
           style={currentMode === 'livre' ? { backgroundColor: 'var(--color-primary)' } : undefined}
         >
-          <Timer className="w-4 h-4" /> ⏱️ Livre
+          <Timer className="w-4 h-4" /> Livre
         </button>
       </div>
     </div>

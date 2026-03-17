@@ -108,7 +108,7 @@ class MentorChatApiService {
         }
       };
 
-      while (true) {
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
 

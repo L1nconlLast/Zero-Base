@@ -42,8 +42,8 @@ import {
   Sunset,
   Sunrise,
   Minus,
+  type LucideIcon,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { UserData } from '../types';
 
@@ -51,13 +51,6 @@ type PrefThemeValues = 'Claro' | 'Escuro' | 'Sistema';
 type PrefLanguageValues = 'Português' | 'English' | 'Español';
 type PrefDensityValues = 'Compacto' | 'Normal' | 'Espaçoso';
 type PrefTimeValues = 'Manhã' | 'Tarde' | 'Noite' | 'Madrugada';
-
-type PrefOption<T> = {
-  label: 'Tema' | 'Idioma' | 'Densidade';
-  opts: Array<{ l: T; Icon: LucideIcon }>;
-  value: T;
-  setValue: React.Dispatch<React.SetStateAction<T>>;
-};
 
 interface SettingsPageProps {
   userData: UserData;
@@ -134,8 +127,8 @@ const ACHIEVEMENTS = [
   { id: 6, Icon: Star, name: 'Lenda', desc: 'Alcance o nível 10', xp: 1000, done: false, need: 'Nível 2 / 10', color: '#d97706' },
 ];
 
-const PROVAS = ['ENEM', 'FUVEST', 'UNICAMP', 'PUC', 'ITA', 'IME', 'Medicina', 'Direito', 'Engenharia'];
-const TRILHAS = ['ENEM', 'Ciências da Natureza', 'Matemática', 'Linguagens', 'Ciências Humanas', 'Medicina', 'Direito', 'Engenharia'];
+const PROVAS = ['ENEM', 'FUVEST', 'UNICAMP', 'PUC', 'ITA', 'IME', 'Concurso', 'Direito', 'Engenharia'];
+const TRILHAS = ['ENEM', 'Ciências da Natureza', 'Matemática', 'Linguagens', 'Ciências Humanas', 'Concurso', 'Direito', 'Engenharia'];
 
 /* ─── UTILS ──────────────────────────────────────────────── */
 function Counter({ to, duration = 1000 }: { to: number; duration?: number }) {
@@ -390,7 +383,7 @@ function mapTrackFromTrilha(value: string): 'enem' | 'concursos' | 'hibrido' {
     return 'enem';
   }
 
-  if (value.toLowerCase().includes('direito') || value.toLowerCase().includes('engenharia') || value.toLowerCase().includes('medicina')) {
+  if (value.toLowerCase().includes('direito') || value.toLowerCase().includes('engenharia') || value.toLowerCase().includes('concurso')) {
     return 'hibrido';
   }
 
@@ -427,7 +420,7 @@ export default function SettingsPage({
   const [photo, setPhoto] = useState<string | null>(initialPhoto);
   const [name, setName] = useState(userName || 'Lin');
   const [prova, setProva] = useState(profileExamGoal || 'ENEM');
-  const [trilha, setTrilha] = useState(preferredStudyTrack === 'enem' ? 'ENEM' : preferredStudyTrack === 'hibrido' ? 'Medicina' : 'Direito');
+  const [trilha, setTrilha] = useState(preferredStudyTrack === 'enem' ? 'ENEM' : preferredStudyTrack === 'hibrido' ? 'Concurso' : 'Direito');
   const [dataProva, setData] = useState(profileExamDate || '');
   const [metaMin, setMeta] = useState(weeklyGoalMinutes || 1230);
   const [editMeta, setEditMeta] = useState(false);
