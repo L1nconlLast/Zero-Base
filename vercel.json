@@ -1,6 +1,18 @@
 {
   "rewrites": [
     {
+      "source": "/api/study-sessions/:sessionId/answer",
+      "destination": "/api/study-session-router?sessionId=:sessionId&action=answer"
+    },
+    {
+      "source": "/api/study-sessions/:sessionId/finish",
+      "destination": "/api/study-session-router?sessionId=:sessionId&action=finish"
+    },
+    {
+      "source": "/api/study-sessions/:sessionId",
+      "destination": "/api/study-session-router?sessionId=:sessionId"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },

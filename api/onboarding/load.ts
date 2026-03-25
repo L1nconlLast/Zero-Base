@@ -1,90 +1,29 @@
-import { createClient } from '@supabase/supabase-js';
+import { ensureCoreUserRecords, getOnboardingStreak } from '../_lib/mvp';
+import { resolveAuthUser, sendError, sendJson } from '../_lib/supabase';
 
-const supabaseUrl = process.env.SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim();
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-  || process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
-  || process.env.VITE_SUPABASE_ANON_KEY?.trim();
-
-const supabase = supabaseUrl && serviceRoleKey
-  ? createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
-  : null;
-
-const getBearerToken = (authorization?: string): string | null => {
-  if (!authorization || !authorization.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const token = authorization.slice('Bearer '.length).trim();
-  return token || null;
-};
-
-const toDateOnly = (value?: string | null): string | null => {
-  if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString().slice(0, 10);
-};
-
-const isMissingTableError = (message?: string): boolean => {
-  const normalized = (message || '').toLowerCase();
-  return normalized.includes('onboarding_profile') && (normalized.includes('does not exist') || normalized.includes('undefined table'));
-};
-
+// Legacy compatibility wrapper. Prefer /api/onboarding.
 export default async function handler(req: any, res: any): Promise<void> {
   if (req.method !== 'GET') {
-    res.status(405).json({ error: { code: 'METHOD_NOT_ALLOWED', message: 'Metodo nao permitido.' } });
+    sendError(res, 405, 'METHOD_NOT_ALLOWED', 'Metodo nao permitido.');
     return;
   }
 
   const auth = await resolveAuthUser(req.headers.authorization);
-  if (!auth.ok) {
-    res.status(auth.status).json({ error: { code: 'UNAUTHORIZED', message: auth.message } });
+  if (auth.ok === false) {
+    sendError(res, auth.status, 'UNAUTHORIZED', auth.message);
     return;
   }
 
-  if (!supabase) {
-    res.status(503).json({ error: { code: 'SUPABASE_NOT_CONFIGURED', message: 'Supabase nao configurado no servidor.' } });
-    return;
+  try {
+    await ensureCoreUserRecords(auth.user);
+    const streak = await getOnboardingStreak(auth.user.id);
+
+    res.setHeader('X-ZeroBase-Legacy', 'deprecated; use /api/onboarding');
+    sendJson(res, 200, {
+      streakDays: streak.streakDays,
+      streakLastDay: streak.streakLastDay,
+    });
+  } catch (error: any) {
+    sendError(res, 500, 'INTERNAL_ERROR', error?.message || 'Erro ao carregar onboarding.');
   }
-
-  const { data, error } = await supabase
-    .from('onboarding_profile')
-    .select('streak_days, streak_last_day')
-    .eq('user_id', auth.userId)
-    .maybeSingle();
-
-  if (error) {
-    if (isMissingTableError(error.message)) {
-      res.status(200).json({ streakDays: 0, streakLastDay: null });
-      return;
-    }
-
-    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Erro ao carregar onboarding.' } });
-    return;
-  }
-
-  res.status(200).json({
-    streakDays: Number(data?.streak_days || 0),
-    streakLastDay: toDateOnly(data?.streak_last_day) || null,
-  });
-}
-
-async function resolveAuthUser(authorization?: string): Promise<
-  { ok: true; userId: string } | { ok: false; status: number; message: string }
-> {
-  if (!supabase) {
-    return { ok: false, status: 503, message: 'Supabase nao configurado no servidor.' };
-  }
-
-  const token = getBearerToken(authorization);
-  if (!token) {
-    return { ok: false, status: 401, message: 'Token de acesso ausente.' };
-  }
-
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data.user?.id) {
-    return { ok: false, status: 401, message: 'Token invalido ou expirado.' };
-  }
-
-  return { ok: true, userId: data.user.id };
 }
