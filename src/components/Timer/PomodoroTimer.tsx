@@ -21,6 +21,7 @@ interface PomodoroTimerProps {
   selectedMethodId?: string;
   onSelectMethod?: (methodId: string) => void;
   quickStartSignal?: number;
+  preferredSubject?: MateriaTipo;
   initialFocusMinutes?: number;
   preferredTrack?: StudyTrackLabel;
   hybridEnemWeight?: number;
@@ -101,6 +102,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   selectedMethodId = 'pomodoro',
   onSelectMethod,
   quickStartSignal,
+  preferredSubject,
   initialFocusMinutes,
   preferredTrack = 'enem',
   hybridEnemWeight = 70,
@@ -121,6 +123,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const previousIsRunningRef = useRef(false);
   const handledCompletionKeyRef = useRef<string | null>(null);
+  const lastAppliedPreferredSubjectRef = useRef<MateriaTipo | null>(null);
 
   const cycleDisciplineLabels = useMemo(
     () => getCycleDisciplineLabels(preferredTrack, hybridEnemWeight),
@@ -165,7 +168,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     kind: 'countdown',
     plannedDurationMs: getModeMinutes(selectedPhase) * 60 * 1000,
     phase: selectedPhase,
-    subject,
+    subject: preferredSubject ?? subject,
     methodId,
     userEmail,
   });
@@ -183,7 +186,9 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   const progress = session ? progressPercent : 0;
   const hasTrackedProgress = Boolean(session) && (status === 'running' || status === 'paused' || elapsedPhaseMs > 0);
   const sessionLocked = status === 'running' || status === 'paused';
-  const resolvedSubjectLabel = displaySubjectLabel || cycleDisciplineLabels[subject].label;
+  const effectiveSubject = session?.subject || subject;
+  const quickStartSubject = session?.subject || preferredSubject || subject;
+  const resolvedSubjectLabel = displaySubjectLabel || cycleDisciplineLabels[effectiveSubject].label;
 
   const radius = 88;
   const circumference = 2 * Math.PI * radius;
@@ -204,8 +209,19 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   useEffect(() => {
     if (session?.subject && session.subject !== subject) {
       setSubject(session.subject);
+      return;
     }
-  }, [session?.subject, subject]);
+
+    if (
+      !session?.subject &&
+      preferredSubject &&
+      preferredSubject !== subject &&
+      lastAppliedPreferredSubjectRef.current !== preferredSubject
+    ) {
+      setSubject(preferredSubject);
+      lastAppliedPreferredSubjectRef.current = preferredSubject;
+    }
+  }, [preferredSubject, session?.subject, subject]);
 
   useEffect(() => {
     if (!session?.methodId || session.methodId === methodId) {
@@ -289,7 +305,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   }, [isRunning, playWarningSound, timeLeft]);
 
   useEffect(() => {
-    if (!quickStartSignal) {
+    if (!quickStartSignal || status === 'running' || status === 'paused') {
       return;
     }
 
@@ -298,7 +314,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     start({
       phase: 'focus',
       plannedDurationMs: nextFocusMinutes * 60 * 1000,
-      subject,
+      subject: quickStartSubject,
       methodId,
       completedFocusCycles: 0,
     });
@@ -306,10 +322,10 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     trackEvent('pomodoro_auto_started', {
       methodId,
       focusMinutes: nextFocusMinutes,
-      subject,
+      subject: quickStartSubject,
       source: 'department_focus_cta',
     });
-  }, [getModeMinutes, methodId, quickStartSignal, start, subject]);
+  }, [getModeMinutes, methodId, quickStartSignal, quickStartSubject, start, status]);
 
   useEffect(() => {
     if (!session || status !== 'running' || remainingPhaseMs > 0) {
@@ -342,18 +358,18 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
 
       switchPhase(nextPhase, getModeMinutes(nextPhase) * 60 * 1000, {
         nextStatus: 'running',
-        subject,
+        subject: effectiveSubject,
         methodId,
         completedFocusCycles: nextCompletedCycles,
       });
       setSelectedPhase(nextPhase);
-      onFinishSession(completedMinutes, subject, methodId);
+      onFinishSession(completedMinutes, effectiveSubject, methodId);
       return;
     }
 
     switchPhase('focus', getModeMinutes('focus') * 60 * 1000, {
       nextStatus: 'running',
-      subject,
+      subject: effectiveSubject,
       methodId,
       completedFocusCycles: session.completedFocusCycles,
     });
@@ -367,7 +383,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     selectedMethod.cyclesBeforeLongBreak,
     session,
     status,
-    subject,
+    effectiveSubject,
     switchPhase,
   ]);
 
@@ -420,7 +436,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     start({
       phase: mode,
       plannedDurationMs: getModeMinutes(mode) * 60 * 1000,
-      subject,
+      subject: quickStartSubject,
       methodId,
       completedFocusCycles,
     });
@@ -698,7 +714,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
                   const config = MATERIAS_CONFIG[key];
                   const discipline = cycleDisciplineLabels[key];
                   const DisciplineIcon = discipline.Icon;
-                  const isSelected = subject === key;
+                  const isSelected = effectiveSubject === key;
 
                   return (
                     <button
@@ -730,11 +746,11 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
               </div>
               <p className="text-center text-xs mt-3 text-gray-400">
                 Estudando:{' '}
-                <strong className={`${MATERIAS_CONFIG[subject].color} inline-flex items-center gap-1`}>
-                  {React.createElement(cycleDisciplineLabels[subject].Icon, {
+                <strong className={`${MATERIAS_CONFIG[effectiveSubject].color} inline-flex items-center gap-1`}>
+                  {React.createElement(cycleDisciplineLabels[effectiveSubject].Icon, {
                     className: 'w-3.5 h-3.5',
                   })}
-                  {cycleDisciplineLabels[subject].label}
+                  {cycleDisciplineLabels[effectiveSubject].label}
                 </strong>
               </p>
             </div>
@@ -803,7 +819,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
           {(isRunning || status === 'paused') && (
             <p className={`text-center text-xs mt-5 ${compact ? 'text-slate-400' : 'text-gray-400'}`}>
               {mode === 'focus'
-                ? `Concentre-se em ${compact ? resolvedSubjectLabel : subject}`
+                ? `Concentre-se em ${compact ? resolvedSubjectLabel : cycleDisciplineLabels[effectiveSubject].label}`
                 : mode === 'shortBreak'
                   ? 'Descanse um pouco'
                   : 'Recarregue as energias'}

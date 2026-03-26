@@ -82,6 +82,7 @@ import { createDefaultSmartProfile, type SmartScheduleProfile } from './utils/sm
 
 // Types & Utils
 import type {
+  AcademySubDepartment,
   BeginnerPlan,
   BeginnerProgressStage,
   BeginnerState,
@@ -104,6 +105,7 @@ import {
   getSuggestedNextTopicAligned,
   getSuggestedTopicCopy,
 } from './utils/contentTree';
+import { getCycleSubjectByDisplayLabel } from './utils/disciplineLabels';
 import { getStableHeroVariant, type HeroVariant } from './lib/ab';
 
 type StudyMode = 'pomodoro' | 'livre';
@@ -157,6 +159,13 @@ type OfficialStudyAssessmentSummary = {
   total: number;
 };
 
+type FocusStartOverrides = {
+  currentBlock?: Partial<StudyExecutionState['currentBlock']>;
+  source?: StudyExecutionState['source'];
+  methodId?: string;
+  studyMode?: StudyMode;
+};
+
 type BeginnerWeekSummaryAction = 'continue_guided' | 'explore_tools';
 type StudyFlowStep = 'idle' | 'focusing' | 'focusCompleted' | 'questionTransition' | 'questioning';
 type LastCompletedFocus = {
@@ -196,6 +205,33 @@ type BeginnerScopedStorageSnapshot = {
 
 const normalizeOfficialStudySubject = (subject: string): MateriaTipo =>
   (String(subject || 'Outra').trim() || 'Outra') as MateriaTipo;
+
+const normalizeStudyLabelMatcher = (value: string): string =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+const getAcademyFocusSubjectLabel = (subDepartment: AcademySubDepartment): string => {
+  const normalizedSubDepartment = normalizeStudyLabelMatcher(subDepartment);
+
+  switch (normalizedSubDepartment) {
+    case 'matematica':
+      return 'Matemática';
+    case 'redacao':
+      return 'Redação';
+    case 'linguagens':
+      return 'Linguagens';
+    case 'humanas':
+      return 'Humanas';
+    case 'natureza':
+      return 'Natureza';
+    default:
+      return String(subDepartment || '').trim() || 'Outras';
+  }
+};
 
 const buildStudySessionIdentityKey = (
   session: Pick<StudySession, 'date' | 'subject' | 'minutes' | 'duration' | 'points'>,
@@ -450,6 +486,7 @@ function App() {
   const [requestedScheduleEditNonce, setRequestedScheduleEditNonce] = useState(0);
   const [studyFlowStep, setStudyFlowStep] = useState<StudyFlowStep>('idle');
   const [lastCompletedFocus, setLastCompletedFocus] = useState<LastCompletedFocus | null>(null);
+  const [focusTimerSubjectOverride, setFocusTimerSubjectOverride] = useState<MateriaTipo | null>(null);
   const [showAdminSupportTools, setShowAdminSupportTools] = useState(false);
   const [shouldScrollToRanks, setShouldScrollToRanks] = useState(false);
   const [rankHighlightSignal, setRankHighlightSignal] = useState(0);
@@ -780,20 +817,48 @@ function App() {
     },
     [activeStudyMethod.id, buildStudyExecutionState, effectiveStudyExecutionState.currentBlock, setStudyExecutionState],
   );
-  const handleStartRecommendedFocus = React.useCallback(() => {
+  const handleStartRecommendedFocus = React.useCallback((overrides?: FocusStartOverrides) => {
+    const nextMethodId = overrides?.methodId || activeStudyMethod.id;
+    const nextDuration = normalizeQuickSessionDuration(
+      Number(
+        overrides?.currentBlock?.duration ||
+          effectiveStudyExecutionState.currentBlock.duration ||
+          plannedFocusDuration,
+      ),
+    );
+    const nextTimerSubjectOverride = overrides?.currentBlock?.subject
+      ? getCycleSubjectByDisplayLabel(
+          String(overrides.currentBlock.subject),
+          preferredStudyTrack,
+          hybridEnemWeight,
+        )
+      : null;
+
     setLastCompletedFocus(null);
     setStudyFlowStep('focusing');
-    setFocusExecutionState(undefined, effectiveStudyExecutionState.source, activeStudyMethod.id);
-    setPlannedFocusDuration((effectiveStudyExecutionState.currentBlock.duration as QuickSessionDuration) || plannedFocusDuration);
-    setSelectedMethodId(activeStudyMethod.id);
+    setFocusTimerSubjectOverride(nextTimerSubjectOverride);
+    setFocusExecutionState(
+      overrides?.currentBlock,
+      overrides?.source || effectiveStudyExecutionState.source,
+      nextMethodId,
+    );
+    setPlannedFocusDuration(nextDuration);
+    setSelectedMethodId(nextMethodId);
+    if (overrides?.studyMode) {
+      setActiveStudyMode(overrides.studyMode);
+    }
     setActiveTab('foco');
   }, [
     activeStudyMethod.id,
     effectiveStudyExecutionState.currentBlock.duration,
     effectiveStudyExecutionState.source,
+    hybridEnemWeight,
     plannedFocusDuration,
+    preferredStudyTrack,
+    setActiveStudyMode,
     setActiveTab,
     setFocusExecutionState,
+    setFocusTimerSubjectOverride,
     setPlannedFocusDuration,
     setSelectedMethodId,
   ]);
@@ -2341,6 +2406,10 @@ function App() {
     ],
   );
   const currentBlockDisplayLabel = currentBlockContentPath.shortLabel;
+  const currentBlockTimerSubject = React.useMemo(
+    () => getCycleSubjectByDisplayLabel(currentBlockDisplayLabel, preferredStudyTrack, hybridEnemWeight),
+    [currentBlockDisplayLabel, hybridEnemWeight, preferredStudyTrack],
+  );
   const currentBlockSuggestedTopicCopy = React.useMemo(
     () =>
       effectiveStudyExecutionState.currentBlock.topicName
@@ -3396,13 +3465,13 @@ function App() {
       questionTransitionTimeoutRef.current = null;
     }
   }, []);
-  const handleStartStudyFlowSafely = React.useCallback(() => {
+  const handleStartStudyFlowSafely = React.useCallback((overrides?: FocusStartOverrides) => {
     if (isStudyFlowBlockedBySchedule) {
       handleOpenTodaySchedule();
       return;
     }
 
-    handleStartRecommendedFocus();
+    handleStartRecommendedFocus(overrides);
   }, [handleOpenTodaySchedule, handleStartRecommendedFocus, isStudyFlowBlockedBySchedule]);
   const handleStartQuestionsSafely = React.useCallback(() => {
     if (isStudyFlowBlockedBySchedule) {
@@ -4020,6 +4089,7 @@ function App() {
                         applyPomodoroMethod(methodId);
                       }}
                       quickStartSignal={academyQuickStartSignal}
+                      preferredSubject={focusTimerSubjectOverride || currentBlockTimerSubject}
                       initialFocusMinutes={effectiveStudyExecutionState.currentBlock.duration}
                       preferredTrack={preferredStudyTrack}
                       hybridEnemWeight={hybridEnemWeight}
@@ -4035,6 +4105,8 @@ function App() {
                           onFinishSession={handleFinishStudySession}
                           preferredTrack={preferredStudyTrack}
                           hybridEnemWeight={hybridEnemWeight}
+                          quickStartSignal={academyQuickStartSignal}
+                          preferredSubject={focusTimerSubjectOverride || currentBlockTimerSubject}
                           compact
                           displaySubjectLabel={currentBlockDisplayLabel}
                           sessionStorageScope={userStorageScope}
@@ -4578,13 +4650,24 @@ function App() {
                 onRevertCompleteContent={handleRevertAcademyContent}
                 onSyncTotalXp={handleSyncAcademyTotalXp}
                 currentStreak={userData.currentStreak || 0}
-                onStartStudyNow={({ methodId }) => {
-                  if (methodId) {
-                    applyPomodoroMethod(methodId);
-                  } else {
-                    setFocusExecutionState();
-                  }
-                  handleStartStudyFlowSafely();
+                onStartStudyNow={({ subDepartment, contentTitle, methodId }) => {
+                  const subject = getAcademyFocusSubjectLabel(subDepartment);
+                  const effectiveMethodId = methodId || selectedMethodId;
+                  const effectiveDuration = methodId
+                    ? getStudyMethodById(methodId).focusMinutes
+                    : (effectiveStudyExecutionState.currentBlock.duration as QuickSessionDuration) || plannedFocusDuration;
+
+                  handleStartStudyFlowSafely({
+                    currentBlock: {
+                      subject,
+                      objective: `Estudar ${contentTitle}`,
+                      duration: effectiveDuration,
+                      targetQuestions: effectiveStudyExecutionState.currentBlock.targetQuestions ?? 10,
+                    },
+                    source: 'manual',
+                    methodId: effectiveMethodId,
+                    studyMode: methodId ? 'pomodoro' : undefined,
+                  });
                   setAcademyQuickStartSignal((prev) => prev + 1);
                 }}
                 onApplyMethod={(methodId) => {
@@ -4950,9 +5033,11 @@ function App() {
                       applyPomodoroMethod(methodId);
                     }}
                     quickStartSignal={academyQuickStartSignal}
+                    preferredSubject={focusTimerSubjectOverride || currentBlockTimerSubject}
                     initialFocusMinutes={effectiveStudyExecutionState.currentBlock.duration}
                     preferredTrack={preferredStudyTrack}
                     hybridEnemWeight={hybridEnemWeight}
+                    displaySubjectLabel={currentBlockDisplayLabel}
                     sessionStorageScope={userStorageScope}
                     userEmail={user?.email}
                   />
@@ -4975,6 +5060,9 @@ function App() {
                       onFinishSession={handleFinishStudySession}
                       preferredTrack={preferredStudyTrack}
                       hybridEnemWeight={hybridEnemWeight}
+                      quickStartSignal={academyQuickStartSignal}
+                      preferredSubject={focusTimerSubjectOverride || currentBlockTimerSubject}
+                      displaySubjectLabel={currentBlockDisplayLabel}
                       sessionStorageScope={userStorageScope}
                       userEmail={user?.email}
                     />

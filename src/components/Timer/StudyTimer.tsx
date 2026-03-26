@@ -21,6 +21,8 @@ interface StudyTimerProps {
   onFinishSession: (minutes: number, subject: MateriaTipo) => void;
   preferredTrack?: StudyTrackLabel;
   hybridEnemWeight?: number;
+  quickStartSignal?: number;
+  preferredSubject?: MateriaTipo;
   compact?: boolean;
   displaySubjectLabel?: string;
   sessionStorageScope?: string;
@@ -31,6 +33,8 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
   onFinishSession,
   preferredTrack = 'enem',
   hybridEnemWeight = 70,
+  quickStartSignal,
+  preferredSubject,
   compact = false,
   displaySubjectLabel,
   sessionStorageScope = 'default',
@@ -64,19 +68,22 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
     kind: 'countup',
     plannedDurationMs: FREE_TIMER_TARGET_SECONDS * 1000,
     phase: 'focus',
-    subject: selectedSubject,
+    subject: preferredSubject ?? selectedSubject,
     userEmail,
   });
 
   const previousIsRunningRef = useRef(false);
   const warnedFiveSecondsRef = useRef(false);
   const reachedTargetRef = useRef(false);
+  const lastAppliedPreferredSubjectRef = useRef<MateriaTipo | null>(null);
 
   const elapsedSeconds = Math.floor(elapsedFocusMs / 1000);
   const progress = progressPercent;
   const sessionLocked = status === 'running' || status === 'paused';
+  const effectiveSubject = session?.subject || selectedSubject;
+  const quickStartSubject = session?.subject || preferredSubject || selectedSubject;
   const resolvedSubjectLabel =
-    displaySubjectLabel || cycleDisciplineLabels[selectedSubject].label;
+    displaySubjectLabel || cycleDisciplineLabels[effectiveSubject].label;
 
   const radius = 88;
   const circumference = 2 * Math.PI * radius;
@@ -85,8 +92,19 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
   useEffect(() => {
     if (session?.subject && session.subject !== selectedSubject) {
       setSelectedSubject(session.subject);
+      return;
     }
-  }, [selectedSubject, session?.subject]);
+
+    if (
+      !session?.subject &&
+      preferredSubject &&
+      preferredSubject !== selectedSubject &&
+      lastAppliedPreferredSubjectRef.current !== preferredSubject
+    ) {
+      setSelectedSubject(preferredSubject);
+      lastAppliedPreferredSubjectRef.current = preferredSubject;
+    }
+  }, [preferredSubject, selectedSubject, session?.subject]);
 
   const playTone = useCallback((frequency: number, duration: number, volume = 0.05) => {
     if (typeof window === 'undefined') return;
@@ -164,6 +182,18 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
     }
   }, [elapsedSeconds]);
 
+  useEffect(() => {
+    if (!quickStartSignal || status === 'running' || status === 'paused') {
+      return;
+    }
+
+    start({
+      subject: quickStartSubject,
+      phase: 'focus',
+      plannedDurationMs: FREE_TIMER_TARGET_SECONDS * 1000,
+    });
+  }, [quickStartSignal, quickStartSubject, start, status]);
+
   const toggleTimer = () => {
     if (isRunning) {
       pause();
@@ -176,7 +206,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
     }
 
     start({
-      subject: selectedSubject,
+      subject: quickStartSubject,
       phase: 'focus',
       plannedDurationMs: FREE_TIMER_TARGET_SECONDS * 1000,
     });
@@ -196,7 +226,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
   const confirmFinish = () => {
     const minutes = Math.floor(elapsedFocusMs / 60000);
     complete();
-    onFinishSession(minutes, selectedSubject);
+    onFinishSession(minutes, effectiveSubject);
     clear();
     setShowFinishModal(false);
   };
@@ -264,7 +294,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
                 const config = MATERIAS_CONFIG[key];
                 const discipline = cycleDisciplineLabels[key];
                 const DisciplineIcon = discipline.Icon;
-                const isSelected = selectedSubject === key;
+                const isSelected = effectiveSubject === key;
 
                 return (
                   <button
@@ -300,11 +330,11 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
             Estudando:{' '}
             <strong
               className={`${
-                !compact ? MATERIAS_CONFIG[selectedSubject].color : 'text-slate-200'
+                !compact ? MATERIAS_CONFIG[effectiveSubject].color : 'text-slate-200'
               } inline-flex items-center gap-1`}
             >
               {!compact &&
-                React.createElement(cycleDisciplineLabels[selectedSubject].Icon, {
+                React.createElement(cycleDisciplineLabels[effectiveSubject].Icon, {
                   className: 'w-3.5 h-3.5',
                 })}
               {resolvedSubjectLabel}
@@ -459,7 +489,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
         title="Finalizar Sessao"
         message={`Finalizar sessao de ${Math.floor(elapsedFocusMs / 60000)} minuto${
           Math.floor(elapsedFocusMs / 60000) !== 1 ? 's' : ''
-        } de ${cycleDisciplineLabels[selectedSubject].label}?`}
+        } de ${cycleDisciplineLabels[effectiveSubject].label}?`}
         confirmLabel="Finalizar"
         variant="success"
         onConfirm={confirmFinish}

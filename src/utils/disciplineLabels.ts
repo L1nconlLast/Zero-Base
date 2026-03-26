@@ -84,6 +84,43 @@ export const getCycleDisciplineLabels = (
   return ENEM_CYCLE_DISCIPLINE_LABELS;
 };
 
+const normalizeDisciplineMatcher = (value: string): string =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+export const getCycleSubjectByDisplayLabel = (
+  label: string,
+  preferredTrack: StudyTrackLabel,
+  hybridEnemWeight?: number,
+): MateriaTipo => {
+  const cycleLabels = getCycleDisciplineLabels(preferredTrack, hybridEnemWeight);
+  const labelCandidates = String(label || '')
+    .split('•')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (labelCandidates.length === 0) {
+    return 'Outra';
+  }
+
+  for (const candidate of labelCandidates) {
+    const normalizedCandidate = normalizeDisciplineMatcher(candidate);
+    const matchingEntry = (Object.entries(cycleLabels) as Array<[MateriaTipo, DisciplineDisplay]>).find(
+      ([, discipline]) => normalizeDisciplineMatcher(discipline.label) === normalizedCandidate,
+    );
+
+    if (matchingEntry) {
+      return matchingEntry[0];
+    }
+  }
+
+  return 'Outra';
+};
+
 const DISPLAY_BY_SUBJECT: Record<string, DisciplineDisplay> = {
   ...ENEM_CYCLE_DISCIPLINE_LABELS,
   ...CONCURSO_CYCLE_DISCIPLINE_LABELS,
