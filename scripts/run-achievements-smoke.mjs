@@ -854,6 +854,50 @@ const clickFirstOption = async (session) => {
   }
 };
 
+const clickMockExamControl = async (session, labelPrefix) => {
+  const clicked = await evalInPage(
+    session,
+    `(() => {
+      const normalize = (value) => String(value).normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/\\s+/g, ' ').trim();
+      const target = normalize(${JSON.stringify(labelPrefix)});
+      const containers = Array.from(document.querySelectorAll('div')).filter((container) => {
+        const buttons = Array.from(container.children).filter((child) => child instanceof HTMLButtonElement);
+        if (buttons.length < 2) return false;
+
+        const visibleButtons = buttons.filter((button) => {
+          const style = window.getComputedStyle(button);
+          const rect = button.getBoundingClientRect();
+          return rect.width && rect.height && style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+        });
+
+        if (visibleButtons.length < 2) return false;
+
+        const labels = visibleButtons.map((button) => normalize(button.textContent || ''));
+        return labels.some((label) => label.includes('anterior')) && labels.some((label) => label.startsWith(target));
+      });
+
+      const button = containers
+        .flatMap((container) => Array.from(container.children).filter((child) => child instanceof HTMLButtonElement))
+        .find((candidate) => {
+          const style = window.getComputedStyle(candidate);
+          const rect = candidate.getBoundingClientRect();
+          if (!rect.width || !rect.height) return false;
+          if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+          return normalize(candidate.textContent || '').startsWith(target);
+        });
+
+      if (!button) return false;
+      button.scrollIntoView({ block: 'center', inline: 'center' });
+      button.click();
+      return true;
+    })()`,
+  );
+
+  if (!clicked) {
+    throw new Error(`Nao encontrei o controle do simulado com prefixo "${labelPrefix}".`);
+  }
+};
+
 const readRunningExamState = async (session) =>
   evalInPage(
     session,
@@ -861,6 +905,20 @@ const readRunningExamState = async (session) =>
       const text = String(document.body?.innerText || '').replace(/\\s+/g, ' ').trim();
       const questionMatch = text.match(/Q\\s*(\\d+)\\s*\\/\\s*(\\d+)/i);
       const answeredMatch = text.match(/(\\d+)\\s+respondid[ao]s?/i);
+      const firstOption = Array.from(document.querySelectorAll('button')).find((candidate) => {
+        const style = window.getComputedStyle(candidate);
+        const rect = candidate.getBoundingClientRect();
+        if (!rect.width || !rect.height) return false;
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+        const label = String(candidate.textContent || '')
+          .normalize('NFD')
+          .replace(/[\\u0300-\\u036f]/g, '')
+          .toLowerCase()
+          .replace(/\\s+/g, ' ')
+          .trim();
+        return label.startsWith('a.') || label.startsWith('a ');
+      });
+      const questionText = String(firstOption?.parentElement?.previousElementSibling?.textContent || '').replace(/\\s+/g, ' ').trim();
       const hasVisibleDeliver = Array.from(document.querySelectorAll('button, [role="button"]')).some((candidate) => {
         const style = window.getComputedStyle(candidate);
         const rect = candidate.getBoundingClientRect();
@@ -878,6 +936,7 @@ const readRunningExamState = async (session) =>
         answered: answeredMatch ? Number(answeredMatch[1]) : 0,
         current: questionMatch ? Number(questionMatch[1]) : 0,
         hasEntregar: hasVisibleDeliver,
+        questionText,
         total: questionMatch ? Number(questionMatch[2]) : 0,
       };
     })()`,
@@ -965,13 +1024,27 @@ const deliverExamWithStrategy = async (session) => {
       return state.total;
     }
 
-    await clickBestVisibleButtonByPrefix(session, 'Proxima');
+    await clickMockExamControl(session, 'Proxima');
     await waitFor(
       session,
       `(() => {
         const text = String(document.body?.innerText || '').replace(/\\s+/g, ' ').trim();
         const questionMatch = text.match(/Q\\s*(\\d+)\\s*\\/\\s*(\\d+)/i);
         const current = questionMatch ? Number(questionMatch[1]) : 0;
+        const firstOption = Array.from(document.querySelectorAll('button')).find((candidate) => {
+          const style = window.getComputedStyle(candidate);
+          const rect = candidate.getBoundingClientRect();
+          if (!rect.width || !rect.height) return false;
+          if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+          const label = String(candidate.textContent || '')
+            .normalize('NFD')
+            .replace(/[\\u0300-\\u036f]/g, '')
+            .toLowerCase()
+            .replace(/\\s+/g, ' ')
+            .trim();
+          return label.startsWith('a.') || label.startsWith('a ');
+        });
+        const questionText = String(firstOption?.parentElement?.previousElementSibling?.textContent || '').replace(/\\s+/g, ' ').trim();
         const hasVisibleDeliver = Array.from(document.querySelectorAll('button, [role="button"]')).some((candidate) => {
           const style = window.getComputedStyle(candidate);
           const rect = candidate.getBoundingClientRect();
@@ -985,7 +1058,7 @@ const deliverExamWithStrategy = async (session) => {
             .trim();
           return label.startsWith('entregar');
         });
-        return current > ${state.current} || hasVisibleDeliver;
+        return current > ${state.current} || questionText !== ${JSON.stringify(state.questionText || '')} || hasVisibleDeliver;
       })()`,
       { timeoutMs: 3000, intervalMs: 100, label: 'navegacao para a proxima questao' },
     );
