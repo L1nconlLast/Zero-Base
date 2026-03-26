@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { WeeklyStudySchedule } from '../types';
+import type { ScheduleEntry, WeeklyStudySchedule } from '../types';
 import {
   autoDistributeSubjects,
   buildStudyContextForToday,
@@ -16,6 +16,7 @@ import {
   hideSuggestedAdjustmentForToday,
   getSuggestedAdjustment,
   getWeekdayFromDate,
+  resolveScheduledStudyFocus,
   shouldShowSuggestedAdjustment,
   resolveTodayStudyState,
   sanitizeWeeklyStudySchedule,
@@ -24,6 +25,21 @@ import {
 } from '../services/studySchedule.service';
 
 const atUtcNoon = (date: string): Date => new Date(`${date}T12:00:00.000Z`);
+const createEntry = (overrides: Partial<ScheduleEntry>): ScheduleEntry => ({
+  id: overrides.id || 'entry',
+  date: overrides.date || '2026-03-16',
+  subject: overrides.subject || 'Matematica',
+  done: overrides.done ?? false,
+  status: overrides.status,
+  topic: overrides.topic,
+  studyType: overrides.studyType,
+  priority: overrides.priority,
+  aiReason: overrides.aiReason,
+  source: overrides.source,
+  note: overrides.note,
+  startTime: overrides.startTime,
+  endTime: overrides.endTime,
+});
 
 describe('studySchedule.service', () => {
   describe('sanitizeWeeklyStudySchedule', () => {
@@ -588,6 +604,88 @@ describe('studySchedule.service', () => {
 
       expect(result.weekPlan.monday.subjectLabels).toEqual(['Matemática']);
       expect(result.weekPlan.saturday.subjectLabels).toEqual(['Redação']);
+    });
+  });
+
+  describe('resolveScheduledStudyFocus', () => {
+    it('returns pending when a matching block exists today and is still open', () => {
+      const result = resolveScheduledStudyFocus(
+        [
+          createEntry({
+            id: 'today-open',
+            date: '2026-03-16',
+            subject: 'Matematica',
+            topic: 'Porcentagem',
+            status: 'pendente',
+          }),
+        ],
+        {
+          subject: 'Matematica',
+          topic: 'Porcentagem',
+          date: atUtcNoon('2026-03-16'),
+        },
+      );
+
+      expect(result).toMatchObject({
+        status: 'pending',
+        matchedEntrySource: 'today',
+        todayPendingCount: 1,
+        overdueCount: 0,
+      });
+      expect(result.matchedEntry?.id).toBe('today-open');
+    });
+
+    it('returns completed when the matching block for today is already done', () => {
+      const result = resolveScheduledStudyFocus(
+        [
+          createEntry({
+            id: 'today-done',
+            date: '2026-03-16',
+            subject: 'Matematica',
+            topic: 'Porcentagem',
+            done: true,
+            status: 'concluido',
+          }),
+        ],
+        {
+          subject: 'Matematica',
+          topic: 'Porcentagem',
+          date: atUtcNoon('2026-03-16'),
+        },
+      );
+
+      expect(result).toMatchObject({
+        status: 'completed',
+        matchedEntrySource: 'today',
+        todayCompletedCount: 1,
+      });
+      expect(result.matchedEntry?.id).toBe('today-done');
+    });
+
+    it('returns overdue when the focus still has backlog before today', () => {
+      const result = resolveScheduledStudyFocus(
+        [
+          createEntry({
+            id: 'backlog',
+            date: '2026-03-15',
+            subject: 'Matematica',
+            topic: 'Porcentagem',
+            status: 'pendente',
+          }),
+        ],
+        {
+          subject: 'Matematica',
+          topic: 'Porcentagem',
+          date: atUtcNoon('2026-03-16'),
+        },
+      );
+
+      expect(result).toMatchObject({
+        status: 'overdue',
+        matchedEntrySource: 'backlog',
+        overdueCount: 1,
+      });
+      expect(result.matchedEntry?.id).toBe('backlog');
     });
   });
 });

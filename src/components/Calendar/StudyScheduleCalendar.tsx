@@ -6,6 +6,7 @@ import CronogramaHeader from './CronogramaHeader';
 import CronogramaSummary from './CronogramaSummary';
 import WeeklyGrid from './WeeklyGrid';
 import TodayScheduleStatus from './TodayScheduleStatus';
+import TodayExecutionCard from './TodayExecutionCard';
 import DayPlanEditorModal from './DayPlanEditorModal';
 import {
   Plus,
@@ -47,6 +48,7 @@ import {
   getTodayCompletedSessions,
   getPlannedSubjectsCount,
   getRecentPaceState,
+  resolveScheduledStudyFocus,
   getWeeklyPlanConfidenceState,
   getWeeklyCompletedSessions,
   getWeekdayFromDate,
@@ -147,6 +149,37 @@ interface StudyScheduleCalendarProps {
   weeklySchedule?: WeeklyStudySchedule;
   onChangeWeeklySchedule?: (schedule: WeeklyStudySchedule) => void;
   studyContextForToday?: StudyContextForToday;
+  officialTodayActionCard?: {
+    status: 'loading';
+    title: string;
+    description: string;
+  } | {
+    status: 'error';
+    title: string;
+    description: string;
+    actionLabel: string;
+    onAction: () => void;
+  } | {
+    status: 'empty';
+    title: string;
+    description: string;
+    supportingText?: string;
+    actionLabel: string;
+    onAction: () => void;
+  } | {
+    status: 'ready';
+    title: string;
+    discipline: string;
+    topic: string;
+    reason: string;
+    estimatedDurationMinutes: number;
+    sessionTypeLabel: string;
+    progressLabel?: string;
+    supportingText?: string;
+    ctaLabel: string;
+    busy?: boolean;
+    onAction: () => void;
+  };
   weeklyCompletedSessions?: number;
   todayCompletedSessions?: number;
   completedWeekdays?: Partial<Record<Weekday, boolean>>;
@@ -164,6 +197,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
   weeklySchedule,
   onChangeWeeklySchedule,
   studyContextForToday,
+  officialTodayActionCard,
   weeklyCompletedSessions,
   todayCompletedSessions,
   completedWeekdays,
@@ -244,6 +278,18 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     () => studyContextForToday ?? buildStudyContextForToday(effectiveWeeklySchedule, today),
     [effectiveWeeklySchedule, studyContextForToday, today],
   );
+  const todayEntries = useMemo(() => getEntriesForDate(todayStr), [getEntriesForDate, todayStr]);
+  const officialTodayScheduleStatus = useMemo(() => {
+    if (!officialTodayActionCard || officialTodayActionCard.status !== 'ready') {
+      return null;
+    }
+
+    return resolveScheduledStudyFocus(entries, {
+      subject: officialTodayActionCard.discipline,
+      topic: officialTodayActionCard.topic,
+      date: today,
+    });
+  }, [entries, officialTodayActionCard, today]);
 
   const selectedEntry = entries.find((entry) => entry.id === selectedEntryId) || null;
 
@@ -254,6 +300,65 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
 
     setEditingDay(requestedEditDay);
   }, [requestedEditDay, requestedEditNonce]);
+
+  useEffect(() => {
+    if (!officialTodayActionCard || officialTodayActionCard.status !== 'ready') {
+      return;
+    }
+
+    if (effectiveStudyContextForToday.state.type !== 'planned') {
+      return;
+    }
+
+    if (officialTodayScheduleStatus?.matchedEntrySource === 'today') {
+      return;
+    }
+
+    const todayAlreadyHasSyncedFocus = todayEntries.some((entry) => {
+      const normalizedSubject = String(entry.subject || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+      const normalizedTopic = String(entry.topic || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+
+      return entry.date === todayStr
+        && normalizedSubject === String(officialTodayActionCard.discipline || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .trim()
+        && (!normalizedTopic || normalizedTopic === String(officialTodayActionCard.topic || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .trim());
+    });
+
+    if (todayAlreadyHasSyncedFocus) {
+      return;
+    }
+
+    addEntry(todayStr, officialTodayActionCard.discipline, 'Bloco oficial sincronizado com o cronograma de hoje.', {
+      topic: officialTodayActionCard.topic,
+      studyType: 'questoes',
+      status: 'pendente',
+      source: 'motor',
+      priority: 'alta',
+      aiReason: officialTodayActionCard.reason,
+    });
+  }, [
+    addEntry,
+    effectiveStudyContextForToday.state,
+    officialTodayActionCard,
+    officialTodayScheduleStatus?.matchedEntrySource,
+    todayEntries,
+    todayStr,
+  ]);
 
   useEffect(() => {
     setSmartProfile((current: SmartScheduleProfile) => {
@@ -876,6 +981,14 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
         onDefineSubjects={() => setEditingDay(todayWeekday)}
         onSuggestedAdjustment={handleSuggestedAdjustment}
       />
+
+      {effectiveStudyContextForToday.state.type === 'planned' && officialTodayActionCard ? (
+        <TodayExecutionCard
+          card={officialTodayActionCard}
+          scheduleStatus={officialTodayScheduleStatus}
+          onAdjustToday={() => setEditingDay(todayWeekday)}
+        />
+      ) : null}
 
       <div ref={weeklyGridSectionRef}>
         <WeeklyGrid

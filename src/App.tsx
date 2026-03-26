@@ -2608,7 +2608,8 @@ function App() {
   }, [isLoggedIn]);
 
   React.useEffect(() => {
-    if (activeTab !== 'inicio' || showOnboarding) {
+    const shouldLoadOfficialStudySurface = activeTab === 'inicio' || activeTab === 'cronograma';
+    if (!shouldLoadOfficialStudySurface || showOnboarding) {
       return;
     }
 
@@ -3343,8 +3344,8 @@ function App() {
 
     attemptProtectedNavigation('cronograma');
   }, [attemptProtectedNavigation, beginnerToolAccessLocked, handleStartQuestionsSafely]);
-  const officialStudyCard = React.useMemo(() => {
-    if (activeTab !== 'inicio' || showOnboarding || !isLoggedIn || !supabaseUserId || !isSupabaseConfigured) {
+  const officialStudySurfaceCard = React.useMemo(() => {
+    if (showOnboarding || !isLoggedIn || !supabaseUserId || !isSupabaseConfigured) {
       return undefined;
     }
 
@@ -3413,7 +3414,6 @@ function App() {
       },
     };
   }, [
-    activeTab,
     beginnerToolAccessLocked,
     handleOpenOfficialStudyFallback,
     handleStartOfficialStudy,
@@ -3425,6 +3425,10 @@ function App() {
     showOnboarding,
     supabaseUserId,
   ]);
+  const officialStudyCard = React.useMemo(
+    () => (activeTab === 'inicio' ? officialStudySurfaceCard : undefined),
+    [activeTab, officialStudySurfaceCard],
+  );
 
   React.useEffect(() => {
     if (studyFlowStep !== 'questionTransition') {
@@ -4189,6 +4193,7 @@ function App() {
                             weeklySchedule={weeklySchedule}
                             onChangeWeeklySchedule={setWeeklyScheduleRaw}
                             studyContextForToday={effectiveStudyContextForToday}
+                            officialTodayActionCard={officialStudySurfaceCard}
                             weeklyCompletedSessions={weeklyCompletedSessions}
                             todayCompletedSessions={todayCompletedSessions}
                             completedWeekdays={completedWeekdays}
@@ -4335,6 +4340,7 @@ function App() {
                           weeklySchedule={weeklySchedule}
                           onChangeWeeklySchedule={setWeeklyScheduleRaw}
                           studyContextForToday={effectiveStudyContextForToday}
+                          officialTodayActionCard={officialStudySurfaceCard}
                           weeklyCompletedSessions={weeklyCompletedSessions}
                           todayCompletedSessions={todayCompletedSessions}
                           completedWeekdays={completedWeekdays}
@@ -4982,6 +4988,7 @@ function App() {
                   weeklySchedule={weeklySchedule}
                   onChangeWeeklySchedule={setWeeklyScheduleRaw}
                   studyContextForToday={effectiveStudyContextForToday}
+                  officialTodayActionCard={officialStudySurfaceCard}
                   weeklyCompletedSessions={weeklyCompletedSessions}
                   todayCompletedSessions={todayCompletedSessions}
                   completedWeekdays={completedWeekdays}

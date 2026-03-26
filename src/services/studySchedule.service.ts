@@ -64,6 +64,17 @@ export interface NextStudySuggestion {
   topicLabel?: string;
 }
 
+export type ScheduledStudyFocusStatus = 'pending' | 'completed' | 'overdue';
+
+export interface ScheduledStudyFocusResolution {
+  status: ScheduledStudyFocusStatus;
+  matchedEntry: ScheduleEntry | null;
+  matchedEntrySource: 'today' | 'backlog' | 'none';
+  overdueCount: number;
+  todayPendingCount: number;
+  todayCompletedCount: number;
+}
+
 const TABLE = 'study_blocks';
 export const STUDY_SCHEDULE_STORAGE_KEY = 'mdz_study_schedule';
 const WEEKDAYS: Weekday[] = [
@@ -625,6 +636,102 @@ export const buildStudyContextForToday = (
     state,
     eligibleSubjects: state.type === 'planned' ? state.subjectLabels : [],
     defaultSessionDurationMinutes: schedule.preferences.defaultSessionDurationMinutes,
+  };
+};
+
+export const resolveScheduledStudyFocus = (
+  entries: ScheduleEntry[],
+  input: {
+    subject: string;
+    topic?: string | null;
+    date?: Date;
+  },
+): ScheduledStudyFocusResolution => {
+  const date = input.date ?? new Date();
+  const dateKey = toDateKey(date);
+  const subjectKey = normalizeScheduleMatcher(input.subject);
+  const topicKey = normalizeScheduleMatcher(input.topic);
+
+  const rankedEntries = entries
+    .map((entry) => {
+      const entryDateKey = entry.date.slice(0, 10);
+      const entrySubjectKey = normalizeScheduleMatcher(entry.subject);
+      const entryTopicKey = normalizeScheduleMatcher(entry.topic);
+      const subjectMatch = Boolean(subjectKey)
+        && (entrySubjectKey === subjectKey || entrySubjectKey.includes(subjectKey) || subjectKey.includes(entrySubjectKey));
+      const topicMatch = Boolean(topicKey)
+        && Boolean(entryTopicKey)
+        && (entryTopicKey === topicKey || entryTopicKey.includes(topicKey) || topicKey.includes(entryTopicKey));
+
+      return {
+        entry,
+        entryDateKey,
+        subjectMatch,
+        topicMatch,
+      };
+    })
+    .filter(({ subjectMatch }) => subjectMatch);
+
+  const todayEntries = rankedEntries.filter(({ entryDateKey }) => entryDateKey === dateKey);
+  const todayPendingEntries = todayEntries
+    .filter(({ entry }) => !isCompletedEntry(entry))
+    .sort((left, right) => Number(right.topicMatch) - Number(left.topicMatch));
+  const todayCompletedEntries = todayEntries
+    .filter(({ entry }) => isCompletedEntry(entry))
+    .sort((left, right) => Number(right.topicMatch) - Number(left.topicMatch));
+  const overdueEntries = rankedEntries
+    .filter(({ entry, entryDateKey }) => !isCompletedEntry(entry) && entryDateKey < dateKey)
+    .sort((left, right) => {
+      if (left.entryDateKey !== right.entryDateKey) {
+        return left.entryDateKey.localeCompare(right.entryDateKey);
+      }
+
+      return Number(right.topicMatch) - Number(left.topicMatch);
+    });
+
+  const firstPendingToday = todayPendingEntries[0]?.entry ?? null;
+  if (firstPendingToday) {
+    return {
+      status: overdueEntries.length > 0 || firstPendingToday.status === 'adiado' ? 'overdue' : 'pending',
+      matchedEntry: firstPendingToday,
+      matchedEntrySource: 'today',
+      overdueCount: overdueEntries.length,
+      todayPendingCount: todayPendingEntries.length,
+      todayCompletedCount: todayCompletedEntries.length,
+    };
+  }
+
+  const firstCompletedToday = todayCompletedEntries[0]?.entry ?? null;
+  if (firstCompletedToday) {
+    return {
+      status: 'completed',
+      matchedEntry: firstCompletedToday,
+      matchedEntrySource: 'today',
+      overdueCount: overdueEntries.length,
+      todayPendingCount: 0,
+      todayCompletedCount: todayCompletedEntries.length,
+    };
+  }
+
+  const firstOverdueEntry = overdueEntries[0]?.entry ?? null;
+  if (firstOverdueEntry) {
+    return {
+      status: 'overdue',
+      matchedEntry: firstOverdueEntry,
+      matchedEntrySource: 'backlog',
+      overdueCount: overdueEntries.length,
+      todayPendingCount: 0,
+      todayCompletedCount: 0,
+    };
+  }
+
+  return {
+    status: 'pending',
+    matchedEntry: null,
+    matchedEntrySource: 'none',
+    overdueCount: 0,
+    todayPendingCount: 0,
+    todayCompletedCount: 0,
   };
 };
 
