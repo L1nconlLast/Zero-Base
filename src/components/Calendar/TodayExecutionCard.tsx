@@ -8,6 +8,10 @@ import {
   PlayCircle,
 } from 'lucide-react';
 import type { ScheduledStudyFocusResolution } from '../../services/studySchedule.service';
+import {
+  mapReasonSummaryToCopy,
+  type UserFacingWeeklyProgress,
+} from '../../services/prioritizationReason';
 
 type TodayExecutionAction = {
   label: string;
@@ -44,6 +48,7 @@ type TodayExecutionCardState =
       estimatedDurationMinutes: number;
       sessionTypeLabel: string;
       progressLabel?: string;
+      weeklyProgress?: UserFacingWeeklyProgress | null;
       supportingText?: string;
       ctaLabel: string;
       busy?: boolean;
@@ -73,7 +78,7 @@ const STATUS_COPY: Record<
   overdue: {
     label: 'Atrasado',
     tone: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200',
-    hint: 'Ainda existe atraso ligado a esse foco dentro do cronograma.',
+    hint: 'Você tem itens atrasados. Vamos começar pelo mais importante.',
   },
 };
 
@@ -212,6 +217,7 @@ const TodayExecutionCard: React.FC<TodayExecutionCardProps> = ({
   };
   const statusCopy = STATUS_COPY[resolvedStatus.status];
   const scheduleHint = buildScheduleHint(resolvedStatus);
+  const reasonCopy = mapReasonSummaryToCopy(card.reason);
 
   return (
     <section
@@ -238,7 +244,7 @@ const TodayExecutionCard: React.FC<TodayExecutionCardProps> = ({
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
             {card.discipline} {'•'} {card.topic}
           </p>
-          <p className="mt-3 text-sm text-slate-700 dark:text-slate-300">{card.reason}</p>
+          <p data-testid="today-execution-reason" className="mt-3 text-sm font-medium text-slate-800 dark:text-slate-200">{reasonCopy}</p>
           {card.supportingText ? (
             <p className="mt-2 text-sm font-medium text-slate-900/75 dark:text-slate-100/75">{card.supportingText}</p>
           ) : null}
@@ -266,6 +272,23 @@ const TodayExecutionCard: React.FC<TodayExecutionCardProps> = ({
               </span>
             ) : null}
           </div>
+          {card.weeklyProgress ? (
+            <div data-testid="today-execution-weekly-progress" className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                  Progresso semanal
+                </p>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{card.weeklyProgress.label}</p>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                <div
+                  data-testid="today-execution-weekly-progress-bar"
+                  className="h-full rounded-full bg-slate-900 transition-all dark:bg-slate-100"
+                  style={{ width: `${Math.max(4, Math.round(card.weeklyProgress.ratio * 100))}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <ActionRow

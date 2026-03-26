@@ -14,6 +14,7 @@ import type {
   ScheduledStudyFocusStatus,
 } from '../../services/studySchedule.service';
 import type { Weekday } from '../../types';
+import { mapReasonSummaryToCopy } from '../../services/prioritizationReason';
 
 interface UpcomingOperationalScheduleProps {
   days: OperationalScheduleWindowDay[];
@@ -166,6 +167,7 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
                   const statusMeta = STATUS_META[item.status];
                   const selectedMoveTarget = moveTargets[item.id] ?? '';
                   const moveOptions = moveOptionsByDay[day.date] ?? [];
+                  const reasonCopy = item.reason ? mapReasonSummaryToCopy(item.reason) : null;
 
                   return (
                     <div
@@ -225,8 +227,8 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
                       ) : null}
                       </div>
 
-                      {item.reason ? (
-                        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{item.reason}</p>
+                      {reasonCopy ? (
+                        <p className="mt-3 text-xs font-medium text-slate-600 dark:text-slate-300">{reasonCopy}</p>
                       ) : item.note ? (
                         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{item.note}</p>
                       ) : null}

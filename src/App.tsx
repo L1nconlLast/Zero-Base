@@ -75,8 +75,15 @@ import {
   STUDY_SCHEDULE_UPDATED_EVENT,
   studyScheduleService,
   getWeeklyPlanConfidenceState,
+  getWeeklyPlannedSessions,
+  getPlannedSubjectsCount,
   sanitizeWeeklyStudySchedule,
 } from './services/studySchedule.service';
+import {
+  buildWeeklySessionProgress,
+  mapReasonSummaryToCopy,
+  type UserFacingWeeklyProgress,
+} from './services/prioritizationReason';
 import { STUDY_METHODS, getStudyMethodById } from './data/studyMethods';
 import { createDefaultSmartProfile, type SmartScheduleProfile } from './utils/smartScheduleEngine';
 
@@ -157,6 +164,12 @@ type OfficialStudyAssessmentSummary = {
   subject: string;
   correct: number;
   total: number;
+};
+
+type OfficialStudyResultMeta = {
+  subject: string;
+  topic: string;
+  xpPoints: number;
 };
 
 type FocusStartOverrides = {
@@ -504,6 +517,7 @@ function App() {
   const [officialStudyHomeState, setOfficialStudyHomeState] = useState<OfficialStudyHomeState>({ status: 'idle' });
   const [officialStudySession, setOfficialStudySession] = useState<OfficialStudySession | null>(null);
   const [officialStudyResult, setOfficialStudyResult] = useState<OfficialStudySessionResult | null>(null);
+  const [officialStudyResultMeta, setOfficialStudyResultMeta] = useState<OfficialStudyResultMeta | null>(null);
   const [officialStudyStarting, setOfficialStudyStarting] = useState(false);
   const [officialStudyAnswering, setOfficialStudyAnswering] = useState(false);
   const [officialStudyFinishing, setOfficialStudyFinishing] = useState(false);
@@ -2306,6 +2320,36 @@ function App() {
       }).length,
     [effectiveSessions, getSessionProgressDate, progressWeekEnd, progressWeekStart],
   );
+  const weeklyPlannedSessions = React.useMemo(() => {
+    const plannedFromEntries = getWeeklyPlannedSessions(
+      persistedScheduleEntries,
+      progressWeekStart,
+      progressWeekEnd,
+    );
+
+    if (plannedFromEntries > 0) {
+      return plannedFromEntries;
+    }
+
+    if (
+      typeof weeklySchedule.preferences.weeklyGoalSessions === 'number'
+      && weeklySchedule.preferences.weeklyGoalSessions > 0
+    ) {
+      return weeklySchedule.preferences.weeklyGoalSessions;
+    }
+
+    return getPlannedSubjectsCount(weeklySchedule.weekPlan);
+  }, [
+    persistedScheduleEntries,
+    progressWeekEnd,
+    progressWeekStart,
+    weeklySchedule.preferences.weeklyGoalSessions,
+    weeklySchedule.weekPlan,
+  ]);
+  const weeklySessionProgress = React.useMemo<UserFacingWeeklyProgress | null>(
+    () => buildWeeklySessionProgress(weeklyCompletedSessions, weeklyPlannedSessions),
+    [weeklyCompletedSessions, weeklyPlannedSessions],
+  );
   const todayCompletedSessions = React.useMemo(
     () =>
       effectiveSessions.filter((session) => {
@@ -2341,8 +2385,8 @@ function App() {
       }, {} as Partial<Record<Weekday, boolean>>),
     [effectiveSessions, getSessionProgressDate, progressWeekEnd, progressWeekStart],
   );
-  const weeklyProgressCopy = weeklySchedule.preferences.weeklyGoalSessions
-    ? weeklyCompletedSessions + ' de ' + weeklySchedule.preferences.weeklyGoalSessions + ' sessoes concluidas esta semana'
+  const weeklyProgressCopy = weeklySessionProgress
+    ? `${weeklySessionProgress.label} esta semana`
     : weeklyCompletedSessions + ' sessoes concluidas esta semana';
   const weeklyPlanConfidenceState = getWeeklyPlanConfidenceState(
     weeklyCompletedSessions,
@@ -2635,13 +2679,13 @@ function App() {
         status: 'empty',
         title: isProfileGap
           ? 'Seu proximo estudo ainda nao foi liberado'
-          : 'Ainda nao existe uma recomendacao pronta',
+          : 'Sem sessoes planejadas hoje',
         description: isProfileGap
           ? 'O contrato oficial ainda nao encontrou contexto suficiente para montar sua primeira sessao.'
-          : 'A home oficial ainda nao recebeu uma recomendacao valida para montar o proximo estudo.',
+          : 'Sem sessoes planejadas hoje. Gere uma sessao para continuar.',
         supportingText: isProfileGap
           ? 'Conclua o onboarding ou ajuste o contexto do plano para liberar a primeira sessao.'
-          : 'Abra o cronograma, organize o dia e volte para gerar a proxima sessao real.',
+          : 'Abra o cronograma para ajustar o dia ou gere uma nova sessao oficial.',
       };
     };
 
@@ -2756,6 +2800,7 @@ function App() {
       setOfficialStudyHomeState({ status: 'idle' });
       setOfficialStudySession(null);
       setOfficialStudyResult(null);
+      setOfficialStudyResultMeta(null);
     }
   }, [isLoggedIn]);
 
@@ -2891,6 +2936,7 @@ function App() {
       }
 
       setOfficialStudyResult(null);
+      setOfficialStudyResultMeta(null);
       setOfficialStudySession(session);
       setOfficialStudyQuestionStartedAt(Date.now());
       toast.success(activeSessionId ? 'Sessao oficial retomada.' : 'Sessao oficial iniciada.');
@@ -2937,6 +2983,11 @@ function App() {
       const { completedSession } = applyOfficialStudyCompletionToProgress(sessionToFinish, result);
       reflectOfficialStudyCompletionInBeginnerFlow(sessionToFinish, completedSession);
       setOfficialStudySession(null);
+      setOfficialStudyResultMeta({
+        subject: sessionToFinish.subject,
+        topic: sessionToFinish.topic || sessionToFinish.subject,
+        xpPoints: completedSession.points,
+      });
       setOfficialStudyResult(result);
       const scheduleSyncResult = await reflectOfficialStudyCompletionInSchedule(sessionToFinish)
         .then(() => 'matched' as const)
@@ -2965,7 +3016,21 @@ function App() {
   const handleBackHomeFromOfficialStudy = React.useCallback(async () => {
     const finishedSessionId = officialStudyResult?.sessionId || null;
     setOfficialStudyResult(null);
+    setOfficialStudyResultMeta(null);
     setActiveTab('inicio');
+    if (finishedSessionId) {
+      await loadOfficialStudyHomeAfterCompletion(finishedSessionId);
+      return;
+    }
+
+    await loadOfficialStudyHome();
+  }, [loadOfficialStudyHome, loadOfficialStudyHomeAfterCompletion, officialStudyResult?.sessionId]);
+
+  const handleOpenScheduleFromOfficialStudyResult = React.useCallback(async () => {
+    const finishedSessionId = officialStudyResult?.sessionId || null;
+    setOfficialStudyResult(null);
+    setOfficialStudyResultMeta(null);
+    setActiveTab('cronograma');
     if (finishedSessionId) {
       await loadOfficialStudyHomeAfterCompletion(finishedSessionId);
       return;
@@ -3520,7 +3585,7 @@ function App() {
       return {
         status: 'error' as const,
         title: 'Nao foi possivel abrir seu proximo estudo',
-        description: officialStudyHomeState.message,
+        description: 'Nao foi possivel carregar agora. Tente novamente.',
         actionLabel: 'Tentar novamente',
         onAction: () => {
           void loadOfficialStudyHome();
@@ -3551,18 +3616,19 @@ function App() {
     const resolvedDiscipline = prioritizedFocus?.entry.subject || recommendation?.disciplineName || home.mission.discipline;
     const resolvedTopic = prioritizedFocus?.entry.topic || recommendation?.topicName || home.mission.topic;
     const resolvedReason = prioritizedFocus?.reasonSummary || recommendation?.reason || home.mission.reason;
+    const resolvedReasonCopy = mapReasonSummaryToCopy(resolvedReason);
     const supportingText = activeSession
       ? 'Sua sessao continua pronta para retomar exatamente do ponto em que voce parou.'
       : prioritizedFocus
-        ? `Meta semanal: ${home.weeklyProgress.studyMinutes}/${home.weeklyProgress.goalMinutes} min. Priorizado para manter seu ritmo hoje.`
-        : `Meta semanal: ${home.weeklyProgress.studyMinutes}/${home.weeklyProgress.goalMinutes} min`;
+        ? 'Bom próximo passo para manter seu ritmo hoje.'
+        : 'Recomendado para manter sua semana andando com consistencia.';
 
     return {
       status: 'ready' as const,
       title: activeSession ? 'Continue sua sessao oficial' : 'Seu proximo estudo ja esta pronto',
       discipline: resolvedDiscipline,
       topic: resolvedTopic,
-      reason: resolvedReason,
+      reason: resolvedReasonCopy,
       estimatedDurationMinutes,
       sessionTypeLabel: activeSession
         ? 'Sessao curta em andamento'
@@ -3572,6 +3638,7 @@ function App() {
       progressLabel: activeSession
         ? `${activeSession.answeredQuestions}/${activeSession.totalQuestions} questoes respondidas`
         : `${totalQuestions} questoes guiadas`,
+      weeklyProgress: weeklySessionProgress,
       supportingText,
       ctaLabel: activeSession ? 'Continuar agora' : 'Estudar agora',
       busy: officialStudyStarting,
@@ -3595,11 +3662,38 @@ function App() {
     prioritizedScheduledStudyFocus,
     showOnboarding,
     supabaseUserId,
+    weeklySessionProgress,
   ]);
   const officialStudyCard = React.useMemo(
     () => (activeTab === 'inicio' ? officialStudySurfaceCard : undefined),
     [activeTab, officialStudySurfaceCard],
   );
+  const officialStudyNextStep = React.useMemo(() => {
+    if (!officialStudyResult) {
+      return null;
+    }
+
+    const prioritizedFocus = prioritizedScheduledStudyFocus;
+    if (prioritizedFocus) {
+      return {
+        discipline: prioritizedFocus.entry.subject,
+        topic: prioritizedFocus.entry.topic || 'Próximo bloco disponível',
+        reason: mapReasonSummaryToCopy(prioritizedFocus.reasonSummary),
+      };
+    }
+
+    if (officialStudyHomeState.status === 'ready') {
+      return {
+        discipline: officialStudyHomeState.recommendation?.disciplineName || officialStudyHomeState.home.mission.discipline,
+        topic: officialStudyHomeState.recommendation?.topicName || officialStudyHomeState.home.mission.topic,
+        reason: mapReasonSummaryToCopy(
+          officialStudyHomeState.recommendation?.reason || officialStudyHomeState.home.mission.reason,
+        ),
+      };
+    }
+
+    return null;
+  }, [officialStudyHomeState, officialStudyResult, prioritizedScheduledStudyFocus]);
 
   React.useEffect(() => {
     if (studyFlowStep !== 'questionTransition') {
@@ -3750,7 +3844,13 @@ function App() {
         <Toaster position="top-center" />
         <OfficialStudySessionResultView
           result={officialStudyResult}
-          onBackHome={handleBackHomeFromOfficialStudy}
+          topicLabel={officialStudyResultMeta?.topic || officialStudyResultMeta?.subject || null}
+          xpPoints={officialStudyResultMeta?.xpPoints || 0}
+          nextStep={officialStudyNextStep}
+          nextStepLoading={officialStudyFinishing || officialStudyHomeState.status === 'loading'}
+          weeklyProgress={weeklySessionProgress}
+          onContinue={handleBackHomeFromOfficialStudy}
+          onViewSchedule={handleOpenScheduleFromOfficialStudyResult}
         />
       </>
     );

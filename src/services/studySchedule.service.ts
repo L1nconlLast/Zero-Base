@@ -788,6 +788,27 @@ export const getTodayCompletedSessions = (
   }).length;
 };
 
+export const getWeeklyPlannedSessions = (
+  entries: ScheduleEntry[],
+  startOfWeek: Date,
+  endOfWeek: Date,
+): number => {
+  const start = new Date(startOfWeek);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(endOfWeek);
+  end.setHours(23, 59, 59, 999);
+
+  return entries.filter((entry) => {
+    const parsed = toComparableEntryDate(entry.date);
+    if (!parsed) {
+      return false;
+    }
+
+    return parsed >= start && parsed <= end;
+  }).length;
+};
+
 export const getWeeklyPlanConfidenceState = (
   weeklyCompletedSessions: number,
   weeklyGoalSessions?: number,

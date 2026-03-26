@@ -14,6 +14,10 @@ import { BeginnerMissionCard } from '../Beginner/BeginnerMissionCard';
 import { advancedProgressService } from '../../services/advancedProgress.service';
 import { AdvancedDashboardHome } from './AdvancedDashboardHome';
 import type { AdvancedTodayPlan } from './AdvancedDashboardHome';
+import {
+  mapReasonSummaryToCopy,
+  type UserFacingWeeklyProgress,
+} from '../../services/prioritizationReason';
 
 type CtaSource = 'hero_cta' | 'next_mission' | 'quick_15' | 'quick_25' | 'quick_50';
 type QuickSessionDuration = 15 | 25 | 30 | 50;
@@ -74,6 +78,7 @@ type StudyNowCardState =
       onAction: () => void;
       busy?: boolean;
       progressLabel?: string;
+      weeklyProgress?: UserFacingWeeklyProgress | null;
       supportingText?: string;
       secondaryAction?: {
         label: string;
@@ -263,6 +268,8 @@ const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
     );
   }
 
+  const reasonCopy = mapReasonSummaryToCopy(card.reason);
+
   return (
     <section
       data-testid="study-now-card"
@@ -281,7 +288,7 @@ const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
           <p className="mt-2 text-sm text-slate-600">
             {card.discipline} • {card.topic}
           </p>
-          <p data-testid="study-now-card-reason" className="mt-3 text-sm text-slate-700">{card.reason}</p>
+          <p data-testid="study-now-card-reason" className="mt-3 text-sm font-medium text-slate-800">{reasonCopy}</p>
           {card.supportingText ? (
             <p className="mt-2 text-sm font-medium text-blue-900/75">{card.supportingText}</p>
           ) : null}
@@ -299,6 +306,23 @@ const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
               </span>
             ) : null}
           </div>
+          {card.weeklyProgress ? (
+            <div data-testid="study-now-card-weekly-progress" className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Progresso semanal
+                </p>
+                <p className="text-sm font-semibold text-slate-700">{card.weeklyProgress.label}</p>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  data-testid="study-now-card-weekly-progress-bar"
+                  className="h-full rounded-full bg-blue-600 transition-all"
+                  style={{ width: `${Math.max(4, Math.round(card.weeklyProgress.ratio * 100))}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-2 sm:min-w-[240px]">

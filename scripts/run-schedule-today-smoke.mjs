@@ -1244,11 +1244,12 @@ const main = async () => {
     await waitFor(
       browser.session,
       `(() => {
+        ${BROWSER_NORMALIZE}
         const card = document.querySelector('[data-testid="study-now-card"]');
         const reason = document.querySelector('[data-testid="study-now-card-reason"]');
         if (!card || !reason) return false;
         const discipline = (card.getAttribute('data-study-discipline') || '').trim();
-        return discipline === 'Linguagens' && (reason.innerText || '').includes('Atrasado');
+        return discipline === 'Linguagens' && normalize(reason.innerText || '').includes('priorizado por atraso');
       })()`,
       { timeoutMs: 30000, label: 'home backlog prioritization' },
     );
@@ -1264,11 +1265,12 @@ const main = async () => {
     await waitFor(
       browser.session,
       `(() => {
+        ${BROWSER_NORMALIZE}
         const card = document.querySelector('[data-testid="study-now-card"]');
         const reason = document.querySelector('[data-testid="study-now-card-reason"]');
         if (!card || !reason) return false;
         const discipline = (card.getAttribute('data-study-discipline') || '').trim();
-        return discipline === 'Humanas' && (reason.innerText || '').includes('Prioridade alta');
+        return discipline === 'Humanas' && normalize(reason.innerText || '').includes('priorizado por voce');
       })()`,
       { timeoutMs: 30000, label: 'home manual priority focus' },
     );
@@ -1460,13 +1462,33 @@ const main = async () => {
 
     await clickByTestId(browser.session, 'session-finish-cta');
     await waitForSelector(browser.session, '[data-testid="session-result-root"]', { timeoutMs: 30000 });
+    await waitFor(
+      browser.session,
+      `(() => {
+        ${BROWSER_NORMALIZE}
+        const root = document.querySelector('[data-testid="session-result-root"]');
+        const nextStep = document.querySelector('[data-testid="session-result-next-step"]');
+        const weeklyProgress = document.querySelector('[data-testid="session-result-weekly-progress"]');
+        if (!root || !nextStep || !weeklyProgress) return false;
+        const rootText = normalize(root.innerText || '');
+        const nextStepText = normalize(nextStep.innerText || '');
+        const weeklyText = normalize(weeklyProgress.innerText || '');
+        return rootText.includes('voce avancou em')
+          && nextStepText.includes('proximo passo')
+          && weeklyText.includes('sessoes concluidas');
+      })()`,
+      { timeoutMs: 30000, label: 'feedback pos sessao visivel' },
+    );
     await screenshot(browser.session, 'schedule-today-result.png');
     recordStep('official_session_result_persisted', 'passed', {
       screenshot: 'qa-artifacts/schedule-today-result.png',
     });
 
-    await clickByTestId(browser.session, 'session-result-home-cta');
+    await clickByTestId(browser.session, 'session-result-continue-cta');
     await waitForText(browser.session, 'Para estudar agora', { timeoutMs: 30000 });
+    await dismissKnownPrompts(browser.session);
+    await waitForSelector(browser.session, '[data-testid="study-now-card"]', { timeoutMs: 30000 });
+    await waitForSelectorAttribute(browser.session, '[data-testid="study-now-card"]', 'data-card-status', 'ready', { timeoutMs: 30000 });
     await waitFor(
       browser.session,
       `(() => {
@@ -1480,8 +1502,15 @@ const main = async () => {
       browser.session,
       `(() => {
         ${BROWSER_NORMALIZE}
+        const card = document.querySelector('[data-testid="study-now-card"]');
+        const weeklyProgress = document.querySelector('[data-testid="study-now-card-weekly-progress"]');
+        const reason = document.querySelector('[data-testid="study-now-card-reason"]');
         const body = normalize(document.body?.innerText || '');
-        return body.includes('meta semanal: 1/360 min') && !body.includes('carregando sua sessao oficial');
+        if (!card || !weeklyProgress || !reason) return false;
+        return (card.getAttribute('data-card-status') || '') === 'ready'
+          && normalize(weeklyProgress.innerText || '').includes('sessoes concluidas')
+          && (reason.innerText || '').trim().length > 0
+          && !body.includes('carregando sua sessao oficial');
       })()`,
       { timeoutMs: 30000, label: 'home oficial atualizada apos conclusao' },
     );

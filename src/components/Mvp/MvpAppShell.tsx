@@ -565,7 +565,13 @@ export const MvpAppShell: React.FC<MvpAppShellProps> = ({ onLogout }) => {
   }
 
   if (view === 'result' && studyResult) {
-    return <StudySessionResultView result={studyResult} onBackHome={handleBackHome} />;
+    return (
+      <StudySessionResultView
+        result={studyResult}
+        onContinue={handleBackHome}
+        onViewSchedule={handleBackHome}
+      />
+    );
   }
 
   return (

@@ -69,4 +69,27 @@ describe('DashboardPage official study card states', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onSecondary).toHaveBeenCalledTimes(1);
   });
+
+  it('renderiza copy explicavel e progresso semanal no card oficial', () => {
+    renderDashboard({
+      status: 'ready',
+      title: 'Seu proximo estudo ja esta pronto',
+      discipline: 'Linguagens',
+      topic: 'Interpretacao',
+      reason: 'Atrasado e Prioridade alta',
+      estimatedDurationMinutes: 15,
+      sessionTypeLabel: 'Sessao curta priorizada',
+      ctaLabel: 'Estudar agora',
+      onAction: vi.fn(),
+      weeklyProgress: {
+        completedSessions: 2,
+        plannedSessions: 5,
+        ratio: 0.4,
+        label: '2 de 5 sessões concluídas',
+      },
+    });
+
+    expect(screen.getByTestId('study-now-card-reason')).toHaveTextContent('Priorizado por atraso');
+    expect(screen.getByTestId('study-now-card-weekly-progress')).toHaveTextContent('2 de 5 sessões concluídas');
+  });
 });

@@ -181,6 +181,7 @@ interface StudyScheduleCalendarProps {
     estimatedDurationMinutes: number;
     sessionTypeLabel: string;
     progressLabel?: string;
+    weeklyProgress?: import('../../services/prioritizationReason').UserFacingWeeklyProgress | null;
     supportingText?: string;
     ctaLabel: string;
     busy?: boolean;
