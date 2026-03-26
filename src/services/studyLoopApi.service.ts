@@ -12,6 +12,7 @@ import {
   mvpStudySessionsService,
   type StudySession as OfficialStudySession,
   type StudySessionAnswer as OfficialStudySessionAnswer,
+  type StudySessionFocusOverride,
   type StudySessionQuestion as OfficialStudySessionQuestion,
   type StudySessionQuestionOption as OfficialStudySessionQuestionOption,
   type StudySessionResult as OfficialStudySessionResult,
@@ -23,6 +24,7 @@ export {
   requestStudyLoopWithAuth,
   type OfficialStudySession,
   type OfficialStudySessionAnswer,
+  type StudySessionFocusOverride,
   type OfficialStudySessionQuestion,
   type OfficialStudySessionQuestionOption,
   type OfficialStudySessionResult,
@@ -174,7 +176,7 @@ export const studyLoopApiService = {
 };
 
 export const studyLoopSessionsService = {
-  async createSession(limit = 5): Promise<OfficialStudySession> {
+  async createSession(limit = 5, focusOverride?: StudySessionFocusOverride): Promise<OfficialStudySession> {
     const flags = getStudyLoopEdgeFlags();
     maybeThrowForcedStudyLoopError(
       flags.forceStartError,
@@ -182,7 +184,7 @@ export const studyLoopSessionsService = {
       'FORCED_START_ERROR',
     );
 
-    return mvpStudySessionsService.createSession(limit);
+    return mvpStudySessionsService.createSession(limit, focusOverride);
   },
 
   async getSession(sessionId: string): Promise<OfficialStudySession> {

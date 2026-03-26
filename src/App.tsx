@@ -64,6 +64,7 @@ import {
   type StudyLoopRecommendation,
 } from './services/studyLoopApi.service';
 import {
+  chooseNextScheduledStudyFocus,
   buildStudyContextForToday,
   createDefaultWeeklyStudySchedule,
   getNextStudyCopy,
@@ -71,6 +72,8 @@ import {
   getPaceCopy,
   getWeekdayFromDate,
   getRecentPaceState,
+  readPersistedScheduleEntries,
+  STUDY_SCHEDULE_UPDATED_EVENT,
   studyScheduleService,
   getWeeklyPlanConfidenceState,
   sanitizeWeeklyStudySchedule,
@@ -89,6 +92,7 @@ import type {
   StudySession,
   StudyContextForToday,
   StudyExecutionState,
+  ScheduleEntry,
   Weekday,
   WeeklyStudySchedule,
 } from './types';
@@ -468,6 +472,7 @@ function App() {
   const [officialStudyAnswering, setOfficialStudyAnswering] = useState(false);
   const [officialStudyFinishing, setOfficialStudyFinishing] = useState(false);
   const [officialStudyQuestionStartedAt, setOfficialStudyQuestionStartedAt] = useState<number>(Date.now());
+  const [persistedScheduleEntries, setPersistedScheduleEntries] = useState<ScheduleEntry[]>(() => readPersistedScheduleEntries());
   const [lockedNavigationTarget, setLockedNavigationTarget] = useState<{ tabId: string; label: string } | null>(null);
   const [showIntermediateUnlockBanner, setShowIntermediateUnlockBanner] = useState(false);
   const lastMissionViewKeyRef = React.useRef<string | null>(null);
@@ -489,6 +494,24 @@ function App() {
     }
 
     return ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  }, []);
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const syncPersistedScheduleEntries = () => {
+      setPersistedScheduleEntries(readPersistedScheduleEntries());
+    };
+
+    syncPersistedScheduleEntries();
+    window.addEventListener(STUDY_SCHEDULE_UPDATED_EVENT, syncPersistedScheduleEntries as EventListener);
+    window.addEventListener('storage', syncPersistedScheduleEntries);
+
+    return () => {
+      window.removeEventListener(STUDY_SCHEDULE_UPDATED_EVENT, syncPersistedScheduleEntries as EventListener);
+      window.removeEventListener('storage', syncPersistedScheduleEntries);
+    };
   }, []);
   const canAccessInternalTools = isLocalEnvironment || hasInternalAccess || isAdminMode;
   const weeklySchedule = React.useMemo(
@@ -2446,6 +2469,67 @@ function App() {
       return sum + (Number.isFinite(duration) && duration > 0 ? duration : 0);
     }, 0);
   }, [effectiveSessions]);
+  const prioritizationRecentSessions = React.useMemo(
+    () =>
+      effectiveSessions
+        .map((session) => {
+          const completedAt = session.timestamp || session.date;
+          if (!completedAt) {
+            return null;
+          }
+
+          const topic =
+            typeof (session as { topicName?: string }).topicName === 'string'
+              ? (session as { topicName?: string }).topicName
+              : typeof (session as { topic?: string }).topic === 'string'
+                ? (session as { topic?: string }).topic
+                : null;
+          const accuracy =
+            typeof (session as { accuracy?: number }).accuracy === 'number'
+              ? (session as { accuracy?: number }).accuracy
+              : null;
+
+          return {
+            subject: String(session.subject || ''),
+            topic,
+            completedAt,
+            accuracy,
+          };
+        })
+        .filter(Boolean) as Array<{
+          subject: string;
+          topic?: string | null;
+          completedAt: string;
+          accuracy?: number | null;
+        }>,
+    [effectiveSessions],
+  );
+  const prioritizedScheduledStudyFocus = React.useMemo(() => {
+    if (!isLoggedIn || !supabaseUserId || !isSupabaseConfigured || showOnboarding) {
+      return null;
+    }
+
+    return chooseNextScheduledStudyFocus(persistedScheduleEntries, {
+      today: new Date(),
+      schedule: weeklySchedule,
+      recentSessions: prioritizationRecentSessions,
+      currentWeakPoint:
+        officialStudyHomeState.status === 'ready'
+          ? officialStudyHomeState.home.decision.currentWeakPoint
+          : null,
+      weeklyCompletedSessions,
+      weeklyGoalSessions: weeklySchedule.preferences.weeklyGoalSessions,
+    });
+  }, [
+    isLoggedIn,
+    officialStudyHomeState,
+    persistedScheduleEntries,
+    prioritizationRecentSessions,
+    showOnboarding,
+    supabaseUserId,
+    weeklyCompletedSessions,
+    weeklySchedule,
+  ]);
 
   const effectiveTrackForDepartments: 'enem' | 'concursos' = React.useMemo(() => {
     if (preferredStudyTrack === 'hibrido') {
@@ -2721,9 +2805,16 @@ function App() {
       const activeSessionId = officialStudyHomeState.status === 'ready'
         ? officialStudyHomeState.home.activeStudySession?.sessionId || null
         : null;
+      const focusOverride = !activeSessionId && prioritizedScheduledStudyFocus
+        ? {
+            subject: prioritizedScheduledStudyFocus.entry.subject,
+            topic: prioritizedScheduledStudyFocus.entry.topic ?? null,
+            reason: prioritizedScheduledStudyFocus.reasonSummary,
+          }
+        : undefined;
       const session = activeSessionId
         ? await studyLoopSessionsService.getSession(activeSessionId)
-        : await studyLoopSessionsService.createSession(5);
+        : await studyLoopSessionsService.createSession(5, focusOverride);
 
       if (session.status !== 'active') {
         await loadOfficialStudyHome();
@@ -2740,7 +2831,7 @@ function App() {
     } finally {
       setOfficialStudyStarting(false);
     }
-  }, [loadOfficialStudyHome, officialStudyHomeState]);
+  }, [loadOfficialStudyHome, officialStudyHomeState, prioritizedScheduledStudyFocus]);
 
   const handleAnswerOfficialStudyQuestion = React.useCallback(async (questionId: string, alternativeId: string) => {
     if (!officialStudySession) {
@@ -3388,21 +3479,32 @@ function App() {
     const activeSession = home.activeStudySession;
     const totalQuestions = activeSession?.totalQuestions || 5;
     const estimatedDurationMinutes = Math.max(10, totalQuestions * 3);
+    const prioritizedFocus = !activeSession ? prioritizedScheduledStudyFocus : null;
+    const resolvedDiscipline = prioritizedFocus?.entry.subject || recommendation?.disciplineName || home.mission.discipline;
+    const resolvedTopic = prioritizedFocus?.entry.topic || recommendation?.topicName || home.mission.topic;
+    const resolvedReason = prioritizedFocus?.reasonSummary || recommendation?.reason || home.mission.reason;
+    const supportingText = activeSession
+      ? 'Sua sessao continua pronta para retomar exatamente do ponto em que voce parou.'
+      : prioritizedFocus
+        ? `Meta semanal: ${home.weeklyProgress.studyMinutes}/${home.weeklyProgress.goalMinutes} min. Priorizado para manter seu ritmo hoje.`
+        : `Meta semanal: ${home.weeklyProgress.studyMinutes}/${home.weeklyProgress.goalMinutes} min`;
 
     return {
       status: 'ready' as const,
       title: activeSession ? 'Continue sua sessao oficial' : 'Seu proximo estudo ja esta pronto',
-      discipline: recommendation?.disciplineName || home.mission.discipline,
-      topic: recommendation?.topicName || home.mission.topic,
-      reason: recommendation?.reason || home.mission.reason,
+      discipline: resolvedDiscipline,
+      topic: resolvedTopic,
+      reason: resolvedReason,
       estimatedDurationMinutes,
-      sessionTypeLabel: activeSession ? 'Sessao curta em andamento' : 'Sessao curta oficial',
+      sessionTypeLabel: activeSession
+        ? 'Sessao curta em andamento'
+        : prioritizedFocus
+          ? 'Sessao curta priorizada'
+          : 'Sessao curta oficial',
       progressLabel: activeSession
         ? `${activeSession.answeredQuestions}/${activeSession.totalQuestions} questoes respondidas`
         : `${totalQuestions} questoes guiadas`,
-      supportingText: activeSession
-        ? 'A home oficial detectou uma sessao ativa e ja pode retomar do ponto em que voce parou.'
-        : `Meta semanal: ${home.weeklyProgress.studyMinutes}/${home.weeklyProgress.goalMinutes} min`,
+      supportingText,
       ctaLabel: activeSession ? 'Continuar agora' : 'Estudar agora',
       busy: officialStudyStarting,
       onAction: () => {
@@ -3422,6 +3524,7 @@ function App() {
     officialStudyFallbackLabel,
     officialStudyHomeState,
     officialStudyStarting,
+    prioritizedScheduledStudyFocus,
     showOnboarding,
     supabaseUserId,
   ]);

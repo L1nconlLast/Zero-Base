@@ -4,6 +4,7 @@ import {
   autoDistributeSubjects,
   buildOperationalScheduleWindow,
   buildStudyContextForToday,
+  chooseNextScheduledStudyFocus,
   createDefaultWeeklyAvailability,
   createDefaultWeeklyStudySchedule,
   createEmptyWeeklyPlan,
@@ -46,6 +47,23 @@ const createEntry = (overrides: Partial<ScheduleEntry>): ScheduleEntry => ({
   note: overrides.note,
   startTime: overrides.startTime,
   endTime: overrides.endTime,
+  manualPriority: overrides.manualPriority,
+  createdAt: overrides.createdAt,
+  updatedAt: overrides.updatedAt,
+  lastManualEditAt: overrides.lastManualEditAt,
+  lastManualTargetDate: overrides.lastManualTargetDate,
+});
+
+const createRecentSessionSignal = (overrides: {
+  subject?: string;
+  topic?: string | null;
+  completedAt?: string;
+  accuracy?: number | null;
+} = {}) => ({
+  subject: overrides.subject || 'Matematica',
+  topic: overrides.topic ?? 'Porcentagem',
+  completedAt: overrides.completedAt || '2026-03-16T08:00:00.000Z',
+  accuracy: overrides.accuracy ?? null,
 });
 
 describe('studySchedule.service', () => {
@@ -987,6 +1005,173 @@ describe('studySchedule.service', () => {
       });
 
       expect(result.weekPlan.thursday.subjectLabels).toEqual(['Humanas', 'Atualidades', 'Biologia']);
+    });
+  });
+
+  describe('study prioritization engine', () => {
+    it('prioritizes backlog over a weak but still on-time item', () => {
+      const entries = [
+        createEntry({
+          id: 'backlog',
+          date: '2026-03-15',
+          subject: 'Linguagens',
+          topic: 'Interpretacao',
+          status: 'pendente',
+        }),
+        createEntry({
+          id: 'weak-today',
+          date: '2026-03-16',
+          subject: 'Matematica',
+          topic: 'Porcentagem',
+          status: 'pendente',
+        }),
+      ];
+
+      const result = chooseNextScheduledStudyFocus(entries, {
+        today: atUtcNoon('2026-03-16'),
+        currentWeakPoint: 'Matematica',
+      });
+
+      expect(result?.entry.id).toBe('backlog');
+      expect(result?.reasonSummary).toContain('Atrasado');
+    });
+
+    it('respects manual priority over weaker non-manual candidates when backlog does not decide', () => {
+      const entries = [
+        createEntry({
+          id: 'manual-priority',
+          date: '2026-03-16',
+          subject: 'Humanas',
+          topic: 'Brasil Colonia',
+          status: 'pendente',
+          priority: 'alta',
+          manualPriority: true,
+          lastManualEditAt: '2026-03-16T09:00:00.000Z',
+        }),
+        createEntry({
+          id: 'weak-point',
+          date: '2026-03-16',
+          subject: 'Matematica',
+          topic: 'Porcentagem',
+          status: 'pendente',
+        }),
+      ];
+
+      const result = chooseNextScheduledStudyFocus(entries, {
+        today: atUtcNoon('2026-03-16'),
+        currentWeakPoint: 'Matematica',
+      });
+
+      expect(result?.entry.id).toBe('manual-priority');
+      expect(result?.reasonSummary).toContain('Prioridade alta');
+    });
+
+    it('avoids repeating the same recent topic when an equivalent alternative exists', () => {
+      const entries = [
+        createEntry({
+          id: 'recent-topic',
+          date: '2026-03-16',
+          subject: 'Matematica',
+          topic: 'Porcentagem',
+          status: 'pendente',
+        }),
+        createEntry({
+          id: 'alternative-topic',
+          date: '2026-03-16',
+          subject: 'Matematica',
+          topic: 'Regra de 3',
+          status: 'pendente',
+        }),
+      ];
+
+      const result = chooseNextScheduledStudyFocus(entries, {
+        today: atUtcNoon('2026-03-16'),
+        currentWeakPoint: 'Matematica',
+        recentSessions: [
+          createRecentSessionSignal({
+            subject: 'Matematica',
+            topic: 'Porcentagem',
+            completedAt: '2026-03-16T07:30:00.000Z',
+          }),
+        ],
+      });
+
+      expect(result?.entry.id).toBe('alternative-topic');
+    });
+
+    it('never returns completed entries', () => {
+      const entries = [
+        createEntry({
+          id: 'completed',
+          date: '2026-03-16',
+          subject: 'Matematica',
+          status: 'concluido',
+          done: true,
+        }),
+        createEntry({
+          id: 'open',
+          date: '2026-03-16',
+          subject: 'Linguagens',
+          status: 'pendente',
+        }),
+      ];
+
+      const result = chooseNextScheduledStudyFocus(entries, {
+        today: atUtcNoon('2026-03-16'),
+      });
+
+      expect(result?.entry.id).toBe('open');
+    });
+
+    it('uses the stable tie-breaker order for same-score entries', () => {
+      const entries = [
+        createEntry({
+          id: 'older-today',
+          date: '2026-03-16',
+          subject: 'Linguagens',
+          status: 'pendente',
+          lastManualTargetDate: '2026-03-16',
+          lastManualEditAt: '2026-03-16T08:00:00.000Z',
+        }),
+        createEntry({
+          id: 'manual-priority-today',
+          date: '2026-03-16',
+          subject: 'Humanas',
+          status: 'pendente',
+          priority: 'alta',
+          manualPriority: true,
+          lastManualTargetDate: '2026-03-16',
+          lastManualEditAt: '2026-03-16T10:00:00.000Z',
+        }),
+      ];
+
+      const result = chooseNextScheduledStudyFocus(entries, {
+        today: atUtcNoon('2026-03-16'),
+      });
+
+      expect(result?.entry.id).toBe('manual-priority-today');
+    });
+
+    it('returns a reason summary that explains the winning focus', () => {
+      const entries = [
+        createEntry({
+          id: 'explained',
+          date: '2026-03-15',
+          subject: 'Matematica',
+          topic: 'Porcentagem',
+          status: 'pendente',
+          priority: 'alta',
+          manualPriority: true,
+        }),
+      ];
+
+      const result = chooseNextScheduledStudyFocus(entries, {
+        today: atUtcNoon('2026-03-16'),
+        currentWeakPoint: 'Matematica',
+      });
+
+      expect(result?.reasonSummary).toContain('Atrasado');
+      expect(result?.score).toBeGreaterThan(0);
     });
   });
 });

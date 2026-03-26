@@ -181,7 +181,11 @@ interface DashboardPageProps {
 const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
   if (card.status === 'loading') {
     return (
-      <section className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-5 shadow-sm">
+      <section
+        data-testid="study-now-card"
+        data-card-status="loading"
+        className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-5 shadow-sm"
+      >
         <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
           <Loader2 className="h-4 w-4 animate-spin" />
           Para estudar agora
@@ -196,7 +200,11 @@ const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
 
   if (card.status === 'error') {
     return (
-      <section className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-5 shadow-sm">
+      <section
+        data-testid="study-now-card"
+        data-card-status="error"
+        className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-5 shadow-sm"
+      >
         <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">
           <AlertTriangle className="h-4 w-4" />
           Para estudar agora
@@ -229,7 +237,11 @@ const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
 
   if (card.status === 'empty') {
     return (
-      <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-sm">
+      <section
+        data-testid="study-now-card"
+        data-card-status="empty"
+        className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-sm"
+      >
         <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">
           <Sparkles className="h-4 w-4" />
           Para estudar agora
@@ -252,7 +264,13 @@ const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
   }
 
   return (
-    <section className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-5 shadow-sm">
+    <section
+      data-testid="study-now-card"
+      data-card-status="ready"
+      data-study-discipline={card.discipline}
+      data-study-topic={card.topic}
+      className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-5 shadow-sm"
+    >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
           <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
@@ -263,7 +281,7 @@ const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
           <p className="mt-2 text-sm text-slate-600">
             {card.discipline} • {card.topic}
           </p>
-          <p className="mt-3 text-sm text-slate-700">{card.reason}</p>
+          <p data-testid="study-now-card-reason" className="mt-3 text-sm text-slate-700">{card.reason}</p>
           {card.supportingText ? (
             <p className="mt-2 text-sm font-medium text-blue-900/75">{card.supportingText}</p>
           ) : null}

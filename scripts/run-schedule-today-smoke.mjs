@@ -454,7 +454,7 @@ const createStaticProxyServer = async () => {
   return server;
 };
 
-const buildSeededUserData = () => ({
+const buildSeededUserData = (overrides = {}) => ({
   weekProgress: {
     domingo: { studied: false, minutes: 0 },
     segunda: { studied: true, minutes: 65 },
@@ -474,6 +474,7 @@ const buildSeededUserData = () => ({
   dailyGoal: 90,
   sessions: [],
   currentStreak: 2,
+  ...overrides,
 });
 
 const toDateKey = (date = new Date()) =>
@@ -528,19 +529,113 @@ const buildSeededWeeklySchedule = ({ subjectLabel, date = new Date() }) => {
   };
 };
 
-const buildSeededScheduleEntries = ({ subject, topic, date = new Date() }) => ([
-  {
-    id: 'qa-study-home-entry',
-    date: toDateKey(date),
-    subject,
-    topic,
-    done: false,
-    status: 'pendente',
-    studyType: 'questoes',
-    source: 'ia',
-    note: 'Sessao oficial planejada para o smoke local.',
-  },
-]);
+const buildBacklogPriorityEntries = ({ today = new Date() }) => {
+  const backlogDate = new Date(today);
+  backlogDate.setDate(backlogDate.getDate() - 1);
+  const todayKey = toDateKey(today);
+
+  return [
+    {
+      id: 'qa-backlog-linguagens',
+      date: toDateKey(backlogDate),
+      subject: 'Linguagens',
+      topic: 'Interpretacao de Texto',
+      done: false,
+      status: 'pendente',
+      studyType: 'questoes',
+      source: 'manual',
+      priority: 'normal',
+      note: 'Backlog intencional para validar prioridade por atraso.',
+      createdAt: '2026-03-25T08:00:00.000Z',
+      updatedAt: '2026-03-25T08:00:00.000Z',
+    },
+    {
+      id: 'qa-weak-math-today',
+      date: todayKey,
+      subject: 'Matematica',
+      topic: 'Porcentagem',
+      done: false,
+      status: 'pendente',
+      studyType: 'questoes',
+      source: 'motor',
+      priority: 'alta',
+      aiReason: 'Tema fraco do dia.',
+      createdAt: '2026-03-26T08:00:00.000Z',
+      updatedAt: '2026-03-26T08:00:00.000Z',
+    },
+  ];
+};
+
+const buildManualPriorityEntries = ({ today = new Date() }) => {
+  const todayKey = toDateKey(today);
+  return [
+    {
+      id: 'qa-manual-humanas',
+      date: todayKey,
+      subject: 'Humanas',
+      topic: 'Brasil Colonia',
+      done: false,
+      status: 'pendente',
+      studyType: 'questoes',
+      source: 'manual',
+      priority: 'alta',
+      manualPriority: true,
+      lastManualEditAt: '2026-03-26T10:00:00.000Z',
+      lastManualTargetDate: todayKey,
+      note: 'Prioridade manual para validar o motor.',
+      createdAt: '2026-03-26T10:00:00.000Z',
+      updatedAt: '2026-03-26T10:00:00.000Z',
+    },
+    {
+      id: 'qa-weak-math-manual',
+      date: todayKey,
+      subject: 'Matematica',
+      topic: 'Porcentagem',
+      done: false,
+      status: 'pendente',
+      studyType: 'questoes',
+      source: 'motor',
+      priority: 'alta',
+      aiReason: 'Tema fraco do dia.',
+      createdAt: '2026-03-26T08:00:00.000Z',
+      updatedAt: '2026-03-26T08:00:00.000Z',
+    },
+  ];
+};
+
+const buildRecencyEntries = ({ today = new Date() }) => {
+  const todayKey = toDateKey(today);
+  return [
+    {
+      id: 'qa-recent-porcentagem',
+      date: todayKey,
+      subject: 'Matematica',
+      topic: 'Porcentagem',
+      done: false,
+      status: 'pendente',
+      studyType: 'questoes',
+      source: 'motor',
+      priority: 'alta',
+      aiReason: 'Tema fraco do dia.',
+      createdAt: '2026-03-26T08:00:00.000Z',
+      updatedAt: '2026-03-26T08:00:00.000Z',
+    },
+    {
+      id: 'qa-alternative-regra3',
+      date: todayKey,
+      subject: 'Matematica',
+      topic: 'Regra de 3',
+      done: false,
+      status: 'pendente',
+      studyType: 'questoes',
+      source: 'manual',
+      priority: 'normal',
+      note: 'Alternativa equivalente para validar recencia.',
+      createdAt: '2026-03-26T08:30:00.000Z',
+      updatedAt: '2026-03-26T08:30:00.000Z',
+    },
+  ];
+};
 
 const createSeedScript = ({
   mode,
@@ -955,6 +1050,32 @@ const getLocalStorageJson = async (session, key) =>
     })()`,
   );
 
+const setBrowserStudyState = async (session, { email, scheduleEntries, userData }) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  const userDataKey = `zeroBaseData_${normalizedEmail}`;
+
+  return evalInPage(
+    session,
+    `(() => {
+      const nextScheduleEntries = ${JSON.stringify(scheduleEntries)};
+      const nextUserData = ${JSON.stringify(userData ?? null)};
+      window.localStorage.setItem('mdz_study_schedule', JSON.stringify(nextScheduleEntries));
+      if (nextUserData) {
+        window.localStorage.setItem(${JSON.stringify(userDataKey)}, JSON.stringify(nextUserData));
+      }
+      window.dispatchEvent(new CustomEvent('zb-study-schedule-updated', {
+        detail: {
+          entries: nextScheduleEntries,
+        },
+      }));
+      return {
+        scheduleEntries: nextScheduleEntries.length,
+        userDataUpdated: Boolean(nextUserData),
+      };
+    })()`,
+  );
+};
+
 const getPersistedStudyLoopState = async (session, email) => {
   const normalizedEmail = email.trim().toLowerCase();
   const [userData, beginnerState, beginnerPlan, beginnerStats] = await Promise.all([
@@ -1069,11 +1190,6 @@ const main = async () => {
     const userId = createdUser.user?.id || createdUser.id || null;
     cleanupUserIds.push(userId);
     const seededWeeklySchedule = buildSeededWeeklySchedule({ subjectLabel: 'Matematica' });
-    const seededScheduleEntries = buildSeededScheduleEntries({
-      subject: 'Matematica',
-      topic: 'Porcentagem',
-    });
-
     const browserSessionPayload = await createBrowserSessionPayload(
       supabaseUrl,
       publishableKey,
@@ -1103,8 +1219,107 @@ const main = async () => {
       }),
     });
 
-    await browser.session.send('Page.navigate', { url: `${BASE_URL}?tab=cronograma` });
+    await browser.session.send('Page.navigate', { url: `${BASE_URL}?tab=inicio` });
     await waitFor(browser.session, 'document.readyState === "complete"', { label: 'load complete' });
+    await dismissKnownPrompts(browser.session);
+    const initialHomeDiagnostics = await evalInPage(
+      browser.session,
+      `(() => ({
+        testIds: Array.from(document.querySelectorAll('[data-testid]'))
+          .map((node) => node.getAttribute('data-testid'))
+          .filter(Boolean)
+          .slice(0, 40),
+        excerpt: (document.body?.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 700),
+      }))()`,
+    );
+    recordStep('home_initial_render_snapshot', 'passed', initialHomeDiagnostics);
+    await waitForSelector(browser.session, '[data-testid="study-now-card"]', { timeoutMs: 30000 });
+    await waitForSelectorAttribute(browser.session, '[data-testid="study-now-card"]', 'data-card-status', 'ready', { timeoutMs: 30000 });
+
+    await setBrowserStudyState(browser.session, {
+      email,
+      scheduleEntries: buildBacklogPriorityEntries({ today: new Date() }),
+      userData: buildSeededUserData(),
+    });
+    await waitFor(
+      browser.session,
+      `(() => {
+        const card = document.querySelector('[data-testid="study-now-card"]');
+        const reason = document.querySelector('[data-testid="study-now-card-reason"]');
+        if (!card || !reason) return false;
+        const discipline = (card.getAttribute('data-study-discipline') || '').trim();
+        return discipline === 'Linguagens' && (reason.innerText || '').includes('Atrasado');
+      })()`,
+      { timeoutMs: 30000, label: 'home backlog prioritization' },
+    );
+    recordStep('home_prioritizes_backlog_focus', 'passed', {
+      excerpt: await getBodyTextExcerpt(browser.session, 500),
+    });
+
+    await setBrowserStudyState(browser.session, {
+      email,
+      scheduleEntries: buildManualPriorityEntries({ today: new Date() }),
+      userData: buildSeededUserData(),
+    });
+    await waitFor(
+      browser.session,
+      `(() => {
+        const card = document.querySelector('[data-testid="study-now-card"]');
+        const reason = document.querySelector('[data-testid="study-now-card-reason"]');
+        if (!card || !reason) return false;
+        const discipline = (card.getAttribute('data-study-discipline') || '').trim();
+        return discipline === 'Humanas' && (reason.innerText || '').includes('Prioridade alta');
+      })()`,
+      { timeoutMs: 30000, label: 'home manual priority focus' },
+    );
+    recordStep('home_respects_manual_priority', 'passed', {
+      excerpt: await getBodyTextExcerpt(browser.session, 500),
+    });
+
+    await setBrowserStudyState(browser.session, {
+      email,
+      scheduleEntries: buildRecencyEntries({ today: new Date() }),
+      userData: buildSeededUserData({
+        sessions: [
+          {
+            date: toDateKey(),
+            timestamp: new Date().toISOString(),
+            minutes: 25,
+            points: 20,
+            subject: 'Matematica',
+            duration: 1500,
+            goalMet: true,
+            topicName: 'Porcentagem',
+            accuracy: 0.9,
+          },
+        ],
+      }),
+    });
+    await browser.session.send('Page.navigate', { url: `${BASE_URL}?tab=inicio&qa=recency` });
+    await waitFor(browser.session, 'document.readyState === "complete"', { label: 'reload after recency seed' });
+    await dismissKnownPrompts(browser.session);
+    await waitForSelector(browser.session, '[data-testid="study-now-card"]', { timeoutMs: 30000 });
+    await waitFor(
+      browser.session,
+      `(() => {
+        const card = document.querySelector('[data-testid="study-now-card"]');
+        if (!card) return false;
+        const topic = (card.getAttribute('data-study-topic') || '').trim();
+        return topic === 'Regra de 3';
+      })()`,
+      { timeoutMs: 30000, label: 'home recency alternative topic' },
+    );
+    recordStep('home_avoids_immediate_topic_repetition', 'passed', {
+      excerpt: await getBodyTextExcerpt(browser.session, 500),
+    });
+
+    await setBrowserStudyState(browser.session, {
+      email,
+      scheduleEntries: [],
+      userData: buildSeededUserData(),
+    });
+    await browser.session.send('Page.navigate', { url: `${BASE_URL}?tab=cronograma` });
+    await waitFor(browser.session, 'document.readyState === "complete"', { label: 'cronograma load complete' });
     await dismissKnownPrompts(browser.session);
     await waitForSelector(browser.session, '[data-testid="today-execution-card"]', { timeoutMs: 30000 });
     await waitForSelectorAttribute(browser.session, '[data-testid="today-execution-card"]', 'data-card-status', 'ready', { timeoutMs: 30000 });

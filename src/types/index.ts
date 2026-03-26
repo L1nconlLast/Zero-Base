@@ -505,8 +505,13 @@ export interface ScheduleEntry {
   topic?: string;
   studyType?: 'teoria_questoes' | 'questoes' | 'revisao' | 'simulado';
   priority?: 'normal' | 'alta';
+  manualPriority?: boolean;
   aiReason?: string;
   source?: 'manual' | 'motor' | 'ia';
+  createdAt?: string;
+  updatedAt?: string;
+  lastManualEditAt?: string;
+  lastManualTargetDate?: string;
 }
 
 export type Weekday =

@@ -3,9 +3,10 @@ import type { ScheduleEntry } from '../types';
 import {
   moveScheduleEntry,
   postponeScheduleEntry,
+  persistScheduleEntriesSnapshot,
   prioritizeScheduleEntry,
+  readPersistedScheduleEntries,
   sortScheduleEntries,
-  STUDY_SCHEDULE_STORAGE_KEY,
   studyScheduleService,
 } from '../services/studySchedule.service.ts';
 import { isSupabaseConfigured } from '../services/supabase.client';
@@ -22,29 +23,45 @@ const generateId = (): string => {
 };
 
 const loadEntries = (): ScheduleEntry[] => {
-  try {
-    const raw = window.localStorage.getItem(STUDY_SCHEDULE_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return readPersistedScheduleEntries();
 };
 
 const persist = (entries: ScheduleEntry[]): void => {
-  try {
-    window.localStorage.setItem(STUDY_SCHEDULE_STORAGE_KEY, JSON.stringify(entries.slice(-MAX_ENTRIES)));
-  } catch {
-    // ignore
-  }
+  persistScheduleEntriesSnapshot(entries.slice(-MAX_ENTRIES));
 };
 
-/** Merge local + cloud: cloud vence em caso de conflito por id */
+const mergeEntryMetadata = (local: ScheduleEntry, cloud: ScheduleEntry): ScheduleEntry => ({
+  ...cloud,
+  manualPriority: cloud.manualPriority ?? local.manualPriority,
+  lastManualEditAt: cloud.lastManualEditAt ?? local.lastManualEditAt,
+  lastManualTargetDate: cloud.lastManualTargetDate ?? local.lastManualTargetDate,
+  createdAt: cloud.createdAt ?? local.createdAt,
+  updatedAt: cloud.updatedAt ?? local.updatedAt,
+  priority:
+    cloud.priority && cloud.priority !== 'normal'
+      ? cloud.priority
+      : local.priority ?? cloud.priority,
+});
+
+const stampEntryUpdate = (
+  entry: ScheduleEntry,
+  updatedAt: string,
+  patch: Partial<ScheduleEntry> = {},
+): ScheduleEntry => ({
+  ...entry,
+  ...patch,
+  createdAt: entry.createdAt ?? updatedAt,
+  updatedAt,
+});
+
+/** Merge local + cloud: cloud vence na base, mas preservamos metadados locais de edicao */
 const mergeEntries = (local: ScheduleEntry[], cloud: ScheduleEntry[]): ScheduleEntry[] => {
   const map = new Map<string, ScheduleEntry>();
   for (const e of local) map.set(e.id, e);
-  for (const e of cloud) map.set(e.id, e); // cloud overrides
+  for (const e of cloud) {
+    const localEntry = map.get(e.id);
+    map.set(e.id, localEntry ? mergeEntryMetadata(localEntry, e) : e);
+  }
   return sortScheduleEntries([...map.values()]).slice(-MAX_ENTRIES);
 };
 
@@ -133,12 +150,17 @@ export function useStudySchedule(userId?: string | null) {
   /** Adiciona uma entrada no cronograma */
   const addEntry = useCallback(
     (date: string, subject: string, note?: string, extras?: Partial<ScheduleEntry>) => {
+      const now = new Date().toISOString();
       const entry: ScheduleEntry = {
         id: generateId(),
         date,
         subject,
         note: note?.trim() || undefined,
         done: false,
+        createdAt: now,
+        updatedAt: now,
+        lastManualEditAt: extras?.source === 'manual' ? now : extras?.lastManualEditAt,
+        lastManualTargetDate: extras?.source === 'manual' ? date : extras?.lastManualTargetDate,
         ...extras,
       };
       setEntries((prev) => sortScheduleEntries([...prev, entry]));
@@ -156,8 +178,25 @@ export function useStudySchedule(userId?: string | null) {
   /** Atualiza parcialmente uma entrada */
   const updateEntry = useCallback((id: string, patch: Partial<ScheduleEntry>) => {
     setEntries((prev) => {
+      const now = new Date().toISOString();
       const updated = sortScheduleEntries(
-        prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+        prev.map((entry) => {
+          if (entry.id !== id) {
+            return entry;
+          }
+
+          const nextPatch: Partial<ScheduleEntry> = {
+            ...patch,
+          };
+          if (patch.source === 'manual') {
+            nextPatch.lastManualEditAt = now;
+            if (patch.date || entry.date) {
+              nextPatch.lastManualTargetDate = patch.date ?? entry.date;
+            }
+          }
+
+          return stampEntryUpdate(entry, now, nextPatch);
+        }),
       );
 
       const target = updated.find((entry) => entry.id === id);
@@ -229,15 +268,15 @@ export function useStudySchedule(userId?: string | null) {
   /** Marca/desmarca como concluída */
   const toggleDone = useCallback((id: string) => {
     setEntries((prev) => {
+      const now = new Date().toISOString();
       const updated = prev.map((e) => {
         if (e.id !== id) return e;
         const nextDone = !e.done;
         const nextStatus: ScheduleEntry['status'] = nextDone ? 'concluido' : 'pendente';
-        return {
-          ...e,
+        return stampEntryUpdate(e, now, {
           done: nextDone,
           status: nextStatus,
-        };
+        });
       });
       const entry = updated.find((e) => e.id === id);
 
@@ -252,7 +291,11 @@ export function useStudySchedule(userId?: string | null) {
   /** Atualiza nota de uma entrada */
   const updateNote = useCallback((id: string, note: string) => {
     setEntries((prev) => {
-      const updated = prev.map((e) => (e.id === id ? { ...e, note: note.trim() || undefined } : e));
+      const now = new Date().toISOString();
+      const updated = prev.map((e) =>
+        e.id === id
+          ? stampEntryUpdate(e, now, { note: note.trim() || undefined })
+          : e);
       const entry = updated.find((e) => e.id === id);
 
       if (entry && userId && isSupabaseConfigured) {
@@ -290,12 +333,13 @@ export function useStudySchedule(userId?: string | null) {
       });
 
       const adaptedMap = new Map(adaptedBlocks.map((block) => [block.id, block]));
+      const now = new Date().toISOString();
       const next = sortScheduleEntries(prev.map((entry) => {
         const block = adaptedMap.get(entry.id);
         if (!block) {
           return entry;
         }
-        return { ...entry, ...toEntryPatch(block), source: 'ia' as const };
+        return stampEntryUpdate(entry, now, { ...toEntryPatch(block), source: 'ia' as const });
       }));
 
       if (userId && isSupabaseConfigured) {

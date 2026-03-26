@@ -53,6 +53,12 @@ export interface StudySessionResult {
   durationSeconds: number;
 }
 
+export interface StudySessionFocusOverride {
+  subject: string;
+  topic?: string | null;
+  reason?: string | null;
+}
+
 const normalizeSessionStatus = (
   session: Partial<StudySession> & {
     finishedAt?: string | null;
@@ -85,10 +91,13 @@ const normalizeStudySession = (session: StudySession): StudySession => ({
 });
 
 export const mvpStudySessionsService = {
-  async createSession(limit = 5): Promise<StudySession> {
+  async createSession(limit = 5, focusOverride?: StudySessionFocusOverride): Promise<StudySession> {
     const response = await requestMvpWithAuth<{ success: true; session: StudySession }>('/api/study-sessions', {
       method: 'POST',
-      body: JSON.stringify({ limit }),
+      body: JSON.stringify({
+        limit,
+        ...(focusOverride ? { focusOverride } : {}),
+      }),
     });
 
     return normalizeStudySession(response.session);

@@ -98,10 +98,43 @@ export interface OperationalScheduleWindowDay {
   items: OperationalScheduleWindowItem[];
 }
 
+export interface StudyPrioritizationRecentSession {
+  subject: string;
+  topic?: string | null;
+  completedAt: string;
+  accuracy?: number | null;
+}
+
+export interface StudyPrioritizationContext {
+  today?: Date;
+  schedule?: WeeklyStudySchedule;
+  recentSessions?: StudyPrioritizationRecentSession[];
+  currentWeakPoint?: string | null;
+  weeklyCompletedSessions?: number;
+  weeklyGoalSessions?: number;
+}
+
+export interface StudyPrioritizationBreakdown {
+  overdueScore: number;
+  manualPriorityScore: number;
+  weaknessScore: number;
+  weeklyLoadScore: number;
+  recencyAdjustment: number;
+  recentPerformanceAdjustment: number;
+}
+
+export interface PrioritizedScheduledStudyFocus {
+  entry: ScheduleEntry;
+  score: number;
+  reasonSummary: string;
+  breakdown: StudyPrioritizationBreakdown;
+}
+
 export const DEFAULT_OPERATIONAL_WINDOW_DAYS = 6;
 
 const TABLE = 'study_blocks';
 export const STUDY_SCHEDULE_STORAGE_KEY = 'mdz_study_schedule';
+export const STUDY_SCHEDULE_UPDATED_EVENT = 'zb-study-schedule-updated';
 const WEEKDAYS: Weekday[] = [
   'monday',
   'tuesday',
@@ -249,9 +282,22 @@ const persistLocalScheduleEntries = (entries: ScheduleEntry[]): void => {
 
   try {
     window.localStorage.setItem(STUDY_SCHEDULE_STORAGE_KEY, JSON.stringify(entries));
+    window.dispatchEvent(
+      new CustomEvent(STUDY_SCHEDULE_UPDATED_EVENT, {
+        detail: {
+          entries,
+        },
+      }),
+    );
   } catch {
     // ignore local persistence failures
   }
+};
+
+export const readPersistedScheduleEntries = (): ScheduleEntry[] => loadLocalScheduleEntries();
+
+export const persistScheduleEntriesSnapshot = (entries: ScheduleEntry[]): void => {
+  persistLocalScheduleEntries(entries);
 };
 
 const sanitizeWeeklyPreferences = (value: unknown): WeeklyStudyPreferences => {
@@ -372,6 +418,321 @@ export const compareScheduleEntries = (left: ScheduleEntry, right: ScheduleEntry
 
 export const sortScheduleEntries = (entries: ScheduleEntry[]): ScheduleEntry[] =>
   [...entries].sort(compareScheduleEntries);
+
+const PRIORITIZATION_WEIGHT = {
+  overdue: 100,
+  overdueCritical: 130,
+  manualPriority: 70,
+  manualMovedToToday: 40,
+  weaknessHigh: 50,
+  weaknessMedium: 20,
+  weeklyUnderloaded: 20,
+  weeklyOverloaded: -10,
+  recentTopicPenalty: -25,
+  recentSubjectPenalty: -12,
+  notSeenRecently: 10,
+  weakRecentPerformance: 15,
+  strongRecentPerformance: -10,
+} as const;
+
+const toDateAtNoon = (value: string): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T12:00:00`)
+    : new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const differenceInCalendarDays = (left: Date, right: Date): number => {
+  const leftCopy = new Date(left);
+  leftCopy.setHours(12, 0, 0, 0);
+  const rightCopy = new Date(right);
+  rightCopy.setHours(12, 0, 0, 0);
+  return Math.round((leftCopy.getTime() - rightCopy.getTime()) / (24 * 60 * 60 * 1000));
+};
+
+const isManualPriorityEntry = (entry: ScheduleEntry): boolean =>
+  entry.manualPriority === true;
+
+const wasManuallyMovedToToday = (entry: ScheduleEntry, todayDateKey: string): boolean =>
+  entry.lastManualTargetDate === todayDateKey;
+
+const getEntryUpdatedAt = (entry: ScheduleEntry): number =>
+  Date.parse(entry.lastManualEditAt || entry.updatedAt || entry.createdAt || '') || 0;
+
+const buildWeaknessScore = (entry: ScheduleEntry, currentWeakPoint?: string | null): number => {
+  const normalizedWeakPoint = normalizeScheduleMatcher(currentWeakPoint);
+  if (!normalizedWeakPoint) {
+    return 0;
+  }
+
+  const entrySubject = normalizeScheduleMatcher(entry.subject);
+  const entryTopic = normalizeScheduleMatcher(entry.topic);
+  if (entrySubject === normalizedWeakPoint || entryTopic === normalizedWeakPoint) {
+    return PRIORITIZATION_WEIGHT.weaknessHigh;
+  }
+
+  if (entrySubject.includes(normalizedWeakPoint) || normalizedWeakPoint.includes(entrySubject)) {
+    return PRIORITIZATION_WEIGHT.weaknessMedium;
+  }
+
+  return 0;
+};
+
+const buildWeeklyLoadScore = (
+  entry: ScheduleEntry,
+  entries: ScheduleEntry[],
+  today: Date,
+  schedule?: WeeklyStudySchedule,
+): number => {
+  const windowEndDateKey = getOperationalWindowEndDateKey(today, DEFAULT_OPERATIONAL_WINDOW_DAYS);
+  const subjectKey = normalizeScheduleMatcher(entry.subject);
+  const sameSubjectEntries = entries.filter((candidate) => {
+    if (isCompletedEntry(candidate)) {
+      return false;
+    }
+
+    const candidateDate = candidate.date.slice(0, 10);
+    return candidateDate >= toDateKey(today)
+      && candidateDate <= windowEndDateKey
+      && normalizeScheduleMatcher(candidate.subject) === subjectKey;
+  }).length;
+
+  const weeklyPlannedSessions = schedule
+    ? Object.values(schedule.weekPlan).reduce((sum, day) => sum + day.subjectLabels.length, 0)
+    : 0;
+  const activeDays = schedule ? getActiveDaysCount(schedule.availability) : 0;
+  const expectedSessionsPerSubject = weeklyPlannedSessions > 0
+    ? Math.max(1, Math.round(weeklyPlannedSessions / Math.max(1, activeDays || 1)))
+    : 1;
+
+  if (sameSubjectEntries <= Math.max(1, expectedSessionsPerSubject - 1)) {
+    return PRIORITIZATION_WEIGHT.weeklyUnderloaded;
+  }
+
+  if (sameSubjectEntries > expectedSessionsPerSubject + 1) {
+    return PRIORITIZATION_WEIGHT.weeklyOverloaded;
+  }
+
+  return 0;
+};
+
+const buildRecencyAdjustment = (
+  entry: ScheduleEntry,
+  recentSessions: StudyPrioritizationRecentSession[],
+): number => {
+  const recentMatch = recentSessions.find((session) => {
+    const sameSubject = normalizeScheduleMatcher(session.subject) === normalizeScheduleMatcher(entry.subject);
+    if (!sameSubject) {
+      return false;
+    }
+
+    if (entry.topic && session.topic) {
+      return normalizeScheduleMatcher(session.topic) === normalizeScheduleMatcher(entry.topic);
+    }
+
+    return true;
+  });
+
+  if (!recentMatch) {
+    return PRIORITIZATION_WEIGHT.notSeenRecently;
+  }
+
+  const completedAt = toDateAtNoon(recentMatch.completedAt);
+  if (!completedAt) {
+    return 0;
+  }
+
+  const daysSinceCompletion = Math.abs(differenceInCalendarDays(new Date(), completedAt));
+  if (daysSinceCompletion <= 1) {
+    return entry.topic && recentMatch.topic
+      ? PRIORITIZATION_WEIGHT.recentTopicPenalty
+      : PRIORITIZATION_WEIGHT.recentSubjectPenalty;
+  }
+
+  if (daysSinceCompletion >= 3) {
+    return PRIORITIZATION_WEIGHT.notSeenRecently;
+  }
+
+  return 0;
+};
+
+const buildRecentPerformanceAdjustment = (
+  entry: ScheduleEntry,
+  recentSessions: StudyPrioritizationRecentSession[],
+): number => {
+  const performanceMatch = recentSessions.find((session) =>
+    normalizeScheduleMatcher(session.subject) === normalizeScheduleMatcher(entry.subject)
+    && typeof session.accuracy === 'number');
+
+  if (!performanceMatch || typeof performanceMatch.accuracy !== 'number') {
+    return 0;
+  }
+
+  if (performanceMatch.accuracy < 0.6) {
+    return PRIORITIZATION_WEIGHT.weakRecentPerformance;
+  }
+
+  if (performanceMatch.accuracy >= 0.8) {
+    return PRIORITIZATION_WEIGHT.strongRecentPerformance;
+  }
+
+  return 0;
+};
+
+const buildReasonSummary = (breakdown: StudyPrioritizationBreakdown): string => {
+  const positiveSignals = [
+    breakdown.overdueScore > 0 ? { label: 'Atrasado', weight: breakdown.overdueScore } : null,
+    breakdown.manualPriorityScore >= PRIORITIZATION_WEIGHT.manualPriority
+      ? { label: 'Prioridade alta', weight: breakdown.manualPriorityScore }
+      : breakdown.manualPriorityScore > 0
+        ? { label: 'Remarcado para hoje', weight: breakdown.manualPriorityScore }
+        : null,
+    breakdown.weaknessScore >= PRIORITIZATION_WEIGHT.weaknessHigh
+      ? { label: 'Tema fraco', weight: breakdown.weaknessScore }
+      : breakdown.weaknessScore > 0
+        ? { label: 'Ponto de atencao', weight: breakdown.weaknessScore }
+        : null,
+    breakdown.weeklyLoadScore > 0 ? { label: 'Baixa cobertura na semana', weight: breakdown.weeklyLoadScore } : null,
+    breakdown.recencyAdjustment > 0 ? { label: 'Nao apareceu recentemente', weight: breakdown.recencyAdjustment } : null,
+    breakdown.recentPerformanceAdjustment > 0
+      ? { label: 'Desempenho recente fraco', weight: breakdown.recentPerformanceAdjustment }
+      : null,
+  ]
+    .filter(Boolean)
+    .sort((left, right) => (right?.weight || 0) - (left?.weight || 0)) as Array<{ label: string; weight: number }>;
+
+  if (positiveSignals.length >= 2) {
+    return `${positiveSignals[0].label} e ${positiveSignals[1].label}`;
+  }
+
+  if (positiveSignals.length === 1) {
+    return positiveSignals[0].label;
+  }
+
+  if (breakdown.recencyAdjustment < 0) {
+    return 'Ainda assim e o melhor bloco disponivel agora';
+  }
+
+  return 'Melhor equilibrio atual do cronograma';
+};
+
+export const scoreScheduledStudyEntry = (
+  entry: ScheduleEntry,
+  entries: ScheduleEntry[],
+  context: StudyPrioritizationContext = {},
+): PrioritizedScheduledStudyFocus => {
+  const today = context.today ?? new Date();
+  const todayDateKey = toDateKey(today);
+  const entryDateKey = entry.date.slice(0, 10);
+  const overdueDays = Math.max(0, differenceInCalendarDays(today, new Date(`${entryDateKey}T12:00:00`)));
+  const recentSessions = context.recentSessions ?? [];
+  const overdueScore = overdueDays >= 2
+    ? PRIORITIZATION_WEIGHT.overdueCritical
+    : overdueDays >= 1 || entry.status === 'adiado'
+      ? PRIORITIZATION_WEIGHT.overdue
+      : 0;
+  const manualPriorityScore = isManualPriorityEntry(entry)
+    ? PRIORITIZATION_WEIGHT.manualPriority
+    : wasManuallyMovedToToday(entry, todayDateKey)
+      ? PRIORITIZATION_WEIGHT.manualMovedToToday
+      : 0;
+  const weaknessScore = buildWeaknessScore(entry, context.currentWeakPoint);
+  const weeklyLoadScore = buildWeeklyLoadScore(entry, entries, today, context.schedule);
+  const recencyAdjustment = buildRecencyAdjustment(entry, recentSessions);
+  const recentPerformanceAdjustment = buildRecentPerformanceAdjustment(entry, recentSessions);
+  const breakdown = {
+    overdueScore,
+    manualPriorityScore,
+    weaknessScore,
+    weeklyLoadScore,
+    recencyAdjustment,
+    recentPerformanceAdjustment,
+  } satisfies StudyPrioritizationBreakdown;
+  const score = Object.values(breakdown).reduce((sum, value) => sum + value, 0);
+
+  return {
+    entry,
+    score,
+    reasonSummary: buildReasonSummary(breakdown),
+    breakdown,
+  };
+};
+
+export const chooseNextScheduledStudyFocus = (
+  entries: ScheduleEntry[],
+  context: StudyPrioritizationContext = {},
+): PrioritizedScheduledStudyFocus | null => {
+  const today = context.today ?? new Date();
+  const todayDateKey = toDateKey(today);
+
+  const candidates = entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => {
+      if (isCompletedEntry(entry)) {
+        return false;
+      }
+
+      return entry.date.slice(0, 10) <= todayDateKey;
+    })
+    .map(({ entry, index }) => ({
+      ...scoreScheduledStudyEntry(entry, entries, context),
+      index,
+    }));
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((left, right) => {
+    if (left.score !== right.score) {
+      return right.score - left.score;
+    }
+
+    const leftDateDistance = Math.abs(differenceInCalendarDays(today, new Date(`${left.entry.date}T12:00:00`)));
+    const rightDateDistance = Math.abs(differenceInCalendarDays(today, new Date(`${right.entry.date}T12:00:00`)));
+    if (leftDateDistance !== rightDateDistance) {
+      return leftDateDistance - rightDateDistance;
+    }
+
+    const leftManualPriority = Number(isManualPriorityEntry(left.entry));
+    const rightManualPriority = Number(isManualPriorityEntry(right.entry));
+    if (leftManualPriority !== rightManualPriority) {
+      return rightManualPriority - leftManualPriority;
+    }
+
+    if (left.breakdown.weaknessScore !== right.breakdown.weaknessScore) {
+      return right.breakdown.weaknessScore - left.breakdown.weaknessScore;
+    }
+
+    const leftManualMoveToTodayAt = wasManuallyMovedToToday(left.entry, todayDateKey) ? getEntryUpdatedAt(left.entry) : 0;
+    const rightManualMoveToTodayAt = wasManuallyMovedToToday(right.entry, todayDateKey) ? getEntryUpdatedAt(right.entry) : 0;
+    if (leftManualMoveToTodayAt !== rightManualMoveToTodayAt) {
+      return rightManualMoveToTodayAt - leftManualMoveToTodayAt;
+    }
+
+    const stableOrder = compareScheduleEntries(left.entry, right.entry);
+    if (stableOrder !== 0) {
+      return stableOrder;
+    }
+
+    return left.index - right.index;
+  });
+
+  const winner = candidates[0];
+  return winner
+    ? {
+        entry: winner.entry,
+        score: winner.score,
+        reasonSummary: winner.reasonSummary,
+        breakdown: winner.breakdown,
+      }
+    : null;
+};
 
 const toComparableEntryDate = (value: string): Date | null => {
   if (!value) return null;
@@ -938,6 +1299,7 @@ export const moveScheduleEntry = (
   entries: ScheduleEntry[],
   entryId: string,
   toDate: string,
+  editedAt = new Date().toISOString(),
 ): ScheduleEntry[] => {
   const normalizedTargetDate = normalizeDateKeyInput(toDate);
   if (!normalizedTargetDate) {
@@ -954,6 +1316,9 @@ export const moveScheduleEntry = (
     return {
       ...entry,
       date: normalizedTargetDate,
+      updatedAt: editedAt,
+      lastManualEditAt: editedAt,
+      lastManualTargetDate: normalizedTargetDate,
     };
   });
 
@@ -992,6 +1357,7 @@ export const postponeScheduleEntry = (
 export const prioritizeScheduleEntry = (
   entries: ScheduleEntry[],
   entryId: string,
+  editedAt = new Date().toISOString(),
 ): ScheduleEntry[] => {
   let changed = false;
   const nextEntries = entries.map((entry) => {
@@ -1007,6 +1373,9 @@ export const prioritizeScheduleEntry = (
     return {
       ...entry,
       priority: 'alta' as const,
+      manualPriority: true,
+      updatedAt: editedAt,
+      lastManualEditAt: editedAt,
     };
   });
 
@@ -1206,7 +1575,12 @@ const fromRow = (row: StudyBlockRow): ScheduleEntry => ({
   done: row.status === 'concluido',
   aiReason: row.reason ?? undefined,
   source: (row.source as ScheduleEntry['source']) ?? undefined,
-  priority: row.reason ? 'alta' : 'normal',
+  priority:
+    (row.source === 'motor' || row.source === 'ia') && row.reason
+      ? 'alta'
+      : 'normal',
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
 });
 
 class StudyScheduleService {
@@ -1405,6 +1779,7 @@ class StudyScheduleService {
       ...target.entry,
       done: true,
       status: 'concluido',
+      updatedAt: new Date().toISOString(),
     };
     const nextEntries = [...localEntries];
     nextEntries[target.index] = updatedEntry;

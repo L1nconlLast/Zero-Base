@@ -16,6 +16,12 @@ type RecommendationContext = {
   reason: string;
 };
 
+type StudySessionFocusOverride = {
+  subject: string;
+  topic?: string | null;
+  reason?: string | null;
+};
+
 type TopicRelation = {
   nome: string | null;
   disciplinas?: DisciplineRelation | DisciplineRelation[] | null;
@@ -318,7 +324,23 @@ const shuffle = <T,>(input: T[]): T[] => {
 const getSessionDateKey = (rawDate?: string | null): string =>
   String(rawDate || '').slice(0, 10);
 
-const getRecommendationContext = async (userId: string): Promise<RecommendationContext> => {
+const getRecommendationContext = async (
+  userId: string,
+  focusOverride?: StudySessionFocusOverride | null,
+): Promise<RecommendationContext> => {
+  if (focusOverride?.subject) {
+    const meta = getRecommendationMeta(focusOverride.subject, focusOverride.topic || null);
+    return {
+      subject: meta.subject,
+      topic: meta.topic,
+      disciplineSlug: meta.disciplineSlug,
+      disciplineName: meta.disciplineName,
+      topicSlug: meta.topicSlug,
+      topicName: meta.topicName,
+      reason: focusOverride.reason || `Bloco priorizado em ${meta.disciplineName}.`,
+    };
+  }
+
   const recommendation = await ensureRecommendationForUser(userId);
   if (!recommendation) {
     throw new Error('Nao foi possivel gerar a recomendacao inicial da sessao.');
@@ -792,6 +814,7 @@ const upsertDailyProgress = async (
 export const createOrResumeStudySession = async (
   userId: string,
   limit = DEFAULT_LIMIT,
+  focusOverride?: StudySessionFocusOverride | null,
 ): Promise<StudySessionView> => {
   const contractMode = await getStudySessionContractMode();
   const activeSession = await getLatestActiveStudySessionRow(userId);
@@ -811,10 +834,15 @@ export const createOrResumeStudySession = async (
       .eq('user_id', userId);
   }
 
-  const recommendation = await getRecommendationContext(userId);
+  const recommendation = await getRecommendationContext(userId, focusOverride);
   const questions = await selectSessionQuestions(userId, recommendation, limit);
   const client = assertAdminSupabase();
   const now = new Date().toISOString();
+  const encodedSessionSubject = encodeLegacySessionSubject(recommendation.disciplineName, {
+    topicName: getSessionTopicName(questions),
+    questionIds: questions.map((question) => question.id),
+    reason: recommendation.reason,
+  });
 
   const basePayload = {
     user_id: userId,
@@ -831,7 +859,7 @@ export const createOrResumeStudySession = async (
       .from('study_sessions')
       .insert({
         ...basePayload,
-        subject: recommendation.disciplineName,
+        subject: encodedSessionSubject,
         status: 'active',
         total_questions: questions.length,
         correct_answers: 0,
@@ -843,11 +871,7 @@ export const createOrResumeStudySession = async (
       .from('study_sessions')
       .insert({
         ...basePayload,
-        subject: encodeLegacySessionSubject(recommendation.disciplineName, {
-          topicName: getSessionTopicName(questions),
-          questionIds: questions.map((question) => question.id),
-          reason: recommendation.reason,
-        }),
+        subject: encodedSessionSubject,
       })
       .select(STUDY_SESSION_SELECT_LEGACY)
       .single();
