@@ -1159,6 +1159,16 @@ const waitForUnlockFeedback = async (session) =>
     { timeoutMs: 10000, intervalMs: 150, label: 'toast/overlay de conquista' },
   );
 
+const waitForUnlockFeedbackToDisappear = async (session) =>
+  waitFor(
+    session,
+    `(() => {
+      const text = (document.body?.innerText || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+      return !text.includes('conquista desbloqueada');
+    })()`,
+    { timeoutMs: 12000, intervalMs: 150, label: 'auto-dismiss da conquista' },
+  );
+
 const openAchievementsPage = async (session) => {
   await setViewport(session, { width: 1440, height: 1200, mobile: false });
   await closeOptionalOverlays(session);
@@ -1326,6 +1336,7 @@ const runSessionUnlockScenario = async ({
     await waitForUnlockMeta(browser.session, metaKey, targetAchievement);
     await waitForLocalAchievement(browser.session, dataKey, targetAchievement);
     await waitForUnlockFeedback(browser.session);
+    await waitForUnlockFeedbackToDisappear(browser.session);
 
     await navigate(browser.session, `${baseUrl}/`);
     await openAchievementsPage(browser.session);

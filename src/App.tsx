@@ -22,7 +22,6 @@ import { RegisterForm } from './components/Auth/RegisterForm';
 import { Header } from './components/Layout/Header';
 import { PomodoroTimer } from './components/Timer/PomodoroTimer';
 import { ModeSelector } from './components/Timer/ModeSelector';
-import AchievementNotification from './components/Dashboard/AchievementNotification';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { BeginnerOnboarding, type BeginnerOnboardingPayload } from './components/Beginner/BeginnerOnboarding';
 import { BeginnerSessionResult } from './components/Beginner/BeginnerSessionResult';
@@ -566,7 +565,7 @@ function App() {
 
   // Achievements Hook (com cloud sync)
   const lastAchievementToastRef = React.useRef<string | null>(null);
-  const { newlyUnlocked, dismissNewlyUnlocked, unlockedAchievements } = useAchievements(
+  const { newlyUnlocked, unlockedAchievements } = useAchievements(
     userData,
     supabaseUserId,
     applyAchievementReward,
@@ -3693,13 +3692,6 @@ function App() {
     <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors ${darkMode ? 'dark' : ''}`}>
       <Toaster position="top-center" />
         <NotificationSetup />
-        {/* Achievement Notification */}
-        {newlyUnlocked && (
-          <AchievementNotification 
-            achievement={newlyUnlocked} 
-            onClose={dismissNewlyUnlocked} 
-          />
-        )}
       
       <Header
         userName={resolvedDisplayName}
