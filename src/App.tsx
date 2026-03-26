@@ -31,6 +31,8 @@ import { ConfirmModal } from './components/UI/ConfirmModal';
 import { DevPhaseSwitcher } from './components/UI/DevPhaseSwitcher';
 import { StudyExecutionBanner } from './components/Study/StudyExecutionBanner';
 import { ProfileAdminSnapshotCard } from './components/profile/ProfileAdminSnapshotCard';
+import { StudySessionPage as OfficialStudySessionPage } from './components/Mvp/StudySessionPage';
+import { StudySessionResult as OfficialStudySessionResultView } from './components/Mvp/StudySessionResult';
 
 // Constants
 import { INITIAL_USER_DATA, STORAGE_KEYS } from './constants';
@@ -53,6 +55,15 @@ import { weeklyStreakService } from './services/weeklyStreak.service';
 import { beginnerFlowService } from './services/beginnerFlow.service';
 import { beginnerProgressService } from './services/beginnerProgress.service';
 import {
+  isStudyLoopEmptyStateError,
+  studyLoopApiService,
+  studyLoopSessionsService,
+  type OfficialStudySession,
+  type OfficialStudySessionResult,
+  type StudyLoopHomePayload,
+  type StudyLoopRecommendation,
+} from './services/studyLoopApi.service';
+import {
   buildStudyContextForToday,
   createDefaultWeeklyStudySchedule,
   getNextStudyCopy,
@@ -60,6 +71,7 @@ import {
   getPaceCopy,
   getWeekdayFromDate,
   getRecentPaceState,
+  studyScheduleService,
   getWeeklyPlanConfidenceState,
   sanitizeWeeklyStudySchedule,
 } from './services/studySchedule.service';
@@ -74,6 +86,7 @@ import type {
   BeginnerStats,
   PersistedStudySession,
   BeginnerWeekSummary,
+  StudySession,
   StudyContextForToday,
   StudyExecutionState,
   Weekday,
@@ -130,6 +143,17 @@ type BeginnerAssessmentResult = {
   xpGained: number;
 };
 
+type OfficialStudyCompletionSnapshot = StudySession & {
+  topic?: string;
+  topicName?: string;
+};
+
+type OfficialStudyAssessmentSummary = {
+  subject: string;
+  correct: number;
+  total: number;
+};
+
 type BeginnerWeekSummaryAction = 'continue_guided' | 'explore_tools';
 type StudyFlowStep = 'idle' | 'focusing' | 'focusCompleted' | 'questionTransition' | 'questioning';
 type LastCompletedFocus = {
@@ -139,6 +163,87 @@ type LastCompletedFocus = {
   targetQuestions: number;
   todaySessionCount: number;
   completedAt: string;
+};
+type OfficialStudyHomeState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | {
+      status: 'empty';
+      title: string;
+      description: string;
+      supportingText?: string;
+    }
+  | {
+      status: 'error';
+      message: string;
+    }
+  | {
+      status: 'ready';
+      home: StudyLoopHomePayload & { success: true };
+      recommendation: StudyLoopRecommendation | null;
+    };
+
+type BeginnerScopedStorageSnapshot = {
+  scope: string;
+  ready: boolean;
+  hasPlan: boolean;
+  hasState: boolean;
+  hasStats: boolean;
+};
+
+const normalizeOfficialStudySubject = (subject: string): MateriaTipo =>
+  (String(subject || 'Outra').trim() || 'Outra') as MateriaTipo;
+
+const buildStudySessionIdentityKey = (
+  session: Pick<StudySession, 'date' | 'subject' | 'minutes' | 'duration' | 'points'>,
+): string =>
+  `${session.date}|${session.subject}|${session.minutes}|${session.duration}|${session.points}`;
+
+const buildOfficialStudyCompletionSnapshot = (
+  session: OfficialStudySession,
+  result: OfficialStudySessionResult,
+): OfficialStudyCompletionSnapshot => {
+  const sessionDate = session.startedAt || new Date().toISOString();
+  return {
+    date: sessionDate,
+    timestamp: sessionDate,
+    minutes: Math.max(1, Math.ceil(result.durationSeconds / 60)),
+    points: Math.max(0, result.correct * 10),
+    subject: normalizeOfficialStudySubject(session.subject),
+    duration: result.durationSeconds,
+    goalMet: true,
+    topic: session.topic,
+    topicName: session.topic,
+  };
+};
+
+const summarizeOfficialStudyAssessmentBySubject = (
+  session: OfficialStudySession,
+): OfficialStudyAssessmentSummary[] => {
+  const grouped = new Map<string, OfficialStudyAssessmentSummary>();
+
+  session.questions.forEach((question) => {
+    const answer = session.answers[question.id];
+    if (!answer) {
+      return;
+    }
+
+    const subject = String(question.subject || session.subject || 'Outra').trim() || 'Outra';
+    const current = grouped.get(subject) || {
+      subject,
+      correct: 0,
+      total: 0,
+    };
+
+    current.total += 1;
+    if (answer.isCorrect) {
+      current.correct += 1;
+    }
+
+    grouped.set(subject, current);
+  });
+
+  return [...grouped.values()];
 };
 
 const readPersistedStudySession = (storageKey: string): PersistedStudySession | null => {
@@ -356,6 +461,13 @@ function App() {
   const [beginnerStats, setBeginnerStats] = useLocalStorage<BeginnerStats | null>(`beginnerStats_${userStorageScope}`, null);
   const [lastBeginnerResult, setLastBeginnerResult] = useState<BeginnerSessionUiResult | null>(null);
   const [showBeginnerWeekSummary, setShowBeginnerWeekSummary] = useState(false);
+  const [officialStudyHomeState, setOfficialStudyHomeState] = useState<OfficialStudyHomeState>({ status: 'idle' });
+  const [officialStudySession, setOfficialStudySession] = useState<OfficialStudySession | null>(null);
+  const [officialStudyResult, setOfficialStudyResult] = useState<OfficialStudySessionResult | null>(null);
+  const [officialStudyStarting, setOfficialStudyStarting] = useState(false);
+  const [officialStudyAnswering, setOfficialStudyAnswering] = useState(false);
+  const [officialStudyFinishing, setOfficialStudyFinishing] = useState(false);
+  const [officialStudyQuestionStartedAt, setOfficialStudyQuestionStartedAt] = useState<number>(Date.now());
   const [lockedNavigationTarget, setLockedNavigationTarget] = useState<{ tabId: string; label: string } | null>(null);
   const [showIntermediateUnlockBanner, setShowIntermediateUnlockBanner] = useState(false);
   const lastMissionViewKeyRef = React.useRef<string | null>(null);
@@ -363,6 +475,13 @@ function App() {
   const lastPostSessionViewKeyRef = React.useRef<string | null>(null);
   const lastWeekSummaryViewKeyRef = React.useRef<string | null>(null);
   const questionTransitionTimeoutRef = React.useRef<number | null>(null);
+  const [beginnerScopedStorage, setBeginnerScopedStorage] = useState<BeginnerScopedStorageSnapshot>({
+    scope: userStorageScope,
+    ready: false,
+    hasPlan: false,
+    hasState: false,
+    hasStats: false,
+  });
   const isBeginnerFocus = Boolean(beginnerState && beginnerState !== 'week_complete');
   const isLocalEnvironment = React.useMemo(() => {
     if (typeof window === 'undefined') {
@@ -1021,6 +1140,50 @@ function App() {
   }, [isLoggedIn, user?.email, userStorageScope]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (authLoading) {
+      setBeginnerScopedStorage({
+        scope: userStorageScope,
+        ready: false,
+        hasPlan: false,
+        hasState: false,
+        hasStats: false,
+      });
+      return;
+    }
+
+    if (!isLoggedIn || !user?.email) {
+      setBeginnerScopedStorage({
+        scope: userStorageScope,
+        ready: false,
+        hasPlan: false,
+        hasState: false,
+        hasStats: false,
+      });
+      return;
+    }
+
+    setBeginnerScopedStorage({
+      scope: userStorageScope,
+      ready: true,
+      hasPlan: window.localStorage.getItem(`beginnerPlan_${userStorageScope}`) !== null,
+      hasState: window.localStorage.getItem(`beginnerState_${userStorageScope}`) !== null,
+      hasStats: window.localStorage.getItem(`beginnerStats_${userStorageScope}`) !== null,
+    });
+  }, [authLoading, isLoggedIn, user?.email, userStorageScope]);
+
+  const isBeginnerScopedStorageReady =
+    beginnerScopedStorage.ready && beginnerScopedStorage.scope === userStorageScope;
+  const hasPersistedBeginnerState = isBeginnerScopedStorageReady && beginnerScopedStorage.hasState;
+  const hasPersistedBeginnerPlan = isBeginnerScopedStorageReady && beginnerScopedStorage.hasPlan;
+  const hasPersistedBeginnerStats = isBeginnerScopedStorageReady && beginnerScopedStorage.hasStats;
+  const hasPersistedBeginnerBootstrap =
+    hasPersistedBeginnerPlan || hasPersistedBeginnerState || hasPersistedBeginnerStats;
+
+  useEffect(() => {
     if (!isLoggedIn || !user?.email) {
       setShowOnboarding(false);
       setBeginnerState(null);
@@ -1030,6 +1193,15 @@ function App() {
     const onboardingKey = `mdzOnboardingCompleted_${user.email}`;
     const completed = window.localStorage.getItem(onboardingKey) === 'true';
     setShowOnboarding(!completed);
+
+    if (!isBeginnerScopedStorageReady) {
+      return;
+    }
+
+    if (hasPersistedBeginnerState && beginnerState === null) {
+      return;
+    }
+
     setBeginnerState((prev) => {
       if (!completed) {
         return 'onboarding';
@@ -1037,10 +1209,22 @@ function App() {
 
       return beginnerFlowService.syncState(beginnerPlan, prev) ?? 'ready_for_first_session';
     });
-  }, [beginnerPlan, isLoggedIn, setBeginnerState, user?.email]);
+  }, [
+    beginnerPlan,
+    beginnerState,
+    hasPersistedBeginnerState,
+    isBeginnerScopedStorageReady,
+    isLoggedIn,
+    setBeginnerState,
+    user?.email,
+  ]);
 
   useEffect(() => {
-    if (!beginnerPlan || beginnerState === 'onboarding' || !isLoggedIn) {
+    if (!beginnerPlan || beginnerState === 'onboarding' || !isLoggedIn || !isBeginnerScopedStorageReady) {
+      return;
+    }
+
+    if (hasPersistedBeginnerState && beginnerState === null) {
       return;
     }
 
@@ -1048,15 +1232,73 @@ function App() {
     if (syncedState && syncedState !== beginnerState) {
       setBeginnerState(syncedState);
     }
-  }, [beginnerPlan, beginnerState, isLoggedIn, setBeginnerState]);
+  }, [
+    beginnerPlan,
+    beginnerState,
+    hasPersistedBeginnerState,
+    isBeginnerScopedStorageReady,
+    isLoggedIn,
+    setBeginnerState,
+  ]);
 
   useEffect(() => {
-    if (!isLoggedIn || !beginnerPlan || beginnerStats) {
+    if (!isLoggedIn || showOnboarding || beginnerPlan || !isBeginnerScopedStorageReady) {
+      return;
+    }
+
+    if (hasPersistedBeginnerBootstrap) {
+      return;
+    }
+
+    const dailyGoal = Math.max(30, userData.dailyGoal || INITIAL_USER_DATA.dailyGoal);
+    const beginnerTrack: StudyTrack = preferredStudyTrack === 'hibrido'
+      ? 'hibrido'
+      : preferredStudyTrack === 'concursos'
+        ? 'concursos'
+        : 'enem';
+    const beginnerSetup = beginnerFlowService.completeOnboarding(beginnerTrack, dailyGoal);
+
+    setBeginnerPlan(beginnerSetup.plan);
+    setBeginnerState((previous) => beginnerFlowService.syncState(beginnerSetup.plan, previous) ?? beginnerSetup.state);
+    setBeginnerStats((previous) =>
+      beginnerProgressService.completeOnboarding(
+        previous,
+        beginnerTrack,
+        Math.max(30, Math.min(120, dailyGoal)) as 30 | 60 | 120,
+      ),
+    );
+  }, [
+    beginnerPlan,
+    hasPersistedBeginnerBootstrap,
+    isBeginnerScopedStorageReady,
+    isLoggedIn,
+    preferredStudyTrack,
+    setBeginnerPlan,
+    setBeginnerState,
+    setBeginnerStats,
+    showOnboarding,
+    userStorageScope,
+    userData.dailyGoal,
+  ]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !beginnerPlan || beginnerStats || !isBeginnerScopedStorageReady) {
+      return;
+    }
+
+    if (hasPersistedBeginnerStats) {
       return;
     }
 
     setBeginnerStats(beginnerProgressService.createInitialStats());
-  }, [beginnerPlan, beginnerStats, isLoggedIn, setBeginnerStats]);
+  }, [
+    beginnerPlan,
+    beginnerStats,
+    hasPersistedBeginnerStats,
+    isBeginnerScopedStorageReady,
+    isLoggedIn,
+    setBeginnerStats,
+  ]);
 
   useEffect(() => {
     if (!isLoggedIn || !beginnerPlan || activeTab !== 'inicio' || showOnboarding || lastBeginnerResult || showBeginnerWeekSummary) {
@@ -2223,6 +2465,337 @@ function App() {
   const profileHydratedEmailRef = React.useRef<string | null>(null);
   const profileCloudHydratedEmailRef = React.useRef<string | null>(null);
 
+  const fetchOfficialStudyHomeState = React.useCallback(async (): Promise<OfficialStudyHomeState> => {
+    if (!isLoggedIn || !supabaseUserId || !isSupabaseConfigured || showOnboarding) {
+      return { status: 'idle' };
+    }
+
+    const [homeResult, recommendationResult] = await Promise.allSettled([
+      studyLoopApiService.getHome(),
+      studyLoopApiService.getCurrentRecommendation(),
+    ]);
+
+    if (homeResult.status === 'fulfilled') {
+      return {
+        status: 'ready',
+        home: homeResult.value,
+        recommendation: recommendationResult.status === 'fulfilled'
+          ? recommendationResult.value.recommendation
+          : null,
+      };
+    }
+
+    const homeError = homeResult.reason;
+    const recommendationError = recommendationResult.status === 'rejected'
+      ? recommendationResult.reason
+      : null;
+    const emptyStateError = isStudyLoopEmptyStateError(homeError)
+      ? homeError
+      : isStudyLoopEmptyStateError(recommendationError)
+        ? recommendationError
+        : null;
+
+    if (emptyStateError) {
+      const isProfileGap = emptyStateError.code === 'PROFILE_NOT_FOUND';
+      return {
+        status: 'empty',
+        title: isProfileGap
+          ? 'Seu proximo estudo ainda nao foi liberado'
+          : 'Ainda nao existe uma recomendacao pronta',
+        description: isProfileGap
+          ? 'O contrato oficial ainda nao encontrou contexto suficiente para montar sua primeira sessao.'
+          : 'A home oficial ainda nao recebeu uma recomendacao valida para montar o proximo estudo.',
+        supportingText: isProfileGap
+          ? 'Conclua o onboarding ou ajuste o contexto do plano para liberar a primeira sessao.'
+          : 'Abra o cronograma, organize o dia e volte para gerar a proxima sessao real.',
+      };
+    }
+
+    return {
+      status: 'error',
+      message:
+        homeError instanceof Error
+          ? homeError.message
+          : recommendationError instanceof Error
+            ? recommendationError.message
+            : 'Nao foi possivel carregar sua proxima sessao oficial.',
+    };
+  }, [isLoggedIn, showOnboarding, supabaseUserId]);
+
+  const loadOfficialStudyHome = React.useCallback(async () => {
+    const canLoadOfficialStudyHome = isLoggedIn && supabaseUserId && isSupabaseConfigured && !showOnboarding;
+    if (!canLoadOfficialStudyHome) {
+      const nextState: OfficialStudyHomeState = { status: 'idle' };
+      setOfficialStudyHomeState(nextState);
+      return nextState;
+    }
+
+    setOfficialStudyHomeState({ status: 'loading' });
+    const nextState = await fetchOfficialStudyHomeState();
+    setOfficialStudyHomeState(nextState);
+    return nextState;
+  }, [fetchOfficialStudyHomeState, isLoggedIn, showOnboarding, supabaseUserId]);
+
+  const loadOfficialStudyHomeAfterCompletion = React.useCallback(
+    async (finishedSessionId: string) => {
+      const canLoadOfficialStudyHome = isLoggedIn && supabaseUserId && isSupabaseConfigured && !showOnboarding;
+      if (!canLoadOfficialStudyHome) {
+        const nextState: OfficialStudyHomeState = { status: 'idle' };
+        setOfficialStudyHomeState(nextState);
+        return nextState;
+      }
+
+      setOfficialStudyHomeState({ status: 'loading' });
+      let lastResolvedState: OfficialStudyHomeState = { status: 'loading' };
+      const sanitizeFinishedSessionState = (state: OfficialStudyHomeState): OfficialStudyHomeState => {
+        if (state.status !== 'ready' || state.home.activeStudySession?.sessionId !== finishedSessionId) {
+          return state;
+        }
+
+        return {
+          ...state,
+          home: {
+            ...state.home,
+            activeStudySession: null,
+          },
+        };
+      };
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const nextState = sanitizeFinishedSessionState(await fetchOfficialStudyHomeState());
+        lastResolvedState = nextState;
+
+        const stillShowsFinishedSessionAsActive = nextState.status === 'ready'
+          && nextState.home.activeStudySession?.sessionId === finishedSessionId;
+        if (!stillShowsFinishedSessionAsActive) {
+          setOfficialStudyHomeState(nextState);
+          return nextState;
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+      }
+
+      setOfficialStudyHomeState(lastResolvedState);
+      return lastResolvedState;
+    },
+    [fetchOfficialStudyHomeState, isLoggedIn, showOnboarding, supabaseUserId],
+  );
+
+  React.useEffect(() => {
+    if (!isLoggedIn) {
+      setOfficialStudyHomeState({ status: 'idle' });
+      setOfficialStudySession(null);
+      setOfficialStudyResult(null);
+    }
+  }, [isLoggedIn]);
+
+  React.useEffect(() => {
+    if (activeTab !== 'inicio' || showOnboarding) {
+      return;
+    }
+
+    if (!isLoggedIn || !supabaseUserId || !isSupabaseConfigured) {
+      return;
+    }
+
+    void loadOfficialStudyHome();
+  }, [activeTab, isLoggedIn, loadOfficialStudyHome, showOnboarding, supabaseUserId]);
+
+  React.useEffect(() => {
+    if (!officialStudySession) {
+      return;
+    }
+
+    const nextQuestion = officialStudySession.questions.find((question) => !officialStudySession.answers[question.id]);
+    if (nextQuestion) {
+      setOfficialStudyQuestionStartedAt(Date.now());
+    }
+  }, [officialStudySession]);
+
+  const applyOfficialStudyCompletionToProgress = React.useCallback(
+    (session: OfficialStudySession, result: OfficialStudySessionResult) => {
+      const completedSession = buildOfficialStudyCompletionSnapshot(session, result);
+      const completedSessionKey = buildStudySessionIdentityKey(completedSession);
+      const alreadyTracked = effectiveSessions.some(
+        (entry) => buildStudySessionIdentityKey(entry) === completedSessionKey,
+      );
+
+      if (!alreadyTracked) {
+        setUserData((previous) => xpEngineService.applyStudySessions(previous, [completedSession]));
+      }
+
+      return {
+        completedSession,
+        alreadyTracked,
+      };
+    },
+    [effectiveSessions, setUserData],
+  );
+
+  const reflectOfficialStudyCompletionInBeginnerFlow = React.useCallback(
+    (session: OfficialStudySession, completedSession: OfficialStudyCompletionSnapshot) => {
+      if (!beginnerPlan) {
+        return;
+      }
+
+      const currentMission = beginnerFlowService.getTodayMission(beginnerPlan);
+      if (!currentMission || currentMission.status === 'completed') {
+        return;
+      }
+
+      const beginnerProgress = beginnerFlowService.submitSession({
+        plan: beginnerPlan,
+        missionId: currentMission.id,
+        completedAt: completedSession.date,
+      });
+
+      setBeginnerPlan(beginnerProgress.plan);
+      setBeginnerState(beginnerProgress.state);
+      setBeginnerStats((previous) => {
+        const nextStats = beginnerProgressService.recordSessionCompleted(previous, {
+          day: currentMission.dayNumber,
+          duration: completedSession.minutes,
+          completed: true,
+          at: completedSession.date,
+        });
+        const assessmentMissionId = beginnerProgress.completedMission?.id || currentMission.id;
+        const assessmentDay = beginnerProgress.completedMission?.dayNumber || currentMission.dayNumber;
+
+        return summarizeOfficialStudyAssessmentBySubject(session).reduce(
+          (stats, summary) =>
+            beginnerProgressService.recordAssessmentCompleted(stats, {
+              day: assessmentDay,
+              missionId: assessmentMissionId,
+              subject: summary.subject,
+              correct: summary.correct,
+              total: summary.total,
+              xpGained: summary.correct * 10,
+              at: completedSession.date,
+            }),
+          nextStats,
+        );
+      });
+    },
+    [beginnerPlan, setBeginnerPlan, setBeginnerState, setBeginnerStats],
+  );
+
+  const reflectOfficialStudyCompletionInSchedule = React.useCallback(
+    async (session: OfficialStudySession) => {
+      await studyScheduleService.completeEntryForToday(supabaseUserId, {
+        subject: session.subject,
+        topic: session.topic,
+        completedAt: session.startedAt,
+      });
+    },
+    [supabaseUserId],
+  );
+
+  const handleStartOfficialStudy = React.useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      toast.error('Contrato oficial de estudo indisponivel neste ambiente.');
+      return;
+    }
+
+    setOfficialStudyStarting(true);
+
+    try {
+      const activeSessionId = officialStudyHomeState.status === 'ready'
+        ? officialStudyHomeState.home.activeStudySession?.sessionId || null
+        : null;
+      const session = activeSessionId
+        ? await studyLoopSessionsService.getSession(activeSessionId)
+        : await studyLoopSessionsService.createSession(5);
+
+      if (session.status !== 'active') {
+        await loadOfficialStudyHome();
+        toast('A sessao oficial ja foi encerrada. A home foi atualizada.');
+        return;
+      }
+
+      setOfficialStudyResult(null);
+      setOfficialStudySession(session);
+      setOfficialStudyQuestionStartedAt(Date.now());
+      toast.success(activeSessionId ? 'Sessao oficial retomada.' : 'Sessao oficial iniciada.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao abrir a sessao oficial.');
+    } finally {
+      setOfficialStudyStarting(false);
+    }
+  }, [loadOfficialStudyHome, officialStudyHomeState]);
+
+  const handleAnswerOfficialStudyQuestion = React.useCallback(async (questionId: string, alternativeId: string) => {
+    if (!officialStudySession) {
+      return;
+    }
+
+    setOfficialStudyAnswering(true);
+
+    try {
+      const responseTimeSeconds = Math.max(1, Math.round((Date.now() - officialStudyQuestionStartedAt) / 1000));
+      const updatedSession = await studyLoopSessionsService.answerQuestion(officialStudySession.sessionId, {
+        questionId,
+        alternativeId,
+        responseTimeSeconds,
+      });
+
+      setOfficialStudySession(updatedSession);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao registrar a resposta.');
+    } finally {
+      setOfficialStudyAnswering(false);
+    }
+  }, [officialStudyQuestionStartedAt, officialStudySession]);
+
+  const handleFinishOfficialStudy = React.useCallback(async () => {
+    if (!officialStudySession) {
+      return;
+    }
+
+    const sessionToFinish = officialStudySession;
+    setOfficialStudyFinishing(true);
+
+    try {
+      const result = await studyLoopSessionsService.finishSession(sessionToFinish.sessionId);
+      const { completedSession } = applyOfficialStudyCompletionToProgress(sessionToFinish, result);
+      reflectOfficialStudyCompletionInBeginnerFlow(sessionToFinish, completedSession);
+      setOfficialStudySession(null);
+      setOfficialStudyResult(result);
+      const scheduleSyncResult = await reflectOfficialStudyCompletionInSchedule(sessionToFinish)
+        .then(() => 'matched' as const)
+        .catch(() => 'failed' as const);
+
+      await loadOfficialStudyHomeAfterCompletion(sessionToFinish.sessionId);
+      toast.success(
+        scheduleSyncResult === 'failed'
+          ? 'Sessao oficial concluida. Home e progresso atualizados; o cronograma sera reconciliado ao reabrir o plano.'
+          : 'Sessao oficial concluida. Home, progresso e cronograma atualizados.',
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao finalizar a sessao oficial.');
+    } finally {
+      setOfficialStudyFinishing(false);
+    }
+  }, [
+    applyOfficialStudyCompletionToProgress,
+    loadOfficialStudyHomeAfterCompletion,
+    loadOfficialStudyHome,
+    officialStudySession,
+    reflectOfficialStudyCompletionInBeginnerFlow,
+    reflectOfficialStudyCompletionInSchedule,
+  ]);
+
+  const handleBackHomeFromOfficialStudy = React.useCallback(async () => {
+    const finishedSessionId = officialStudyResult?.sessionId || null;
+    setOfficialStudyResult(null);
+    setActiveTab('inicio');
+    if (finishedSessionId) {
+      await loadOfficialStudyHomeAfterCompletion(finishedSessionId);
+      return;
+    }
+
+    await loadOfficialStudyHome();
+  }, [loadOfficialStudyHome, loadOfficialStudyHomeAfterCompletion, officialStudyResult?.sessionId]);
+
   React.useEffect(() => {
     if (!isLoggedIn || !user?.email) {
       profileHydratedEmailRef.current = null;
@@ -2708,6 +3281,9 @@ function App() {
   const handleOpenTodaySchedule = React.useCallback(() => {
     openScheduleForDay(todayWeekday);
   }, [openScheduleForDay, todayWeekday]);
+  const handleOpenOfficialStudyFallback = React.useCallback(() => {
+    attemptProtectedNavigation('cronograma');
+  }, [attemptProtectedNavigation]);
   const clearQuestionTransitionTimeout = React.useCallback(() => {
     if (questionTransitionTimeoutRef.current) {
       window.clearTimeout(questionTransitionTimeoutRef.current);
@@ -2743,6 +3319,86 @@ function App() {
 
     handleStartStudyFlowSafely();
   }, [canContinueWithQuestions, clearQuestionTransitionTimeout, handleStartQuestionsSafely, handleStartStudyFlowSafely]);
+  const officialStudyCard = React.useMemo(() => {
+    if (activeTab !== 'inicio' || showOnboarding || !isLoggedIn || !supabaseUserId || !isSupabaseConfigured) {
+      return undefined;
+    }
+
+    if (officialStudyHomeState.status === 'idle' || officialStudyHomeState.status === 'loading') {
+      return {
+        status: 'loading' as const,
+        title: 'Carregando sua sessao oficial',
+        description: 'Buscando o foco atual, o motivo da recomendacao e o proximo CTA real do estudo.',
+      };
+    }
+
+    if (officialStudyHomeState.status === 'error') {
+      return {
+        status: 'error' as const,
+        title: 'Nao foi possivel abrir seu proximo estudo',
+        description: officialStudyHomeState.message,
+        actionLabel: 'Tentar novamente',
+        onAction: () => {
+          void loadOfficialStudyHome();
+        },
+        secondaryAction: {
+          label: 'Abrir cronograma',
+          onAction: handleOpenOfficialStudyFallback,
+        },
+      };
+    }
+
+    if (officialStudyHomeState.status === 'empty') {
+      return {
+        status: 'empty' as const,
+        title: officialStudyHomeState.title,
+        description: officialStudyHomeState.description,
+        supportingText: officialStudyHomeState.supportingText,
+        actionLabel: 'Abrir cronograma',
+        onAction: handleOpenOfficialStudyFallback,
+      };
+    }
+
+    const { home, recommendation } = officialStudyHomeState;
+    const activeSession = home.activeStudySession;
+    const totalQuestions = activeSession?.totalQuestions || 5;
+    const estimatedDurationMinutes = Math.max(10, totalQuestions * 3);
+
+    return {
+      status: 'ready' as const,
+      title: activeSession ? 'Continue sua sessao oficial' : 'Seu proximo estudo ja esta pronto',
+      discipline: recommendation?.disciplineName || home.mission.discipline,
+      topic: recommendation?.topicName || home.mission.topic,
+      reason: recommendation?.reason || home.mission.reason,
+      estimatedDurationMinutes,
+      sessionTypeLabel: activeSession ? 'Sessao curta em andamento' : 'Sessao curta oficial',
+      progressLabel: activeSession
+        ? `${activeSession.answeredQuestions}/${activeSession.totalQuestions} questoes respondidas`
+        : `${totalQuestions} questoes guiadas`,
+      supportingText: activeSession
+        ? 'A home oficial detectou uma sessao ativa e ja pode retomar do ponto em que voce parou.'
+        : `Meta semanal: ${home.weeklyProgress.studyMinutes}/${home.weeklyProgress.goalMinutes} min`,
+      ctaLabel: activeSession ? 'Continuar agora' : 'Estudar agora',
+      busy: officialStudyStarting,
+      onAction: () => {
+        void handleStartOfficialStudy();
+      },
+      secondaryAction: {
+        label: 'Abrir cronograma',
+        onAction: handleOpenOfficialStudyFallback,
+      },
+    };
+  }, [
+    activeTab,
+    handleOpenOfficialStudyFallback,
+    handleStartOfficialStudy,
+    isLoggedIn,
+    loadOfficialStudyHome,
+    officialStudyHomeState,
+    officialStudyStarting,
+    showOnboarding,
+    supabaseUserId,
+  ]);
 
   React.useEffect(() => {
     if (studyFlowStep !== 'questionTransition') {
@@ -2868,6 +3524,33 @@ function App() {
             onSwitchToRegister={() => setShowRegister(true)}
           />
         )}
+      </>
+    );
+  }
+
+  if (officialStudySession) {
+    return (
+      <>
+        <Toaster position="top-center" />
+        <OfficialStudySessionPage
+          session={officialStudySession}
+          answering={officialStudyAnswering}
+          finishing={officialStudyFinishing}
+          onAnswer={handleAnswerOfficialStudyQuestion}
+          onFinish={handleFinishOfficialStudy}
+        />
+      </>
+    );
+  }
+
+  if (officialStudyResult) {
+    return (
+      <>
+        <Toaster position="top-center" />
+        <OfficialStudySessionResultView
+          result={officialStudyResult}
+          onBackHome={handleBackHomeFromOfficialStudy}
+        />
       </>
     );
   }
@@ -3090,6 +3773,7 @@ function App() {
                 }}
                 ctrMetrics={homeCtrMetrics}
                 heroAbMetrics={homeHeroAbMetrics}
+                officialStudyCard={officialStudyCard}
                 onStartQuickSession={(duration, source, variant) => {
                   if (isStudyFlowBlockedBySchedule) {
                     handleOpenTodaySchedule();

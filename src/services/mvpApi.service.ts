@@ -1,5 +1,17 @@
 import { supabase } from './supabase.client';
 
+export class MvpApiError extends Error {
+  status: number;
+  code: string | null;
+
+  constructor(message: string, status: number, code: string | null = null) {
+    super(message);
+    this.name = 'MvpApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 export interface MvpProfile {
   examType: 'enem';
   level: 'iniciante' | 'intermediario' | 'avancado';
@@ -60,6 +72,22 @@ export interface MvpHomePayload {
   } | null;
 }
 
+const normalizeHomePayload = (payload: MvpHomePayload & { success: true }): MvpHomePayload & { success: true } => {
+  const activeStudySession = payload.activeStudySession
+    && Number(payload.activeStudySession.totalQuestions || 0) > 0
+      ? payload.activeStudySession
+      : null;
+
+  return {
+    ...payload,
+    mission: {
+      ...payload.mission,
+      ctaLabel: activeStudySession ? 'Continuar agora' : 'Comecar agora',
+    },
+    activeStudySession,
+  };
+};
+
 export interface MvpOnboardingStreak {
   days: number;
   lastDay: string | null;
@@ -80,12 +108,21 @@ const getAccessToken = async (): Promise<string> => {
   return accessToken;
 };
 
-const extractErrorMessage = async (response: Response, fallback: string): Promise<string> => {
+const extractErrorDetails = async (
+  response: Response,
+  fallback: string,
+): Promise<{ message: string; code: string | null }> => {
   try {
-    const payload = await response.json() as { error?: { message?: string } };
-    return payload.error?.message || fallback;
+    const payload = await response.json() as { error?: { message?: string; code?: string } };
+    return {
+      message: payload.error?.message || fallback,
+      code: payload.error?.code || null,
+    };
   } catch {
-    return fallback;
+    return {
+      message: fallback,
+      code: null,
+    };
   }
 };
 
@@ -102,11 +139,16 @@ export const requestMvpWithAuth = async <T>(path: string, init?: RequestInit): P
   });
 
   if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Erro ao carregar dados do MVP.'));
+    const error = await extractErrorDetails(response, 'Erro ao carregar dados do MVP.');
+    throw new MvpApiError(error.message, response.status, error.code);
   }
 
   return response.json() as Promise<T>;
 };
+
+export const isMvpEmptyStateError = (error: unknown): error is MvpApiError =>
+  error instanceof MvpApiError
+  && (error.code === 'PROFILE_NOT_FOUND' || error.code === 'RECOMMENDATION_NOT_FOUND');
 
 export const mvpApiService = {
   async getMe(): Promise<{
@@ -156,6 +198,7 @@ export const mvpApiService = {
   },
 
   async getHome(): Promise<MvpHomePayload & { success: true }> {
-    return requestMvpWithAuth('/api/home');
+    const response = await requestMvpWithAuth<MvpHomePayload & { success: true }>('/api/home');
+    return normalizeHomePayload(response);
   },
 };

@@ -53,6 +53,37 @@ export interface StudySessionResult {
   durationSeconds: number;
 }
 
+const normalizeSessionStatus = (
+  session: Partial<StudySession> & {
+    finishedAt?: string | null;
+    result?: StudySession['result'];
+    status?: StudySession['status'] | string | null;
+  },
+): StudySession['status'] => {
+  if (session.status === 'completed') {
+    return 'completed';
+  }
+
+  if (session.finishedAt || session.result) {
+    return 'completed';
+  }
+
+  return 'active';
+};
+
+const normalizeStudySession = (session: StudySession): StudySession => ({
+  ...session,
+  status: normalizeSessionStatus(session),
+  answeredQuestions: Number.isFinite(session.answeredQuestions)
+    ? session.answeredQuestions
+    : Object.keys(session.answers || {}).length,
+  totalQuestions: Number.isFinite(session.totalQuestions)
+    ? session.totalQuestions
+    : Array.isArray(session.questions)
+      ? session.questions.length
+      : 0,
+});
+
 export const mvpStudySessionsService = {
   async createSession(limit = 5): Promise<StudySession> {
     const response = await requestMvpWithAuth<{ success: true; session: StudySession }>('/api/study-sessions', {
@@ -60,7 +91,7 @@ export const mvpStudySessionsService = {
       body: JSON.stringify({ limit }),
     });
 
-    return response.session;
+    return normalizeStudySession(response.session);
   },
 
   async getSession(sessionId: string): Promise<StudySession> {
@@ -68,7 +99,7 @@ export const mvpStudySessionsService = {
       `/api/study-sessions/${sessionId}`,
     );
 
-    return response.session;
+    return normalizeStudySession(response.session);
   },
 
   async answerQuestion(
@@ -87,7 +118,7 @@ export const mvpStudySessionsService = {
       },
     );
 
-    return response.session;
+    return normalizeStudySession(response.session);
   },
 
   async finishSession(sessionId: string): Promise<StudySessionResult> {

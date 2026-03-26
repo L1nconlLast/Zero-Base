@@ -65,6 +65,7 @@ export interface NextStudySuggestion {
 }
 
 const TABLE = 'study_blocks';
+export const STUDY_SCHEDULE_STORAGE_KEY = 'mdz_study_schedule';
 const WEEKDAYS: Weekday[] = [
   'monday',
   'tuesday',
@@ -123,6 +124,43 @@ const normalizeCompletedDateKey = (value: string): string | null => {
   }
 
   return toDateKey(parsed);
+};
+
+const normalizeScheduleMatcher = (value?: string | null): string =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const loadLocalScheduleEntries = (): ScheduleEntry[] => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STUDY_SCHEDULE_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed as ScheduleEntry[] : [];
+  } catch {
+    return [];
+  }
+};
+
+const persistLocalScheduleEntries = (entries: ScheduleEntry[]): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(STUDY_SCHEDULE_STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // ignore local persistence failures
+  }
 };
 
 const sanitizeWeeklyPreferences = (value: unknown): WeeklyStudyPreferences => {
@@ -855,6 +893,67 @@ class StudyScheduleService {
     if (error) {
       throw new Error(`Erro ao limpar cronograma: ${error.message}`);
     }
+  }
+
+  async completeEntryForToday(
+    userId: string | null | undefined,
+    input: {
+      subject: string;
+      topic?: string | null;
+      completedAt?: string | null;
+    },
+  ): Promise<ScheduleEntry | null> {
+    const completedDateKey = normalizeCompletedDateKey(input.completedAt || new Date().toISOString());
+    if (!completedDateKey) {
+      return null;
+    }
+
+    const subjectKey = normalizeScheduleMatcher(input.subject);
+    const topicKey = normalizeScheduleMatcher(input.topic);
+    const localEntries = loadLocalScheduleEntries();
+
+    const rankedEntries = localEntries
+      .map((entry, index) => {
+        const entrySubjectKey = normalizeScheduleMatcher(entry.subject);
+        const entryTopicKey = normalizeScheduleMatcher(entry.topic);
+        const subjectMatch = Boolean(subjectKey)
+          && (entrySubjectKey === subjectKey || entrySubjectKey.includes(subjectKey) || subjectKey.includes(entrySubjectKey));
+        const topicMatch = Boolean(topicKey)
+          && Boolean(entryTopicKey)
+          && (entryTopicKey === topicKey || entryTopicKey.includes(topicKey) || topicKey.includes(entryTopicKey));
+
+        return {
+          entry,
+          index,
+          subjectMatch,
+          topicMatch,
+        };
+      })
+      .filter(({ entry, subjectMatch }) =>
+        entry.date.slice(0, 10) === completedDateKey
+        && !isCompletedEntry(entry)
+        && subjectMatch)
+      .sort((left, right) => Number(right.topicMatch) - Number(left.topicMatch));
+
+    const target = rankedEntries[0];
+    if (!target) {
+      return null;
+    }
+
+    const updatedEntry: ScheduleEntry = {
+      ...target.entry,
+      done: true,
+      status: 'concluido',
+    };
+    const nextEntries = [...localEntries];
+    nextEntries[target.index] = updatedEntry;
+    persistLocalScheduleEntries(nextEntries);
+
+    if (userId) {
+      await this.upsertEntry(userId, updatedEntry).catch(() => undefined);
+    }
+
+    return updatedEntry;
   }
 }
 

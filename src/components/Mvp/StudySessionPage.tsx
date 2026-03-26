@@ -28,7 +28,7 @@ export const StudySessionPage: React.FC<StudySessionPageProps> = ({
     <div className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Sprint 2 MVP</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Sessao oficial</p>
           <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <h1 className="text-3xl font-bold">{session.topic}</h1>
@@ -91,7 +91,7 @@ export const StudySessionPage: React.FC<StudySessionPageProps> = ({
 
             <h2 className="mt-4 text-2xl font-bold">As {session.totalQuestions} questoes foram respondidas.</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Agora o backend fecha o resultado, grava o progresso e libera sua Home atualizada.
+              Agora o contrato oficial fecha o resultado, grava o progresso e atualiza sua home.
             </p>
 
             <div className="mt-6 grid gap-4 md:grid-cols-3">

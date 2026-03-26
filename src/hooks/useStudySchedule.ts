@@ -1,10 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ScheduleEntry } from '../types';
-import { studyScheduleService } from '../services/studySchedule.service.ts';
+import { STUDY_SCHEDULE_STORAGE_KEY, studyScheduleService } from '../services/studySchedule.service.ts';
 import { isSupabaseConfigured } from '../services/supabase.client';
 import { adaptSchedule, type StudyBlock } from '../engine/adaptiveScheduleAdapter.ts';
 
-const STORAGE_KEY = 'mdz_study_schedule';
 const MAX_ENTRIES = 500;
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -17,7 +16,7 @@ const generateId = (): string => {
 
 const loadEntries = (): ScheduleEntry[] => {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(STUDY_SCHEDULE_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -28,7 +27,7 @@ const loadEntries = (): ScheduleEntry[] => {
 
 const persist = (entries: ScheduleEntry[]): void => {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(entries.slice(-MAX_ENTRIES)));
+    window.localStorage.setItem(STUDY_SCHEDULE_STORAGE_KEY, JSON.stringify(entries.slice(-MAX_ENTRIES)));
   } catch {
     // ignore
   }

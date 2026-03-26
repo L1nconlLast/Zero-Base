@@ -14,10 +14,10 @@ export const StudySessionResult: React.FC<StudySessionResultProps> = ({ result, 
     <div className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900">
       <div className="mx-auto max-w-3xl space-y-6">
         <div className="rounded-[28px] border border-emerald-200 bg-white p-8 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Sprint 2 MVP</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Sessao oficial</p>
           <h1 className="mt-2 text-3xl font-bold">Sessao concluida com dados reais.</h1>
           <p className="mt-3 text-sm text-slate-600">
-            O resultado ja foi persistido e a Home pode refletir o progresso atualizado.
+            O resultado ja foi persistido e a home pode refletir o progresso atualizado.
           </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -55,7 +55,7 @@ export const StudySessionResult: React.FC<StudySessionResultProps> = ({ result, 
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white"
           >
             <Home className="h-4 w-4" />
-            Voltar para Home
+            Voltar para inicio
           </button>
         </div>
       </div>

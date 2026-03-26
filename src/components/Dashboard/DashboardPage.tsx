@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle, ArrowRight, BookOpen, Clock3, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { ACADEMY_CONTENT } from '../../data/academyContent';
 import type { AdvancedHealthState, BeginnerMission, BeginnerPlan, BeginnerProgressStage, BeginnerState, MateriaTipo, StudySession } from '../../types';
 import { getCycleDisciplineLabels } from '../../utils/disciplineLabels';
@@ -36,6 +37,49 @@ type HeroAbMetrics = {
   winnerByCtr: HeroVariant | 'tie';
   winnerByCompletionRate: HeroVariant | 'tie';
 };
+type StudyNowCardState =
+  | {
+      status: 'loading';
+      title?: string;
+      description?: string;
+    }
+  | {
+      status: 'error';
+      title: string;
+      description: string;
+      actionLabel: string;
+      onAction: () => void;
+      secondaryAction?: {
+        label: string;
+        onAction: () => void;
+      };
+    }
+  | {
+      status: 'empty';
+      title: string;
+      description: string;
+      actionLabel: string;
+      onAction: () => void;
+      supportingText?: string;
+    }
+  | {
+      status: 'ready';
+      title: string;
+      discipline: string;
+      topic: string;
+      reason: string;
+      estimatedDurationMinutes: number;
+      sessionTypeLabel: string;
+      ctaLabel: string;
+      onAction: () => void;
+      busy?: boolean;
+      progressLabel?: string;
+      supportingText?: string;
+      secondaryAction?: {
+        label: string;
+        onAction: () => void;
+      };
+    };
 
 type StarterPlanDay = {
   dayLabel: string;
@@ -131,7 +175,139 @@ interface DashboardPageProps {
   heroAbMetrics?: HeroAbMetrics;
   onRecalculateAI?: () => void;
   onOpenRanks?: () => void;
+  officialStudyCard?: StudyNowCardState;
 }
+
+const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
+  if (card.status === 'loading') {
+    return (
+      <section className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-5 shadow-sm">
+        <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Para estudar agora
+        </p>
+        <h2 className="mt-3 text-2xl font-bold text-slate-900">{card.title || 'Carregando seu proximo estudo'}</h2>
+        <p className="mt-2 max-w-2xl text-sm text-slate-600">
+          {card.description || 'Buscando o foco atual, o motivo da recomendacao e a melhor proxima acao.'}
+        </p>
+      </section>
+    );
+  }
+
+  if (card.status === 'error') {
+    return (
+      <section className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-5 shadow-sm">
+        <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">
+          <AlertTriangle className="h-4 w-4" />
+          Para estudar agora
+        </p>
+        <h2 className="mt-3 text-2xl font-bold text-slate-900">{card.title}</h2>
+        <p className="mt-2 max-w-2xl text-sm text-slate-600">{card.description}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={card.onAction}
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            <RefreshCw className="h-4 w-4" />
+            {card.actionLabel}
+          </button>
+          {card.secondaryAction ? (
+            <button
+              type="button"
+              onClick={card.secondaryAction.onAction}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <ArrowRight className="h-4 w-4" />
+              {card.secondaryAction.label}
+            </button>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  if (card.status === 'empty') {
+    return (
+      <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-sm">
+        <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">
+          <Sparkles className="h-4 w-4" />
+          Para estudar agora
+        </p>
+        <h2 className="mt-3 text-2xl font-bold text-slate-900">{card.title}</h2>
+        <p className="mt-2 max-w-2xl text-sm text-slate-600">{card.description}</p>
+        {card.supportingText ? (
+          <p className="mt-2 text-sm font-medium text-amber-900/80">{card.supportingText}</p>
+        ) : null}
+        <button
+          type="button"
+          onClick={card.onAction}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          <ArrowRight className="h-4 w-4" />
+          {card.actionLabel}
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-5 shadow-sm">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-2xl">
+          <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+            <BookOpen className="h-4 w-4" />
+            Para estudar agora
+          </p>
+          <h2 className="mt-3 text-2xl font-bold text-slate-900">{card.title}</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            {card.discipline} • {card.topic}
+          </p>
+          <p className="mt-3 text-sm text-slate-700">{card.reason}</p>
+          {card.supportingText ? (
+            <p className="mt-2 text-sm font-medium text-blue-900/75">{card.supportingText}</p>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-800">
+              <Clock3 className="h-3.5 w-3.5" />
+              {card.estimatedDurationMinutes} min estimados
+            </span>
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+              {card.sessionTypeLabel}
+            </span>
+            {card.progressLabel ? (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                {card.progressLabel}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:min-w-[240px]">
+          <button
+            type="button"
+            disabled={Boolean(card.busy)}
+            onClick={card.onAction}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {card.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+            {card.ctaLabel}
+          </button>
+          {card.secondaryAction ? (
+            <button
+              type="button"
+              onClick={card.secondaryAction.onAction}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <Sparkles className="h-4 w-4" />
+              {card.secondaryAction.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+};
 
 const DashboardPage: React.FC<DashboardPageProps> = ({
   userName,
@@ -157,6 +333,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
   onStartQuickSession,
   onRecalculateAI,
   onOpenRanks,
+  officialStudyCard,
 }) => {
   const isFocused = studyMode === 'focus';
   const isReadyForIntermediate = beginnerProgressStage === 'ready_for_intermediate';
@@ -805,6 +982,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     return (
       <div className={`grid gap-6 ${isFocused ? 'xl:grid-cols-[minmax(0,1fr)_288px]' : ''}`}>
         <div className="space-y-5">
+          {officialStudyCard ? <StudyNowCard card={officialStudyCard} /> : null}
+
           <AdvancedDashboardHome
             snapshot={advancedSnapshot}
             priorityTable={advancedPriorityTable}
@@ -962,6 +1141,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           </div>
         </section>
+
+        {officialStudyCard ? <StudyNowCard card={officialStudyCard} /> : null}
 
         {isStarterMode ? (
           <>
