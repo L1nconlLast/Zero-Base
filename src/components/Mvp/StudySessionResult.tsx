@@ -11,9 +11,9 @@ export const StudySessionResult: React.FC<StudySessionResultProps> = ({ result, 
   const accuracyPercent = Math.round(result.accuracy * 100);
 
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900">
+    <div data-testid="session-result-page" className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="rounded-[28px] border border-emerald-200 bg-white p-8 shadow-sm">
+        <div data-testid="session-result-root" className="rounded-[28px] border border-emerald-200 bg-white p-8 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Sessao oficial</p>
           <h1 className="mt-2 text-3xl font-bold">Sessao concluida com dados reais.</h1>
           <p className="mt-3 text-sm text-slate-600">
@@ -50,6 +50,7 @@ export const StudySessionResult: React.FC<StudySessionResultProps> = ({ result, 
           </div>
 
           <button
+            data-testid="session-result-home-cta"
             type="button"
             onClick={() => void onBackHome()}
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white"

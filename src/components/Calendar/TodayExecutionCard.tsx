@@ -104,6 +104,7 @@ const ActionRow: React.FC<{
 }> = ({ primary, secondary, busy = false }) => (
   <div className="flex flex-col gap-2 sm:min-w-[220px]">
     <button
+      data-testid="today-cta"
       type="button"
       disabled={busy}
       onClick={primary.onAction}
@@ -114,6 +115,7 @@ const ActionRow: React.FC<{
     </button>
     {secondary ? (
       <button
+        data-testid="today-secondary-cta"
         type="button"
         onClick={secondary.onAction}
         className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -132,7 +134,11 @@ const TodayExecutionCard: React.FC<TodayExecutionCardProps> = ({
 }) => {
   if (card.status === 'loading') {
     return (
-      <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+      <section
+        data-testid="today-execution-card"
+        data-card-status="loading"
+        className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6"
+      >
         <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
           <Loader2 className="h-4 w-4 animate-spin" />
           Hoje em execucao
@@ -145,7 +151,11 @@ const TodayExecutionCard: React.FC<TodayExecutionCardProps> = ({
 
   if (card.status === 'error') {
     return (
-      <section className="rounded-[28px] border border-rose-200 bg-rose-50/70 p-5 shadow-sm dark:border-rose-900 dark:bg-rose-950/20 sm:p-6">
+      <section
+        data-testid="today-execution-card"
+        data-card-status="error"
+        className="rounded-[28px] border border-rose-200 bg-rose-50/70 p-5 shadow-sm dark:border-rose-900 dark:bg-rose-950/20 sm:p-6"
+      >
         <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-rose-700 dark:text-rose-300">
           <AlertTriangle className="h-4 w-4" />
           Hoje em execucao
@@ -166,7 +176,11 @@ const TodayExecutionCard: React.FC<TodayExecutionCardProps> = ({
 
   if (card.status === 'empty') {
     return (
-      <section className="rounded-[28px] border border-amber-200 bg-amber-50/70 p-5 shadow-sm dark:border-amber-900 dark:bg-amber-950/20 sm:p-6">
+      <section
+        data-testid="today-execution-card"
+        data-card-status="empty"
+        className="rounded-[28px] border border-amber-200 bg-amber-50/70 p-5 shadow-sm dark:border-amber-900 dark:bg-amber-950/20 sm:p-6"
+      >
         <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
           <CalendarDays className="h-4 w-4" />
           Hoje em execucao
@@ -200,14 +214,22 @@ const TodayExecutionCard: React.FC<TodayExecutionCardProps> = ({
   const scheduleHint = buildScheduleHint(resolvedStatus);
 
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+    <section
+      data-testid="today-execution-card"
+      data-card-status="ready"
+      data-schedule-status={resolvedStatus.status}
+      className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6"
+    >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-3xl">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
               Hoje em execucao
             </p>
-            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusCopy.tone}`}>
+            <span
+              data-testid="schedule-item-status"
+              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusCopy.tone}`}
+            >
               {statusCopy.label}
             </span>
           </div>

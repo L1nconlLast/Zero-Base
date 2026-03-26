@@ -10,8 +10,29 @@ const DIST_DIR = path.join(ROOT, 'dist');
 const ARTIFACTS_DIR = path.join(ROOT, 'qa-artifacts');
 const REPORT_PATH = path.join(ARTIFACTS_DIR, 'schedule-today-smoke-report.json');
 const PORT = Number(process.env.STUDY_HOME_SMOKE_PORT || 3210);
-const BASE_URL = `http://127.0.0.1:${PORT}`;
-const API_BASE_URL = (process.env.STUDY_HOME_API_BASE_URL || 'https://zero-base-three.vercel.app').replace(/\/+$/, '');
+const DEFAULT_PUBLIC_BASE_URL = 'https://zero-base-three.vercel.app';
+const DEFAULT_LOCAL_BASE_URL = `http://127.0.0.1:${PORT}`;
+const BASE_URL = (
+  process.env.BASE_URL
+  || process.env.SCHEDULE_TODAY_QA_BASE_URL
+  || DEFAULT_LOCAL_BASE_URL
+).replace(/\/+$/, '');
+const MODE = process.env.SMOKE_MODE || (() => {
+  try {
+    const parsed = new URL(BASE_URL);
+    return parsed.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(parsed.hostname)
+      ? 'local'
+      : 'remote';
+  } catch {
+    return 'local';
+  }
+})();
+const USE_STATIC_PROXY = MODE === 'local';
+const API_BASE_URL = (
+  process.env.SCHEDULE_TODAY_API_BASE_URL
+  || process.env.STUDY_HOME_API_BASE_URL
+  || (USE_STATIC_PROXY ? DEFAULT_PUBLIC_BASE_URL : BASE_URL)
+).replace(/\/+$/, '');
 const apiTraffic = [];
 
 const MIME_TYPES = {
@@ -513,6 +534,7 @@ const buildSeededScheduleEntries = ({ subject, topic, date = new Date() }) => ([
 ]);
 
 const createSeedScript = ({
+  mode,
   email,
   supabaseUrl,
   browserSessionPayload,
@@ -537,7 +559,9 @@ const createSeedScript = ({
           return;
         }
 
-        window.localStorage.clear();
+        if (${JSON.stringify(mode)} === 'local') {
+          window.localStorage.clear();
+        }
         window.localStorage.setItem(${JSON.stringify(`mdzOnboardingCompleted_${normalizedEmail}`)}, 'true');
         window.localStorage.setItem(${JSON.stringify(profileDisplayNameKey)}, ${JSON.stringify(displayName)});
         window.localStorage.setItem(${JSON.stringify(authStorageKey)}, ${JSON.stringify(JSON.stringify(browserSessionPayload))});
@@ -578,6 +602,42 @@ const waitFor = async (session, predicateExpression, { timeoutMs = 30000, interv
 
   throw new Error(`Timeout aguardando ${label}.`);
 };
+
+const waitForSelector = async (session, selector, options = {}) =>
+  waitFor(
+    session,
+    `(() => Boolean(document.querySelector(${JSON.stringify(selector)})))()`,
+    { ...options, label: `selector ${selector}` },
+  );
+
+const waitForSelectorAttribute = async (session, selector, attributeName, expectedValue, options = {}) =>
+  waitFor(
+    session,
+    `(() => {
+      const target = document.querySelector(${JSON.stringify(selector)});
+      return target?.getAttribute(${JSON.stringify(attributeName)}) === ${JSON.stringify(expectedValue)};
+    })()`,
+    { ...options, label: `${selector}[${attributeName}=${expectedValue}]` },
+  );
+
+const clickBySelector = async (session, selector) => {
+  const clicked = await evalInPage(
+    session,
+    `(() => {
+      const target = document.querySelector(${JSON.stringify(selector)});
+      if (!(target instanceof HTMLElement)) return false;
+      target.scrollIntoView({ block: 'center', inline: 'center' });
+      target.click();
+      return true;
+    })()`,
+  );
+
+  if (!clicked) {
+    throw new Error(`Nao encontrei o selector clicavel ${selector}`);
+  }
+};
+
+const clickByTestId = async (session, testId) => clickBySelector(session, `[data-testid="${testId}"]`);
 
 const waitForText = async (session, text, options = {}) =>
   waitFor(
@@ -641,51 +701,25 @@ const dismissIfPresent = async (session, text, options = {}) => {
   }
 };
 
-const closeKnownOverlays = async (session) => {
-  await evalInPage(
+const dismissPromptByContent = async (session, promptText, actionText) =>
+  evalInPage(
     session,
     `(() => {
       ${BROWSER_NORMALIZE}
-      const clickButtonWithin = (root, label) => {
-        const target = Array.from(root.querySelectorAll('button'))
-          .find((button) => normalize(button.textContent || '') === label);
-        target?.click();
-        return Boolean(target);
-      };
-
-      const phaseOverlay = Array.from(document.querySelectorAll('div, section, aside'))
-        .find((element) => normalize(element.textContent || '').includes('modo interno simulacao de fase'));
-      if (phaseOverlay) {
-        clickButtonWithin(phaseOverlay, 'fechar');
-        phaseOverlay.remove();
-      }
-
-      const notificationOverlay = Array.from(document.querySelectorAll('[role="alertdialog"], div, section, aside'))
-        .find((element) => normalize(element.textContent || '').includes('ativar lembretes de estudo'));
-      if (notificationOverlay) {
-        clickButtonWithin(notificationOverlay, 'agora nao');
-        const closeButton = notificationOverlay.querySelector('button[aria-label="Fechar"]');
-        if (closeButton instanceof HTMLElement) {
-          closeButton.click();
-        }
-        notificationOverlay.remove();
-      }
-
+      const containers = Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"], div, section, aside'));
+      const prompt = containers.find((element) => normalize(element.textContent || '').includes(${JSON.stringify(normalize(promptText))}));
+      if (!prompt) return false;
+      const action = Array.from(prompt.querySelectorAll('button, [role="button"]'))
+        .find((button) => normalize(button.textContent || '') === ${JSON.stringify(normalize(actionText))});
+      if (!(action instanceof HTMLElement)) return false;
+      action.click();
       return true;
     })()`,
   );
 
-  await waitFor(
-    session,
-    `(() => {
-      ${BROWSER_NORMALIZE}
-      const body = normalize(document.body?.innerText || '');
-      return !body.includes('modo interno simulacao de fase')
-        && !body.includes('ativar lembretes de estudo');
-    })()`,
-    { timeoutMs: 5000, intervalMs: 100, label: 'overlays conhecidos fechados' },
-  ).catch(() => undefined);
-
+const dismissKnownPrompts = async (session) => {
+  await dismissPromptByContent(session, 'modo interno simulacao de fase', 'fechar').catch(() => undefined);
+  await dismissPromptByContent(session, 'ativar lembretes de estudo', 'agora nao').catch(() => undefined);
   await delay(250);
 };
 
@@ -777,16 +811,14 @@ const clickFirstQuestionOption = async (session) => {
   const clicked = await evalInPage(
     session,
     `(() => {
-      ${BROWSER_NORMALIZE}
-      const optionButtons = Array.from(document.querySelectorAll('button'))
-        .filter((button) => /^[abcde]\\./.test(normalize(button.textContent || '')));
+      const optionButtons = Array.from(document.querySelectorAll('[data-testid="session-question-option"]'));
       const target = optionButtons[0];
       if (!(target instanceof HTMLElement)) {
         return false;
       }
       target.scrollIntoView({ block: 'center', inline: 'center' });
       target.click();
-      return normalize(target.textContent || '');
+      return String(target.textContent || '').trim();
     })()`,
   );
 
@@ -797,20 +829,37 @@ const clickFirstQuestionOption = async (session) => {
   return clicked;
 };
 
+const getCurrentQuestionPrompt = async (session) =>
+  evalInPage(
+    session,
+    `(() => document.querySelector('[data-testid="session-question-root"] h2')?.textContent?.trim() || null)()`,
+  );
+
 const answerEntireOfficialSession = async (session, totalQuestions = 5) => {
   const answers = [];
 
   for (let index = 0; index < totalQuestions; index += 1) {
-    if (await textExists(session, 'Sessao pronta para finalizar')) {
+    if (await evalInPage(session, `(() => Boolean(document.querySelector('[data-testid="session-finish-root"]')))()`)) {
       break;
     }
 
-    await waitForText(session, `Questao ${index + 1} de`, { timeoutMs: 30000 });
+    await waitForSelector(session, '[data-testid="session-question-root"]', { timeoutMs: 30000 });
+    const currentPrompt = await getCurrentQuestionPrompt(session);
     answers.push(await clickFirstQuestionOption(session));
-    await delay(700);
+
+    await waitFor(
+      session,
+      `(() => {
+        const finishRoot = document.querySelector('[data-testid="session-finish-root"]');
+        if (finishRoot) return true;
+        const prompt = document.querySelector('[data-testid="session-question-root"] h2')?.textContent?.trim() || null;
+        return prompt !== ${JSON.stringify(currentPrompt)};
+      })()`,
+      { timeoutMs: 30000, label: 'proxima questao ou encerramento da sessao' },
+    );
   }
 
-  await waitForText(session, 'Sessao pronta para finalizar', { timeoutMs: 30000 });
+  await waitForSelector(session, '[data-testid="session-finish-root"]', { timeoutMs: 30000 });
   return answers;
 };
 
@@ -895,7 +944,7 @@ const screenshot = async (session, fileName) => {
 const main = async () => {
   await ensureArtifactsDir();
 
-  if (!(await fileExists(path.join(DIST_DIR, 'index.html')))) {
+  if (USE_STATIC_PROXY && !(await fileExists(path.join(DIST_DIR, 'index.html')))) {
     throw new Error('dist/index.html nao existe. Rode o build antes do smoke.');
   }
 
@@ -926,6 +975,7 @@ const main = async () => {
     generatedAt: new Date().toISOString(),
     baseUrl: BASE_URL,
     apiBaseUrl: API_BASE_URL,
+    mode: MODE,
     apiTraffic,
     steps: [],
   };
@@ -934,7 +984,7 @@ const main = async () => {
     report.steps.push({ name, status, ...details });
   };
 
-  const server = await createStaticProxyServer();
+  const server = USE_STATIC_PROXY ? await createStaticProxyServer() : null;
   const cleanupUserIds = [];
   let browser = null;
 
@@ -976,6 +1026,7 @@ const main = async () => {
     browser = await launchChrome(10650 + Math.floor(Math.random() * 100));
     await browser.session.send('Page.addScriptToEvaluateOnNewDocument', {
       source: createSeedScript({
+        mode: MODE,
         email,
         supabaseUrl,
         browserSessionPayload,
@@ -987,26 +1038,11 @@ const main = async () => {
 
     await browser.session.send('Page.navigate', { url: `${BASE_URL}?tab=cronograma` });
     await waitFor(browser.session, 'document.readyState === "complete"', { label: 'load complete' });
-    await waitForAnyText(browser.session, ['Cronograma', 'Organize sua semana', 'Monte sua semana de estudo', 'Hoje em execucao'], { timeoutMs: 30000 });
-    await closeKnownOverlays(browser.session);
-    await waitForText(browser.session, 'Hoje em execucao', { timeoutMs: 30000 });
-    await waitFor(
-      browser.session,
-      `(() => {
-        ${BROWSER_NORMALIZE}
-        const sections = Array.from(document.querySelectorAll('section'));
-        return sections.some((section) => {
-          const content = normalize(section.textContent || '');
-          const buttons = Array.from(section.querySelectorAll('button'))
-            .map((button) => normalize(button.textContent || ''))
-            .filter(Boolean);
-          return content.includes('hoje em execucao')
-            && content.includes('pendente')
-            && buttons.some((label) => label.includes('estudar agora') || label.includes('continuar agora'));
-        });
-      })()`,
-      { timeoutMs: 30000, label: 'card de hoje no cronograma pronto para clique' },
-    );
+    await dismissKnownPrompts(browser.session);
+    await waitForSelector(browser.session, '[data-testid="today-execution-card"]', { timeoutMs: 30000 });
+    await waitForSelectorAttribute(browser.session, '[data-testid="today-execution-card"]', 'data-card-status', 'ready', { timeoutMs: 30000 });
+    await waitForSelectorAttribute(browser.session, '[data-testid="today-execution-card"]', 'data-schedule-status', 'pending', { timeoutMs: 30000 });
+    await waitForSelector(browser.session, '[data-testid="today-cta"]', { timeoutMs: 30000 });
     await screenshot(browser.session, 'schedule-today-card.png');
     recordStep('today_schedule_card_real', 'passed', {
       screenshot: 'qa-artifacts/schedule-today-card.png',
@@ -1026,19 +1062,10 @@ const main = async () => {
     });
 
     const cronogramaExcerptBeforeStart = await getBodyTextExcerpt(browser.session);
-    await clickByText(browser.session, 'Estudar agora', { exact: true });
-    await delay(1200);
+    await clickByTestId(browser.session, 'today-cta');
+    await waitForSelector(browser.session, '[data-testid="session-question-root"]', { timeoutMs: 30000 });
+    await waitForSelector(browser.session, '[data-testid="session-question-option"]', { timeoutMs: 30000 });
     const sessionPageDiagnostics = await getSessionPageDiagnostics(browser.session);
-    await waitForText(browser.session, 'Sessao oficial', { timeoutMs: 30000 });
-    await waitForText(browser.session, 'Questao 1 de', { timeoutMs: 30000 });
-    await waitFor(
-      browser.session,
-      `(() => {
-        ${BROWSER_NORMALIZE}
-        return Array.from(document.querySelectorAll('button')).some((button) => /^[abcde]\\./.test(normalize(button.textContent || '')));
-      })()`,
-      { timeoutMs: 30000, label: 'opcoes da questao oficial' },
-    );
     await screenshot(browser.session, 'schedule-today-session.png');
     recordStep('today_schedule_cta_opens_real_session', 'passed', {
       screenshot: 'qa-artifacts/schedule-today-session.png',
@@ -1053,14 +1080,14 @@ const main = async () => {
       screenshot: 'qa-artifacts/schedule-today-session-complete.png',
     });
 
-    await clickByText(browser.session, 'Ver resultado');
-    await waitForText(browser.session, 'Sessao concluida com dados reais', { timeoutMs: 30000 });
+    await clickByTestId(browser.session, 'session-finish-cta');
+    await waitForSelector(browser.session, '[data-testid="session-result-root"]', { timeoutMs: 30000 });
     await screenshot(browser.session, 'schedule-today-result.png');
     recordStep('official_session_result_persisted', 'passed', {
       screenshot: 'qa-artifacts/schedule-today-result.png',
     });
 
-    await clickByText(browser.session, 'Voltar para inicio');
+    await clickByTestId(browser.session, 'session-result-home-cta');
     await waitForText(browser.session, 'Para estudar agora', { timeoutMs: 30000 });
     await waitFor(
       browser.session,
@@ -1127,18 +1154,9 @@ const main = async () => {
 
     await browser.session.send('Page.navigate', { url: `${BASE_URL}?tab=cronograma` });
     await waitFor(browser.session, 'document.readyState === "complete"', { label: 'cronograma reload apos conclusao' });
-    await waitForText(browser.session, 'Hoje em execucao', { timeoutMs: 30000 });
-    await waitFor(
-      browser.session,
-      `(() => {
-        ${BROWSER_NORMALIZE}
-        const body = normalize(document.body?.innerText || '');
-        return body.includes('hoje em execucao')
-          && body.includes('concluido')
-          && body.includes('refletido no cronograma');
-      })()`,
-      { timeoutMs: 30000, label: 'cronograma com status concluido apos sessao' },
-    );
+    await dismissKnownPrompts(browser.session);
+    await waitForSelector(browser.session, '[data-testid="today-execution-card"]', { timeoutMs: 30000 });
+    await waitForSelectorAttribute(browser.session, '[data-testid="today-execution-card"]', 'data-schedule-status', 'completed', { timeoutMs: 30000 });
     const cronogramaExcerptAfterFinish = await getBodyTextExcerpt(browser.session);
     await screenshot(browser.session, 'schedule-today-cronograma-after-finish.png');
     recordStep('today_schedule_card_reflects_completion', 'passed', {
@@ -1148,19 +1166,9 @@ const main = async () => {
 
     await browser.session.send('Page.reload');
     await waitFor(browser.session, 'document.readyState === "complete"', { label: 'reload complete' });
-    await waitForAnyText(browser.session, ['Cronograma', 'Hoje em execucao', 'Monte sua semana de estudo'], { timeoutMs: 30000 });
-    await waitForText(browser.session, 'Hoje em execucao', { timeoutMs: 30000 });
-    await waitFor(
-      browser.session,
-      `(() => {
-        ${BROWSER_NORMALIZE}
-        const body = normalize(document.body?.innerText || '');
-        return body.includes('hoje em execucao')
-          && body.includes('concluido')
-          && body.includes('refletido no cronograma');
-      })()`,
-      { timeoutMs: 30000, label: 'cronograma persistido apos reload' },
-    );
+    await dismissKnownPrompts(browser.session);
+    await waitForSelector(browser.session, '[data-testid="today-execution-card"]', { timeoutMs: 30000 });
+    await waitForSelectorAttribute(browser.session, '[data-testid="today-execution-card"]', 'data-schedule-status', 'completed', { timeoutMs: 30000 });
     const persistedProgressAfterReload = await getPersistedStudyLoopState(browser.session, email);
     const reloadedSessions =
       persistedProgressAfterReload.userData?.sessions
@@ -1204,7 +1212,9 @@ const main = async () => {
       await browser.close();
     }
 
-    await new Promise((resolve) => server.close(resolve));
+    if (server) {
+      await new Promise((resolve) => server.close(resolve));
+    }
 
     for (const userId of cleanupUserIds) {
       await deleteTempUser(supabaseUrl, serviceRoleKey, userId);

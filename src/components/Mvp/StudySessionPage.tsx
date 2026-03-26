@@ -25,7 +25,7 @@ export const StudySessionPage: React.FC<StudySessionPageProps> = ({
     : 0;
 
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900">
+    <div data-testid="study-session-page" className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Sessao oficial</p>
@@ -49,7 +49,7 @@ export const StudySessionPage: React.FC<StudySessionPageProps> = ({
         </div>
 
         {!allAnswered && currentQuestion ? (
-          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+          <div data-testid="session-question-root" className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
               <PlayCircle className="h-4 w-4" />
               Questao {session.answeredQuestions + 1} de {session.totalQuestions}
@@ -64,6 +64,7 @@ export const StudySessionPage: React.FC<StudySessionPageProps> = ({
               {currentQuestion.options.map((option) => (
                 <button
                   key={option.id}
+                  data-testid="session-question-option"
                   type="button"
                   disabled={answering}
                   onClick={() => void onAnswer(currentQuestion.id, option.id)}
@@ -83,7 +84,7 @@ export const StudySessionPage: React.FC<StudySessionPageProps> = ({
             ) : null}
           </div>
         ) : (
-          <div className="rounded-[28px] border border-emerald-200 bg-white p-6 shadow-sm">
+          <div data-testid="session-finish-root" className="rounded-[28px] border border-emerald-200 bg-white p-6 shadow-sm">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600">
               <CheckCircle2 className="h-4 w-4" />
               Sessao pronta para finalizar
@@ -110,6 +111,7 @@ export const StudySessionPage: React.FC<StudySessionPageProps> = ({
             </div>
 
             <button
+              data-testid="session-finish-cta"
               type="button"
               disabled={finishing}
               onClick={() => void onFinish()}
