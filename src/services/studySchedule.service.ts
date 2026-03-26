@@ -75,6 +75,29 @@ export interface ScheduledStudyFocusResolution {
   todayCompletedCount: number;
 }
 
+export interface OperationalScheduleWindowItem {
+  id: string;
+  subject: string;
+  topic?: string | null;
+  note?: string;
+  reason?: string;
+  studyType?: ScheduleEntry['studyType'];
+  priority?: ScheduleEntry['priority'];
+  source: 'entry' | 'weekly_plan';
+  status: ScheduledStudyFocusStatus;
+  startTime?: string;
+  endTime?: string;
+}
+
+export interface OperationalScheduleWindowDay {
+  date: string;
+  weekday: Weekday;
+  offsetDays: number;
+  isToday: boolean;
+  isActive: boolean;
+  items: OperationalScheduleWindowItem[];
+}
+
 const TABLE = 'study_blocks';
 export const STUDY_SCHEDULE_STORAGE_KEY = 'mdz_study_schedule';
 const WEEKDAYS: Weekday[] = [
@@ -733,6 +756,113 @@ export const resolveScheduledStudyFocus = (
     todayPendingCount: 0,
     todayCompletedCount: 0,
   };
+};
+
+const resolveOperationalEntryStatus = (
+  entry: ScheduleEntry,
+  todayDateKey: string,
+): ScheduledStudyFocusStatus => {
+  if (isCompletedEntry(entry)) {
+    return 'completed';
+  }
+
+  if (entry.status === 'adiado' || entry.date.slice(0, 10) < todayDateKey) {
+    return 'overdue';
+  }
+
+  return 'pending';
+};
+
+const sortOperationalEntries = (left: ScheduleEntry, right: ScheduleEntry): number => {
+  const leftTime = left.startTime || '99:99';
+  const rightTime = right.startTime || '99:99';
+  if (leftTime !== rightTime) {
+    return leftTime.localeCompare(rightTime);
+  }
+
+  const leftPriority = left.priority === 'alta' ? 0 : 1;
+  const rightPriority = right.priority === 'alta' ? 0 : 1;
+  if (leftPriority !== rightPriority) {
+    return leftPriority - rightPriority;
+  }
+
+  return left.subject.localeCompare(right.subject);
+};
+
+export const buildOperationalScheduleWindow = (
+  schedule: WeeklyStudySchedule,
+  entries: ScheduleEntry[],
+  {
+    startDate = new Date(),
+    offsetDays = 1,
+    dayCount = 3,
+  }: {
+    startDate?: Date;
+    offsetDays?: number;
+    dayCount?: number;
+  } = {},
+): OperationalScheduleWindowDay[] => {
+  const todayDateKey = toDateKey(startDate);
+  const safeDayCount = Math.max(0, dayCount);
+  const safeOffset = Math.max(0, offsetDays);
+
+  return Array.from({ length: safeDayCount }, (_, index) => {
+    const currentDate = new Date(startDate);
+    currentDate.setDate(currentDate.getDate() + safeOffset + index);
+
+    const dateKey = toDateKey(currentDate);
+    const weekday = getWeekdayFromDate(currentDate);
+    const isActive = schedule.availability[weekday];
+    const dayEntries = entries
+      .filter((entry) => entry.date.slice(0, 10) === dateKey)
+      .sort(sortOperationalEntries);
+
+    const items: OperationalScheduleWindowItem[] = dayEntries.length > 0
+      ? dayEntries.map((entry) => ({
+          id: entry.id,
+          subject: entry.subject,
+          topic: entry.topic ?? null,
+          note: entry.note,
+          reason: entry.aiReason,
+          studyType: entry.studyType,
+          priority: entry.priority,
+          source: 'entry',
+          status: resolveOperationalEntryStatus(entry, todayDateKey),
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+        }))
+      : isActive
+        ? schedule.weekPlan[weekday].subjectLabels.map((subjectLabel, subjectIndex) => {
+            const resolution = resolveScheduledStudyFocus(entries, {
+              subject: subjectLabel,
+              date: currentDate,
+            });
+
+            return {
+              id: `weekly-plan-${dateKey}-${subjectIndex}-${subjectLabel}`,
+              subject: subjectLabel,
+              topic: resolution.matchedEntry?.topic ?? null,
+              note: resolution.matchedEntry?.note,
+              reason: resolution.matchedEntry?.aiReason,
+              studyType: resolution.matchedEntry?.studyType,
+              priority: resolution.matchedEntry?.priority ?? 'normal',
+              source: 'weekly_plan' as const,
+              status: resolution.matchedEntrySource === 'backlog' ? 'overdue' : resolution.status,
+              startTime: undefined,
+              endTime: undefined,
+            };
+          })
+        : [];
+
+    return {
+      date: dateKey,
+      weekday,
+      offsetDays: safeOffset + index,
+      isToday: dateKey === todayDateKey,
+      isActive,
+      items,
+    };
+  });
 };
 
 export const autoDistributeSubjects = (

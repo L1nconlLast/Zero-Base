@@ -485,6 +485,8 @@ const getWeekdayKey = (date = new Date()) => (
 
 const buildSeededWeeklySchedule = ({ subjectLabel, date = new Date() }) => {
   const todayKey = getWeekdayKey(date);
+  const nextDayKey = getWeekdayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1));
+  const secondNextDayKey = getWeekdayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 2));
   const weekPlan = {
     monday: { subjectLabels: [] },
     tuesday: { subjectLabels: [] },
@@ -506,6 +508,10 @@ const buildSeededWeeklySchedule = ({ subjectLabel, date = new Date() }) => {
 
   weekPlan[todayKey] = { subjectLabels: [subjectLabel] };
   availability[todayKey] = true;
+  weekPlan[nextDayKey] = { subjectLabels: ['Linguagens'] };
+  availability[nextDayKey] = true;
+  weekPlan[secondNextDayKey] = { subjectLabels: ['Humanas'] };
+  availability[secondNextDayKey] = true;
 
   return {
     weekPlan,
@@ -1046,6 +1052,25 @@ const main = async () => {
     await screenshot(browser.session, 'schedule-today-card.png');
     recordStep('today_schedule_card_real', 'passed', {
       screenshot: 'qa-artifacts/schedule-today-card.png',
+    });
+    await waitForSelector(browser.session, '[data-testid="upcoming-schedule-panel"]', { timeoutMs: 30000 });
+    await waitFor(
+      browser.session,
+      `(() => {
+        const nextDay = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="1"]');
+        if (!nextDay) return false;
+        const item = nextDay.querySelector('[data-testid="upcoming-schedule-item"]');
+        const cta = nextDay.querySelector('[data-testid="upcoming-schedule-item-cta"], [data-testid="upcoming-schedule-empty-cta"]');
+        return Boolean(item && cta);
+      })()`,
+      { timeoutMs: 30000, label: 'painel operacional dos proximos dias' },
+    );
+    const upcomingScheduleExcerpt = await evalInPage(
+      browser.session,
+      `(() => document.querySelector('[data-testid="upcoming-schedule-panel"]')?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 600) || '')()`,
+    );
+    recordStep('upcoming_schedule_days_real', 'passed', {
+      upcomingScheduleExcerpt,
     });
 
     const scheduleEntriesAfterSync = await getLocalScheduleEntries(browser.session);

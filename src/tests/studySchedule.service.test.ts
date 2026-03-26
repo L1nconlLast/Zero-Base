@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { ScheduleEntry, WeeklyStudySchedule } from '../types';
 import {
   autoDistributeSubjects,
+  buildOperationalScheduleWindow,
   buildStudyContextForToday,
   createDefaultWeeklyAvailability,
   createDefaultWeeklyStudySchedule,
@@ -686,6 +687,147 @@ describe('studySchedule.service', () => {
         overdueCount: 1,
       });
       expect(result.matchedEntry?.id).toBe('backlog');
+    });
+  });
+
+  describe('buildOperationalScheduleWindow', () => {
+    it('returns real future entries with their operational statuses', () => {
+      const schedule = createDefaultWeeklyStudySchedule();
+
+      const result = buildOperationalScheduleWindow(
+        schedule,
+        [
+          createEntry({
+            id: 'future-pending',
+            date: '2026-03-17',
+            subject: 'Linguagens',
+            topic: 'Interpretacao',
+            startTime: '09:00',
+            endTime: '10:00',
+            status: 'pendente',
+            priority: 'normal',
+          }),
+          createEntry({
+            id: 'future-completed',
+            date: '2026-03-17',
+            subject: 'Redacao',
+            topic: 'Competencia 1',
+            startTime: '08:00',
+            endTime: '09:00',
+            done: true,
+            status: 'concluido',
+            priority: 'alta',
+          }),
+          createEntry({
+            id: 'future-postponed',
+            date: '2026-03-18',
+            subject: 'Humanas',
+            topic: 'Brasil Colonia',
+            status: 'adiado',
+          }),
+        ],
+        {
+          startDate: atUtcNoon('2026-03-16'),
+          offsetDays: 1,
+          dayCount: 2,
+        },
+      );
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({
+        date: '2026-03-17',
+        weekday: 'tuesday',
+        offsetDays: 1,
+      });
+      expect(result[0]?.items).toEqual([
+        expect.objectContaining({
+          id: 'future-completed',
+          subject: 'Redacao',
+          source: 'entry',
+          status: 'completed',
+        }),
+        expect.objectContaining({
+          id: 'future-pending',
+          subject: 'Linguagens',
+          source: 'entry',
+          status: 'pending',
+        }),
+      ]);
+      expect(result[1]?.items).toEqual([
+        expect.objectContaining({
+          id: 'future-postponed',
+          subject: 'Humanas',
+          source: 'entry',
+          status: 'overdue',
+        }),
+      ]);
+    });
+
+    it('falls back to the weekly plan when a future day has no real entries', () => {
+      let schedule = createDefaultWeeklyStudySchedule();
+      schedule = updateWeeklyDayPlan(schedule, 'tuesday', ['Linguagens', 'Humanas']);
+
+      const result = buildOperationalScheduleWindow(schedule, [], {
+        startDate: atUtcNoon('2026-03-16'),
+        offsetDays: 1,
+        dayCount: 1,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        date: '2026-03-17',
+        weekday: 'tuesday',
+        isActive: true,
+      });
+      expect(result[0]?.items).toEqual([
+        expect.objectContaining({
+          subject: 'Linguagens',
+          source: 'weekly_plan',
+          status: 'pending',
+        }),
+        expect.objectContaining({
+          subject: 'Humanas',
+          source: 'weekly_plan',
+          status: 'pending',
+        }),
+      ]);
+    });
+
+    it('marks backlog matches from the weekly plan as overdue for upcoming days', () => {
+      let schedule = createDefaultWeeklyStudySchedule();
+      schedule = updateWeeklyDayPlan(schedule, 'wednesday', ['Matematica']);
+
+      const result = buildOperationalScheduleWindow(
+        schedule,
+        [
+          createEntry({
+            id: 'math-backlog',
+            date: '2026-03-17',
+            subject: 'Matematica',
+            topic: 'Porcentagem',
+            status: 'pendente',
+          }),
+        ],
+        {
+          startDate: atUtcNoon('2026-03-16'),
+          offsetDays: 2,
+          dayCount: 1,
+        },
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        date: '2026-03-18',
+        weekday: 'wednesday',
+      });
+      expect(result[0]?.items).toEqual([
+        expect.objectContaining({
+          subject: 'Matematica',
+          source: 'weekly_plan',
+          status: 'overdue',
+          topic: 'Porcentagem',
+        }),
+      ]);
     });
   });
 });

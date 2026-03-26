@@ -7,6 +7,7 @@ import CronogramaSummary from './CronogramaSummary';
 import WeeklyGrid from './WeeklyGrid';
 import TodayScheduleStatus from './TodayScheduleStatus';
 import TodayExecutionCard from './TodayExecutionCard';
+import UpcomingOperationalSchedule from './UpcomingOperationalSchedule';
 import DayPlanEditorModal from './DayPlanEditorModal';
 import {
   Plus,
@@ -40,6 +41,7 @@ import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { saasPlanningService } from '../../services/saasPlanning.service';
 import {
   autoDistributeSubjects,
+  buildOperationalScheduleWindow,
   buildStudyContextForToday,
   createDefaultWeeklyStudySchedule,
   getActiveDaysCount,
@@ -290,6 +292,50 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
       date: today,
     });
   }, [entries, officialTodayActionCard, today]);
+  const upcomingOperationalDays = useMemo(
+    () => buildOperationalScheduleWindow(effectiveWeeklySchedule, entries, {
+      startDate: today,
+      offsetDays: 1,
+      dayCount: 3,
+    }),
+    [effectiveWeeklySchedule, entries, today],
+  );
+  const operationalLoopAction = useMemo(() => {
+    if (!officialTodayActionCard || officialTodayActionCard.status === 'loading') {
+      return null;
+    }
+
+    return officialTodayActionCard.onAction;
+  }, [officialTodayActionCard]);
+  const operationalActionLabels = useMemo(() => {
+    if (!officialTodayActionCard) {
+      return {
+        item: 'Abrir sessao oficial',
+        empty: 'Gerar sessao oficial',
+      };
+    }
+
+    if (officialTodayActionCard.status === 'ready') {
+      return {
+        item: officialTodayActionCard.ctaLabel === 'Continuar agora'
+          ? 'Continuar sessao oficial'
+          : 'Abrir sessao oficial',
+        empty: 'Gerar sessao oficial',
+      };
+    }
+
+    if (officialTodayActionCard.status === 'error') {
+      return {
+        item: 'Tentar sessao oficial',
+        empty: 'Tentar sessao oficial',
+      };
+    }
+
+    return {
+      item: 'Gerar sessao oficial',
+      empty: 'Gerar sessao oficial',
+    };
+  }, [officialTodayActionCard]);
 
   const selectedEntry = entries.find((entry) => entry.id === selectedEntryId) || null;
 
@@ -989,6 +1035,14 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
           onAdjustToday={() => setEditingDay(todayWeekday)}
         />
       ) : null}
+
+      <UpcomingOperationalSchedule
+        days={upcomingOperationalDays}
+        itemActionLabel={operationalActionLabels.item}
+        emptyActionLabel={operationalActionLabels.empty}
+        onStartOfficialStudy={operationalLoopAction}
+        onEditDay={setEditingDay}
+      />
 
       <div ref={weeklyGridSectionRef}>
         <WeeklyGrid
