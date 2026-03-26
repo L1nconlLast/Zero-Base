@@ -98,6 +98,8 @@ export interface OperationalScheduleWindowDay {
   items: OperationalScheduleWindowItem[];
 }
 
+export const DEFAULT_OPERATIONAL_WINDOW_DAYS = 6;
+
 const TABLE = 'study_blocks';
 export const STUDY_SCHEDULE_STORAGE_KEY = 'mdz_study_schedule';
 const WEEKDAYS: Weekday[] = [
@@ -795,7 +797,7 @@ export const buildOperationalScheduleWindow = (
   {
     startDate = new Date(),
     offsetDays = 1,
-    dayCount = 3,
+    dayCount = DEFAULT_OPERATIONAL_WINDOW_DAYS,
   }: {
     startDate?: Date;
     offsetDays?: number;

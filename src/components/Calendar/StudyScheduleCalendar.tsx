@@ -44,6 +44,7 @@ import {
   buildOperationalScheduleWindow,
   buildStudyContextForToday,
   createDefaultWeeklyStudySchedule,
+  DEFAULT_OPERATIONAL_WINDOW_DAYS,
   getActiveDaysCount,
   getPaceCopy,
   getSuggestedAdjustment,
@@ -296,7 +297,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     () => buildOperationalScheduleWindow(effectiveWeeklySchedule, entries, {
       startDate: today,
       offsetDays: 1,
-      dayCount: 3,
+      dayCount: DEFAULT_OPERATIONAL_WINDOW_DAYS,
     }),
     [effectiveWeeklySchedule, entries, today],
   );

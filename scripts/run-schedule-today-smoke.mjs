@@ -485,8 +485,7 @@ const getWeekdayKey = (date = new Date()) => (
 
 const buildSeededWeeklySchedule = ({ subjectLabel, date = new Date() }) => {
   const todayKey = getWeekdayKey(date);
-  const nextDayKey = getWeekdayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1));
-  const secondNextDayKey = getWeekdayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 2));
+  const getOffsetDayKey = (offset) => getWeekdayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset));
   const weekPlan = {
     monday: { subjectLabels: [] },
     tuesday: { subjectLabels: [] },
@@ -508,10 +507,14 @@ const buildSeededWeeklySchedule = ({ subjectLabel, date = new Date() }) => {
 
   weekPlan[todayKey] = { subjectLabels: [subjectLabel] };
   availability[todayKey] = true;
-  weekPlan[nextDayKey] = { subjectLabels: ['Linguagens'] };
-  availability[nextDayKey] = true;
-  weekPlan[secondNextDayKey] = { subjectLabels: ['Humanas'] };
-  availability[secondNextDayKey] = true;
+  weekPlan[getOffsetDayKey(1)] = { subjectLabels: ['Linguagens', 'Redacao'] };
+  availability[getOffsetDayKey(1)] = true;
+  weekPlan[getOffsetDayKey(4)] = { subjectLabels: ['Humanas', 'Atualidades'] };
+  availability[getOffsetDayKey(4)] = true;
+  weekPlan[getOffsetDayKey(5)] = { subjectLabels: ['Biologia'] };
+  availability[getOffsetDayKey(5)] = true;
+  weekPlan[getOffsetDayKey(6)] = { subjectLabels: ['Quimica', 'Fisica'] };
+  availability[getOffsetDayKey(6)] = true;
 
   return {
     weekPlan,
@@ -1057,19 +1060,25 @@ const main = async () => {
     await waitFor(
       browser.session,
       `(() => {
-        const nextDay = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="1"]');
-        if (!nextDay) return false;
-        const item = nextDay.querySelector('[data-testid="upcoming-schedule-item"]');
-        const cta = nextDay.querySelector('[data-testid="upcoming-schedule-item-cta"], [data-testid="upcoming-schedule-empty-cta"]');
-        return Boolean(item && cta);
+        const firstDay = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="1"]');
+        const laterDay = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="6"]');
+        const fallbackDay = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="2"]');
+        if (!firstDay || !laterDay || !fallbackDay) return false;
+
+        const firstDayItems = firstDay.querySelectorAll('[data-testid="upcoming-schedule-item"]').length;
+        const firstDayCta = firstDay.querySelector('[data-testid="upcoming-schedule-item-cta"]');
+        const laterDayItems = laterDay.querySelectorAll('[data-testid="upcoming-schedule-item"]').length;
+        const fallbackCta = fallbackDay.querySelector('[data-testid="upcoming-schedule-empty-cta"]');
+
+        return firstDayItems >= 2 && Boolean(firstDayCta) && laterDayItems >= 1 && Boolean(fallbackCta);
       })()`,
-      { timeoutMs: 30000, label: 'painel operacional dos proximos dias' },
+      { timeoutMs: 30000, label: 'janela operacional semanal' },
     );
     const upcomingScheduleExcerpt = await evalInPage(
       browser.session,
-      `(() => document.querySelector('[data-testid="upcoming-schedule-panel"]')?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 600) || '')()`,
+      `(() => document.querySelector('[data-testid="upcoming-schedule-panel"]')?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 900) || '')()`,
     );
-    recordStep('upcoming_schedule_days_real', 'passed', {
+    recordStep('operational_week_window_real', 'passed', {
       upcomingScheduleExcerpt,
     });
 

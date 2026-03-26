@@ -81,18 +81,18 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-          Proximos dias
+          Semana operacional
         </p>
         <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-slate-100">
-          Transforme a semana em uma fila viva de estudo
+          Transforme os proximos dias em uma fila viva de estudo
         </h3>
       </div>
       <p className="max-w-xl text-sm text-slate-500 dark:text-slate-400">
-        Os proximos blocos usam o mesmo loop oficial para evitar fluxo paralelo entre cronograma, home e sessao.
+        Cada item usa o mesmo loop oficial para manter cronograma, home e progresso no mesmo trilho.
       </p>
     </div>
 
-    <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-3">
+    <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
       {days.map((day) => (
         <article
           key={day.date}

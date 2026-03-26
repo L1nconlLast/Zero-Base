@@ -829,5 +829,47 @@ describe('studySchedule.service', () => {
         }),
       ]);
     });
+
+    it('defaults to a six-day operational window and preserves multiple items with empty fallback days', () => {
+      let schedule = createDefaultWeeklyStudySchedule();
+      schedule = updateWeeklyDayPlan(schedule, 'tuesday', ['Linguagens', 'Redacao']);
+      schedule = updateWeeklyDayPlan(schedule, 'thursday', ['Humanas']);
+      schedule = updateWeeklyDayPlan(schedule, 'friday', ['Biologia', 'Quimica']);
+
+      const result = buildOperationalScheduleWindow(schedule, [], {
+        startDate: atUtcNoon('2026-03-16'),
+      });
+
+      expect(result).toHaveLength(6);
+      expect(result[0]).toMatchObject({
+        date: '2026-03-17',
+        weekday: 'tuesday',
+        offsetDays: 1,
+      });
+      expect(result[0]?.items).toEqual([
+        expect.objectContaining({
+          subject: 'Linguagens',
+          source: 'weekly_plan',
+          status: 'pending',
+        }),
+        expect.objectContaining({
+          subject: 'Redacao',
+          source: 'weekly_plan',
+          status: 'pending',
+        }),
+      ]);
+      expect(result[4]).toMatchObject({
+        date: '2026-03-21',
+        weekday: 'saturday',
+        isActive: false,
+        items: [],
+      });
+      expect(result[5]).toMatchObject({
+        date: '2026-03-22',
+        weekday: 'sunday',
+        isActive: false,
+        items: [],
+      });
+    });
   });
 });
