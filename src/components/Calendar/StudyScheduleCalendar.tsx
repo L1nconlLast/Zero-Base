@@ -51,7 +51,10 @@ import {
   getTodayCompletedSessions,
   getPlannedSubjectsCount,
   getRecentPaceState,
+  moveSubjectInWeeklyPlan,
+  prioritizeSubjectInWeeklyPlan,
   resolveScheduledStudyFocus,
+  type OperationalScheduleWindowItem,
   getWeeklyPlanConfidenceState,
   getWeeklyCompletedSessions,
   getWeekdayFromDate,
@@ -247,6 +250,9 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     scheduledDates,
     addEntry,
     updateEntry,
+    moveEntry,
+    postponeEntry,
+    prioritizeEntry,
     removeEntry,
     toggleDone,
     applyAdaptiveSchedule,
@@ -340,6 +346,24 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
 
   const selectedEntry = entries.find((entry) => entry.id === selectedEntryId) || null;
 
+  const isSubjectPlannedForDate = useCallback((date: string, subject: string) => {
+    const weekday = getWeekdayFromDate(new Date(`${date}T12:00:00`));
+    return effectiveWeeklySchedule.weekPlan[weekday]?.subjectLabels.some((label) => {
+      const normalizedLabel = String(label || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+      const normalizedSubject = String(subject || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+
+      return normalizedLabel === normalizedSubject;
+    }) ?? false;
+  }, [effectiveWeeklySchedule.weekPlan]);
+
   useEffect(() => {
     if (!requestedEditDay) {
       return;
@@ -406,6 +430,42 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     todayEntries,
     todayStr,
   ]);
+
+  useEffect(() => {
+    upcomingOperationalDays.forEach((day) => {
+      if (!day.isActive) {
+        return;
+      }
+
+      const plannedSubjects = effectiveWeeklySchedule.weekPlan[day.weekday]?.subjectLabels ?? [];
+      plannedSubjects.forEach((subjectLabel) => {
+        const alreadyExists = entries.some((entry) => {
+          const normalizedEntrySubject = String(entry.subject || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+          const normalizedSubjectLabel = String(subjectLabel || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+
+          return entry.date === day.date && normalizedEntrySubject === normalizedSubjectLabel;
+        });
+
+        if (alreadyExists) {
+          return;
+        }
+
+        addEntry(day.date, subjectLabel, 'Bloco semanal sincronizado com a semana operacional.', {
+          source: 'motor',
+          priority: 'normal',
+          status: 'pendente',
+        });
+      });
+    });
+  }, [addEntry, effectiveWeeklySchedule.weekPlan, entries, upcomingOperationalDays]);
 
   useEffect(() => {
     setSmartProfile((current: SmartScheduleProfile) => {
@@ -636,6 +696,82 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     ].slice(0, 4));
     setSelectedEntryId(null);
   };
+
+  const handleOperationalMove = useCallback((item: OperationalScheduleWindowItem, fromDate: string, toDate: string) => {
+    if (!toDate || fromDate === toDate) {
+      toast('Esse bloco ja esta nesse dia.', { icon: 'ℹ️' });
+      return;
+    }
+
+    const targetEntry = entries.find((entry) => entry.id === item.id) || null;
+    if (targetEntry) {
+      moveEntry(targetEntry.id, toDate);
+    }
+
+    if (item.source === 'weekly_plan' || isSubjectPlannedForDate(fromDate, item.subject)) {
+      const nextSchedule = moveSubjectInWeeklyPlan(effectiveWeeklySchedule, {
+        subject: item.subject,
+        fromDate,
+        toDate,
+      });
+      if (nextSchedule !== effectiveWeeklySchedule) {
+        handleWeeklyScheduleChange(nextSchedule);
+      }
+    }
+
+    toast.success(`Bloco remarcado para ${toDate}.`);
+  }, [effectiveWeeklySchedule, entries, handleWeeklyScheduleChange, isSubjectPlannedForDate, moveEntry]);
+
+  const handleOperationalPostpone = useCallback((item: OperationalScheduleWindowItem, fromDate: string) => {
+    const currentDate = new Date(`${fromDate}T12:00:00`);
+    currentDate.setDate(currentDate.getDate() + 1);
+    const proposedTargetDate = toDateStr(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+    const windowEndDate = addDays(today, DEFAULT_OPERATIONAL_WINDOW_DAYS);
+    const lastAllowedDate = toDateStr(windowEndDate.getFullYear(), windowEndDate.getMonth(), windowEndDate.getDate());
+    const targetDate = proposedTargetDate > lastAllowedDate ? lastAllowedDate : proposedTargetDate;
+
+    if (targetDate === fromDate) {
+      toast('Esse bloco ja esta no ultimo dia da janela operacional.', { icon: 'ℹ️' });
+      return;
+    }
+
+    const targetEntry = entries.find((entry) => entry.id === item.id) || null;
+    if (targetEntry) {
+      postponeEntry(targetEntry.id, today);
+    }
+
+    if (item.source === 'weekly_plan' || isSubjectPlannedForDate(fromDate, item.subject)) {
+      const nextSchedule = moveSubjectInWeeklyPlan(effectiveWeeklySchedule, {
+        subject: item.subject,
+        fromDate,
+        toDate: targetDate,
+      });
+      if (nextSchedule !== effectiveWeeklySchedule) {
+        handleWeeklyScheduleChange(nextSchedule);
+      }
+    }
+
+    toast.success(`Bloco adiado para ${targetDate}.`);
+  }, [effectiveWeeklySchedule, entries, handleWeeklyScheduleChange, isSubjectPlannedForDate, postponeEntry, today]);
+
+  const handleOperationalPrioritize = useCallback((item: OperationalScheduleWindowItem, date: string) => {
+    const targetEntry = entries.find((entry) => entry.id === item.id) || null;
+    if (targetEntry) {
+      prioritizeEntry(targetEntry.id);
+    }
+
+    if (item.source === 'weekly_plan' || isSubjectPlannedForDate(date, item.subject)) {
+      const nextSchedule = prioritizeSubjectInWeeklyPlan(effectiveWeeklySchedule, {
+        subject: item.subject,
+        date,
+      });
+      if (nextSchedule !== effectiveWeeklySchedule) {
+        handleWeeklyScheduleChange(nextSchedule);
+      }
+    }
+
+    toast.success(`${item.subject} foi priorizado no dia.`);
+  }, [effectiveWeeklySchedule, entries, handleWeeklyScheduleChange, isSubjectPlannedForDate, prioritizeEntry]);
 
   useEffect(() => {
     if (entries.length > 0) {
@@ -1043,6 +1179,9 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
         emptyActionLabel={operationalActionLabels.empty}
         onStartOfficialStudy={operationalLoopAction}
         onEditDay={setEditingDay}
+        onMoveItem={handleOperationalMove}
+        onPostponeItem={handleOperationalPostpone}
+        onPrioritizeItem={handleOperationalPrioritize}
       />
 
       <div ref={weeklyGridSectionRef}>

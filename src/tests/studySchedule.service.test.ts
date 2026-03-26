@@ -17,8 +17,14 @@ import {
   hideSuggestedAdjustmentForToday,
   getSuggestedAdjustment,
   getWeekdayFromDate,
+  moveScheduleEntry,
+  moveSubjectInWeeklyPlan,
+  postponeScheduleEntry,
+  prioritizeScheduleEntry,
+  prioritizeSubjectInWeeklyPlan,
   resolveScheduledStudyFocus,
   shouldShowSuggestedAdjustment,
+  sortScheduleEntries,
   resolveTodayStudyState,
   sanitizeWeeklyStudySchedule,
   toggleWeeklyDayAvailability,
@@ -870,6 +876,117 @@ describe('studySchedule.service', () => {
         isActive: false,
         items: [],
       });
+    });
+  });
+
+  describe('simple schedule editing helpers', () => {
+    it('moves an entry to another day without duplicating it or losing fields', () => {
+      const entries = [
+        createEntry({
+          id: 'move-target',
+          date: '2026-03-17',
+          subject: 'Linguagens',
+          topic: 'Interpretacao',
+          source: 'motor',
+          aiReason: 'Plano semanal',
+          status: 'pendente',
+          priority: 'normal',
+        }),
+        createEntry({
+          id: 'other-entry',
+          date: '2026-03-17',
+          subject: 'Redacao',
+          status: 'pendente',
+        }),
+      ];
+
+      const result = moveScheduleEntry(entries, 'move-target', '2026-03-18');
+
+      expect(result).toHaveLength(2);
+      expect(result.filter((entry) => entry.id === 'move-target')).toHaveLength(1);
+      expect(result.find((entry) => entry.id === 'move-target')).toMatchObject({
+        id: 'move-target',
+        date: '2026-03-18',
+        subject: 'Linguagens',
+        topic: 'Interpretacao',
+        source: 'motor',
+        aiReason: 'Plano semanal',
+        status: 'pendente',
+      });
+      expect(result.find((entry) => entry.id === 'other-entry')?.date).toBe('2026-03-17');
+    });
+
+    it('postpones an entry to the next valid day within the operational window', () => {
+      const entries = [
+        createEntry({
+          id: 'last-window-item',
+          date: '2026-03-22',
+          subject: 'Biologia',
+          status: 'pendente',
+        }),
+      ];
+
+      const result = postponeScheduleEntry(entries, 'last-window-item', {
+        startDate: atUtcNoon('2026-03-16'),
+      });
+
+      expect(result.find((entry) => entry.id === 'last-window-item')?.date).toBe('2026-03-22');
+      expect(result).toHaveLength(1);
+    });
+
+    it('prioritizes an entry to the top of the day with stable order for the others', () => {
+      const entries = sortScheduleEntries([
+        createEntry({
+          id: 'alpha',
+          date: '2026-03-17',
+          subject: 'Atualidades',
+          priority: 'normal',
+        }),
+        createEntry({
+          id: 'beta',
+          date: '2026-03-17',
+          subject: 'Biologia',
+          priority: 'normal',
+        }),
+        createEntry({
+          id: 'gamma',
+          date: '2026-03-17',
+          subject: 'Quimica',
+          priority: 'normal',
+        }),
+      ]);
+
+      const result = prioritizeScheduleEntry(entries, 'gamma');
+
+      expect(result.map((entry) => entry.id)).toEqual(['gamma', 'alpha', 'beta']);
+      expect(result.find((entry) => entry.id === 'gamma')?.priority).toBe('alta');
+    });
+
+    it('moves the weekly plan subject when a planned item is remarcado', () => {
+      let schedule = createDefaultWeeklyStudySchedule();
+      schedule = updateWeeklyDayPlan(schedule, 'tuesday', ['Linguagens', 'Redacao']);
+      schedule = updateWeeklyDayPlan(schedule, 'wednesday', ['Humanas']);
+
+      const result = moveSubjectInWeeklyPlan(schedule, {
+        subject: 'Linguagens',
+        fromDate: '2026-03-17',
+        toDate: '2026-03-18',
+      });
+
+      expect(result.weekPlan.tuesday.subjectLabels).toEqual(['Redacao']);
+      expect(result.weekPlan.wednesday.subjectLabels).toEqual(['Humanas', 'Linguagens']);
+    });
+
+    it('prioritizes the weekly plan subject to the top of the day', () => {
+      let schedule = createDefaultWeeklyStudySchedule();
+      schedule = updateWeeklyDayPlan(schedule, 'thursday', ['Atualidades', 'Humanas', 'Biologia']);
+
+      const result = prioritizeSubjectInWeeklyPlan(schedule, {
+        subject: 'Humanas',
+        date: '2026-03-19',
+      });
+
+      expect(result.weekPlan.thursday.subjectLabels).toEqual(['Humanas', 'Atualidades', 'Biologia']);
     });
   });
 });

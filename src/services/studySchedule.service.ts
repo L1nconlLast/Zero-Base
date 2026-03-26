@@ -169,6 +169,61 @@ const normalizeScheduleMatcher = (value?: string | null): string =>
     .toLowerCase()
     .trim();
 
+const getPriorityRank = (value?: ScheduleEntry['priority']): number =>
+  value === 'alta' ? 0 : 1;
+
+const normalizeDateKeyInput = (value: string): string | null => {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return toDateKey(parsed);
+};
+
+const getOperationalWindowEndDateKey = (
+  startDate: Date,
+  dayCount = DEFAULT_OPERATIONAL_WINDOW_DAYS,
+): string => {
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + Math.max(1, dayCount));
+  return toDateKey(endDate);
+};
+
+const removeFirstMatchingSubject = (subjectLabels: string[], subject: string): string[] => {
+  const subjectKey = normalizeScheduleMatcher(subject);
+  let removed = false;
+
+  return subjectLabels.filter((label) => {
+    if (removed) {
+      return true;
+    }
+
+    if (normalizeScheduleMatcher(label) === subjectKey) {
+      removed = true;
+      return false;
+    }
+
+    return true;
+  });
+};
+
+const insertSubjectAtTop = (subjectLabels: string[], subject: string): string[] => {
+  const withoutTarget = removeFirstMatchingSubject(subjectLabels, subject);
+  return sanitizeSubjectLabels([subject, ...withoutTarget]);
+};
+
+const appendSubjectToDay = (subjectLabels: string[], subject: string): string[] => {
+  const next = [...subjectLabels];
+  if (!next.some((label) => normalizeScheduleMatcher(label) === normalizeScheduleMatcher(subject))) {
+    next.push(subject);
+  }
+  return sanitizeSubjectLabels(next);
+};
+
 const loadLocalScheduleEntries = (): ScheduleEntry[] => {
   if (typeof window === 'undefined') {
     return [];
@@ -290,6 +345,33 @@ export const getPlannedSubjectsCount = (weekPlan: WeeklyPlan): number =>
 
 const isCompletedEntry = (entry: ScheduleEntry): boolean =>
   entry.done || entry.status === 'concluido';
+
+export const compareScheduleEntries = (left: ScheduleEntry, right: ScheduleEntry): number => {
+  if (left.date !== right.date) {
+    return left.date.localeCompare(right.date);
+  }
+
+  const priorityDiff = getPriorityRank(left.priority) - getPriorityRank(right.priority);
+  if (priorityDiff !== 0) {
+    return priorityDiff;
+  }
+
+  const leftTime = left.startTime || '99:99';
+  const rightTime = right.startTime || '99:99';
+  if (leftTime !== rightTime) {
+    return leftTime.localeCompare(rightTime);
+  }
+
+  const subjectDiff = left.subject.localeCompare(right.subject);
+  if (subjectDiff !== 0) {
+    return subjectDiff;
+  }
+
+  return left.id.localeCompare(right.id);
+};
+
+export const sortScheduleEntries = (entries: ScheduleEntry[]): ScheduleEntry[] =>
+  [...entries].sort(compareScheduleEntries);
 
 const toComparableEntryDate = (value: string): Date | null => {
   if (!value) return null;
@@ -608,6 +690,80 @@ export const updateWeeklyDayPlan = (
   updatedAt: new Date().toISOString(),
 });
 
+export const moveSubjectInWeeklyPlan = (
+  schedule: WeeklyStudySchedule,
+  input: {
+    subject: string;
+    fromDate: string;
+    toDate: string;
+  },
+): WeeklyStudySchedule => {
+  const fromDateKey = normalizeDateKeyInput(input.fromDate);
+  const toDateKey = normalizeDateKeyInput(input.toDate);
+  if (!fromDateKey || !toDateKey || fromDateKey === toDateKey) {
+    return schedule;
+  }
+
+  const fromDay = getWeekdayFromDate(new Date(`${fromDateKey}T12:00:00`));
+  const toDay = getWeekdayFromDate(new Date(`${toDateKey}T12:00:00`));
+  const fromLabels = schedule.weekPlan[fromDay]?.subjectLabels ?? [];
+  const hasSubjectInOrigin = fromLabels.some(
+    (label) => normalizeScheduleMatcher(label) === normalizeScheduleMatcher(input.subject),
+  );
+
+  if (!hasSubjectInOrigin) {
+    return schedule;
+  }
+
+  return {
+    ...schedule,
+    weekPlan: {
+      ...schedule.weekPlan,
+      [fromDay]: {
+        subjectLabels: sanitizeSubjectLabels(removeFirstMatchingSubject(fromLabels, input.subject)),
+      },
+      [toDay]: {
+        subjectLabels: appendSubjectToDay(schedule.weekPlan[toDay]?.subjectLabels ?? [], input.subject),
+      },
+    },
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+export const prioritizeSubjectInWeeklyPlan = (
+  schedule: WeeklyStudySchedule,
+  input: {
+    subject: string;
+    date: string;
+  },
+): WeeklyStudySchedule => {
+  const dateKey = normalizeDateKeyInput(input.date);
+  if (!dateKey) {
+    return schedule;
+  }
+
+  const day = getWeekdayFromDate(new Date(`${dateKey}T12:00:00`));
+  const subjectLabels = schedule.weekPlan[day]?.subjectLabels ?? [];
+  const hasSubject = subjectLabels.some(
+    (label) => normalizeScheduleMatcher(label) === normalizeScheduleMatcher(input.subject),
+  );
+
+  if (!hasSubject) {
+    return schedule;
+  }
+
+  return {
+    ...schedule,
+    weekPlan: {
+      ...schedule.weekPlan,
+      [day]: {
+        subjectLabels: insertSubjectAtTop(subjectLabels, input.subject),
+      },
+    },
+    updatedAt: new Date().toISOString(),
+  };
+};
+
 export const toggleWeeklyDayAvailability = (
   schedule: WeeklyStudySchedule,
   day: Weekday,
@@ -775,20 +931,86 @@ const resolveOperationalEntryStatus = (
   return 'pending';
 };
 
-const sortOperationalEntries = (left: ScheduleEntry, right: ScheduleEntry): number => {
-  const leftTime = left.startTime || '99:99';
-  const rightTime = right.startTime || '99:99';
-  if (leftTime !== rightTime) {
-    return leftTime.localeCompare(rightTime);
+const sortOperationalEntries = (left: ScheduleEntry, right: ScheduleEntry): number =>
+  compareScheduleEntries(left, right);
+
+export const moveScheduleEntry = (
+  entries: ScheduleEntry[],
+  entryId: string,
+  toDate: string,
+): ScheduleEntry[] => {
+  const normalizedTargetDate = normalizeDateKeyInput(toDate);
+  if (!normalizedTargetDate) {
+    return entries;
   }
 
-  const leftPriority = left.priority === 'alta' ? 0 : 1;
-  const rightPriority = right.priority === 'alta' ? 0 : 1;
-  if (leftPriority !== rightPriority) {
-    return leftPriority - rightPriority;
+  let changed = false;
+  const nextEntries = entries.map((entry) => {
+    if (entry.id !== entryId || entry.date === normalizedTargetDate) {
+      return entry;
+    }
+
+    changed = true;
+    return {
+      ...entry,
+      date: normalizedTargetDate,
+    };
+  });
+
+  return changed ? sortScheduleEntries(nextEntries) : entries;
+};
+
+export const postponeScheduleEntry = (
+  entries: ScheduleEntry[],
+  entryId: string,
+  {
+    startDate = new Date(),
+    dayCount = DEFAULT_OPERATIONAL_WINDOW_DAYS,
+  }: {
+    startDate?: Date;
+    dayCount?: number;
+  } = {},
+): ScheduleEntry[] => {
+  const targetEntry = entries.find((entry) => entry.id === entryId);
+  if (!targetEntry) {
+    return entries;
   }
 
-  return left.subject.localeCompare(right.subject);
+  const entryDate = new Date(`${targetEntry.date}T12:00:00`);
+  if (Number.isNaN(entryDate.getTime())) {
+    return entries;
+  }
+
+  entryDate.setDate(entryDate.getDate() + 1);
+  const proposedDateKey = toDateKey(entryDate);
+  const windowEndDateKey = getOperationalWindowEndDateKey(startDate, dayCount);
+  const clampedTargetDate = proposedDateKey > windowEndDateKey ? windowEndDateKey : proposedDateKey;
+
+  return moveScheduleEntry(entries, entryId, clampedTargetDate);
+};
+
+export const prioritizeScheduleEntry = (
+  entries: ScheduleEntry[],
+  entryId: string,
+): ScheduleEntry[] => {
+  let changed = false;
+  const nextEntries = entries.map((entry) => {
+    if (entry.id !== entryId) {
+      return entry;
+    }
+
+    if (entry.priority === 'alta') {
+      return entry;
+    }
+
+    changed = true;
+    return {
+      ...entry,
+      priority: 'alta' as const,
+    };
+  });
+
+  return changed ? sortScheduleEntries(nextEntries) : entries;
 };
 
 export const buildOperationalScheduleWindow = (

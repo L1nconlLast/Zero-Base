@@ -646,6 +646,64 @@ const clickBySelector = async (session, selector) => {
   }
 };
 
+const getOperationalItemSelector = ({ dayOffset, subject, source }) => {
+  const clauses = [`[data-item-subject="${subject}"]`];
+  if (source) {
+    clauses.push(`[data-item-source="${source}"]`);
+  }
+
+  return [
+    `[data-testid="upcoming-schedule-day"][data-day-offset="${dayOffset}"]`,
+    `[data-testid="upcoming-schedule-item"]${clauses.join('')}`,
+  ].join(' ');
+};
+
+const waitForOperationalItemEditable = async (
+  session,
+  { dayOffset, subject, source = 'entry' },
+  options = {},
+) => {
+  const itemSelector = getOperationalItemSelector({ dayOffset, subject, source });
+  return waitFor(
+    session,
+    `(() => {
+      const item = document.querySelector(${JSON.stringify(itemSelector)});
+      if (!item) return false;
+
+      const prioritize = item.querySelector('[data-testid="schedule-item-prioritize-cta"]');
+      const postpone = item.querySelector('[data-testid="schedule-item-postpone-cta"]');
+      const rescheduleSelect = item.querySelector('[data-testid="schedule-item-reschedule-select"]');
+      const rescheduleCta = item.querySelector('[data-testid="schedule-item-reschedule-cta"]');
+
+      return Boolean(prioritize && postpone && rescheduleSelect && rescheduleCta);
+    })()`,
+    { ...options, label: `item operacional editavel ${subject} em D+${dayOffset}` },
+  );
+};
+
+const getOperationalDayDiagnostics = async (session, dayOffset) =>
+  evalInPage(
+    session,
+    `(() => {
+      const day = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="${dayOffset}"]');
+      if (!day) return null;
+
+      return {
+        offset: ${dayOffset},
+        text: (day.innerText || '').replace(/\\s+/g, ' ').trim(),
+        items: Array.from(day.querySelectorAll('[data-testid="upcoming-schedule-item"]')).map((item) => ({
+          subject: item.getAttribute('data-item-subject'),
+          source: item.getAttribute('data-item-source'),
+          status: item.getAttribute('data-item-status'),
+          hasPrioritize: Boolean(item.querySelector('[data-testid="schedule-item-prioritize-cta"]')),
+          hasPostpone: Boolean(item.querySelector('[data-testid="schedule-item-postpone-cta"]')),
+          hasRescheduleSelect: Boolean(item.querySelector('[data-testid="schedule-item-reschedule-select"]')),
+          hasRescheduleCta: Boolean(item.querySelector('[data-testid="schedule-item-reschedule-cta"]')),
+        })),
+      };
+    })()`,
+  );
+
 const clickByTestId = async (session, testId) => clickBySelector(session, `[data-testid="${testId}"]`);
 
 const waitForText = async (session, text, options = {}) =>
@@ -1081,6 +1139,74 @@ const main = async () => {
     recordStep('operational_week_window_real', 'passed', {
       upcomingScheduleExcerpt,
     });
+    await dismissKnownPrompts(browser.session);
+    await waitForOperationalItemEditable(
+      browser.session,
+      { dayOffset: 1, subject: 'Linguagens' },
+      { timeoutMs: 30000 },
+    );
+    await waitForOperationalItemEditable(
+      browser.session,
+      { dayOffset: 4, subject: 'Humanas' },
+      { timeoutMs: 30000 },
+    );
+
+    await clickBySelector(
+      browser.session,
+      `${getOperationalItemSelector({ dayOffset: 4, subject: 'Humanas', source: 'entry' })} [data-testid="schedule-item-prioritize-cta"]`,
+    );
+    await waitFor(
+      browser.session,
+      `(() => {
+        const day = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="4"]');
+        const firstItem = day?.querySelector('[data-testid="upcoming-schedule-item"]');
+        if (!firstItem) return false;
+        const subject = (firstItem.getAttribute('data-item-subject') || '').trim();
+        const hasPriority = Boolean(firstItem.innerText?.includes('Prioridade alta'));
+        return subject === 'Humanas' && hasPriority;
+      })()`,
+      { timeoutMs: 30000, label: 'priorizacao do item semanal' },
+    );
+    await dismissKnownPrompts(browser.session);
+
+    const rescheduleApplied = await evalInPage(
+      browser.session,
+      `(() => {
+        const target = document.querySelector(${JSON.stringify(`${getOperationalItemSelector({ dayOffset: 1, subject: 'Linguagens', source: 'entry' })} [data-testid="schedule-item-reschedule-select"]`)});
+        if (!target) return false;
+        target.value = '${toDateKey(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 2))}';
+        target.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })()`,
+    );
+    if (!rescheduleApplied) {
+      const dayOneDiagnostics = await getOperationalDayDiagnostics(browser.session, 1);
+      throw new Error(`Falha ao preparar remarcar de Linguagens em D+1: ${JSON.stringify(dayOneDiagnostics)}`);
+    }
+    await clickBySelector(
+      browser.session,
+      `${getOperationalItemSelector({ dayOffset: 1, subject: 'Linguagens', source: 'entry' })} [data-testid="schedule-item-reschedule-cta"]`,
+    );
+    await waitFor(
+      browser.session,
+      `(() => {
+        const dayOne = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="1"]');
+        const dayTwo = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="2"]');
+        if (!dayOne || !dayTwo) return false;
+
+        const dayOneText = dayOne.innerText || '';
+        const dayTwoText = dayTwo.innerText || '';
+        return !dayOneText.includes('Linguagens') && dayOneText.includes('Redacao') && dayTwoText.includes('Linguagens');
+      })()`,
+      { timeoutMs: 30000, label: 'remarcacao do item semanal' },
+    );
+    const operationalEditExcerpt = await evalInPage(
+      browser.session,
+      `(() => document.querySelector('[data-testid="upcoming-schedule-panel"]')?.innerText?.replace(/\\s+/g, ' ').trim().slice(0, 900) || '')()`,
+    );
+    recordStep('operational_week_edit_actions', 'passed', {
+      operationalEditExcerpt,
+    });
 
     const scheduleEntriesAfterSync = await getLocalScheduleEntries(browser.session);
     const syncedTodayEntry = scheduleEntriesAfterSync.find((entry) =>
@@ -1096,12 +1222,15 @@ const main = async () => {
     });
 
     const cronogramaExcerptBeforeStart = await getBodyTextExcerpt(browser.session);
-    await clickByTestId(browser.session, 'today-cta');
+    await clickBySelector(
+      browser.session,
+      `${getOperationalItemSelector({ dayOffset: 2, subject: 'Linguagens', source: 'entry' })} [data-testid="upcoming-schedule-item-cta"]`,
+    );
     await waitForSelector(browser.session, '[data-testid="session-question-root"]', { timeoutMs: 30000 });
     await waitForSelector(browser.session, '[data-testid="session-question-option"]', { timeoutMs: 30000 });
     const sessionPageDiagnostics = await getSessionPageDiagnostics(browser.session);
     await screenshot(browser.session, 'schedule-today-session.png');
-    recordStep('today_schedule_cta_opens_real_session', 'passed', {
+    recordStep('edited_schedule_item_cta_opens_real_session', 'passed', {
       screenshot: 'qa-artifacts/schedule-today-session.png',
       cronogramaExcerptBeforeStart,
       sessionPageDiagnostics,
@@ -1203,6 +1332,23 @@ const main = async () => {
     await dismissKnownPrompts(browser.session);
     await waitForSelector(browser.session, '[data-testid="today-execution-card"]', { timeoutMs: 30000 });
     await waitForSelectorAttribute(browser.session, '[data-testid="today-execution-card"]', 'data-schedule-status', 'completed', { timeoutMs: 30000 });
+    await waitFor(
+      browser.session,
+      `(() => {
+        const dayOne = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="1"]');
+        const dayTwo = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="2"]');
+        const dayFour = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="4"]');
+        if (!dayOne || !dayTwo || !dayFour) return false;
+
+        const dayOneText = dayOne.innerText || '';
+        const dayTwoText = dayTwo.innerText || '';
+        const firstDayFourItem = dayFour.querySelector('[data-testid="upcoming-schedule-item"]');
+        return !dayOneText.includes('Linguagens')
+          && dayTwoText.includes('Linguagens')
+          && (firstDayFourItem?.getAttribute('data-item-subject') || '').trim() === 'Humanas';
+      })()`,
+      { timeoutMs: 30000, label: 'persistencia da edicao semanal apos reload' },
+    );
     const persistedProgressAfterReload = await getPersistedStudyLoopState(browser.session, email);
     const reloadedSessions =
       persistedProgressAfterReload.userData?.sessions

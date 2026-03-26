@@ -1,6 +1,13 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ScheduleEntry } from '../types';
-import { STUDY_SCHEDULE_STORAGE_KEY, studyScheduleService } from '../services/studySchedule.service.ts';
+import {
+  moveScheduleEntry,
+  postponeScheduleEntry,
+  prioritizeScheduleEntry,
+  sortScheduleEntries,
+  STUDY_SCHEDULE_STORAGE_KEY,
+  studyScheduleService,
+} from '../services/studySchedule.service.ts';
 import { isSupabaseConfigured } from '../services/supabase.client';
 import { adaptSchedule, type StudyBlock } from '../engine/adaptiveScheduleAdapter.ts';
 
@@ -38,7 +45,7 @@ const mergeEntries = (local: ScheduleEntry[], cloud: ScheduleEntry[]): ScheduleE
   const map = new Map<string, ScheduleEntry>();
   for (const e of local) map.set(e.id, e);
   for (const e of cloud) map.set(e.id, e); // cloud overrides
-  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-MAX_ENTRIES);
+  return sortScheduleEntries([...map.values()]).slice(-MAX_ENTRIES);
 };
 
 const toStudyBlock = (entry: ScheduleEntry): StudyBlock => {
@@ -134,7 +141,7 @@ export function useStudySchedule(userId?: string | null) {
         done: false,
         ...extras,
       };
-      setEntries((prev) => [...prev, entry].sort((a, b) => a.date.localeCompare(b.date)));
+      setEntries((prev) => sortScheduleEntries([...prev, entry]));
 
       // Push to cloud (fire-and-forget)
       if (userId && isSupabaseConfigured) {
@@ -149,9 +156,9 @@ export function useStudySchedule(userId?: string | null) {
   /** Atualiza parcialmente uma entrada */
   const updateEntry = useCallback((id: string, patch: Partial<ScheduleEntry>) => {
     setEntries((prev) => {
-      const updated = prev
-        .map((entry) => (entry.id === id ? { ...entry, ...patch } : entry))
-        .sort((a, b) => a.date.localeCompare(b.date));
+      const updated = sortScheduleEntries(
+        prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+      );
 
       const target = updated.find((entry) => entry.id === id);
       if (target && userId && isSupabaseConfigured) {
@@ -159,6 +166,54 @@ export function useStudySchedule(userId?: string | null) {
       }
 
       return updated;
+    });
+  }, [userId]);
+
+  const moveEntry = useCallback((id: string, toDate: string) => {
+    setEntries((prev) => {
+      const next = moveScheduleEntry(prev, id, toDate);
+      if (next === prev) {
+        return prev;
+      }
+
+      const target = next.find((entry) => entry.id === id);
+      if (target && userId && isSupabaseConfigured) {
+        void studyScheduleService.upsertEntry(userId, target).catch(() => {});
+      }
+
+      return next;
+    });
+  }, [userId]);
+
+  const postponeEntry = useCallback((id: string, startDate?: Date) => {
+    setEntries((prev) => {
+      const next = postponeScheduleEntry(prev, id, { startDate });
+      if (next === prev) {
+        return prev;
+      }
+
+      const target = next.find((entry) => entry.id === id);
+      if (target && userId && isSupabaseConfigured) {
+        void studyScheduleService.upsertEntry(userId, target).catch(() => {});
+      }
+
+      return next;
+    });
+  }, [userId]);
+
+  const prioritizeEntry = useCallback((id: string) => {
+    setEntries((prev) => {
+      const next = prioritizeScheduleEntry(prev, id);
+      if (next === prev) {
+        return prev;
+      }
+
+      const target = next.find((entry) => entry.id === id);
+      if (target && userId && isSupabaseConfigured) {
+        void studyScheduleService.upsertEntry(userId, target).catch(() => {});
+      }
+
+      return next;
     });
   }, [userId]);
 
@@ -235,13 +290,13 @@ export function useStudySchedule(userId?: string | null) {
       });
 
       const adaptedMap = new Map(adaptedBlocks.map((block) => [block.id, block]));
-      const next = prev.map((entry) => {
+      const next = sortScheduleEntries(prev.map((entry) => {
         const block = adaptedMap.get(entry.id);
         if (!block) {
           return entry;
         }
         return { ...entry, ...toEntryPatch(block), source: 'ia' as const };
-      });
+      }));
 
       if (userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntries(userId, next).catch(() => {});
@@ -259,6 +314,9 @@ export function useStudySchedule(userId?: string | null) {
     scheduledDates,
     addEntry,
     updateEntry,
+    moveEntry,
+    postponeEntry,
+    prioritizeEntry,
     removeEntry,
     toggleDone,
     updateNote,
