@@ -2475,13 +2475,43 @@ function App() {
       studyLoopApiService.getCurrentRecommendation(),
     ]);
 
+    const buildOfficialStudyEmptyState = (
+      emptyStateErrorCode: string | null = null,
+    ): OfficialStudyHomeState => {
+      const isProfileGap = emptyStateErrorCode === 'PROFILE_NOT_FOUND';
+      return {
+        status: 'empty',
+        title: isProfileGap
+          ? 'Seu proximo estudo ainda nao foi liberado'
+          : 'Ainda nao existe uma recomendacao pronta',
+        description: isProfileGap
+          ? 'O contrato oficial ainda nao encontrou contexto suficiente para montar sua primeira sessao.'
+          : 'A home oficial ainda nao recebeu uma recomendacao valida para montar o proximo estudo.',
+        supportingText: isProfileGap
+          ? 'Conclua o onboarding ou ajuste o contexto do plano para liberar a primeira sessao.'
+          : 'Abra o cronograma, organize o dia e volte para gerar a proxima sessao real.',
+      };
+    };
+
     if (homeResult.status === 'fulfilled') {
+      const recommendation = recommendationResult.status === 'fulfilled'
+        ? recommendationResult.value.recommendation
+        : null;
+      const recommendationError = recommendationResult.status === 'rejected'
+        ? recommendationResult.reason
+        : null;
+      const recommendationEmptyStateError = isStudyLoopEmptyStateError(recommendationError)
+        ? recommendationError
+        : null;
+
+      if (!homeResult.value.activeStudySession && (!recommendation || recommendationEmptyStateError)) {
+        return buildOfficialStudyEmptyState(recommendationEmptyStateError?.code || null);
+      }
+
       return {
         status: 'ready',
         home: homeResult.value,
-        recommendation: recommendationResult.status === 'fulfilled'
-          ? recommendationResult.value.recommendation
-          : null,
+        recommendation,
       };
     }
 
@@ -2496,19 +2526,7 @@ function App() {
         : null;
 
     if (emptyStateError) {
-      const isProfileGap = emptyStateError.code === 'PROFILE_NOT_FOUND';
-      return {
-        status: 'empty',
-        title: isProfileGap
-          ? 'Seu proximo estudo ainda nao foi liberado'
-          : 'Ainda nao existe uma recomendacao pronta',
-        description: isProfileGap
-          ? 'O contrato oficial ainda nao encontrou contexto suficiente para montar sua primeira sessao.'
-          : 'A home oficial ainda nao recebeu uma recomendacao valida para montar o proximo estudo.',
-        supportingText: isProfileGap
-          ? 'Conclua o onboarding ou ajuste o contexto do plano para liberar a primeira sessao.'
-          : 'Abra o cronograma, organize o dia e volte para gerar a proxima sessao real.',
-      };
+      return buildOfficialStudyEmptyState(emptyStateError.code);
     }
 
     return {
@@ -3281,9 +3299,6 @@ function App() {
   const handleOpenTodaySchedule = React.useCallback(() => {
     openScheduleForDay(todayWeekday);
   }, [openScheduleForDay, todayWeekday]);
-  const handleOpenOfficialStudyFallback = React.useCallback(() => {
-    attemptProtectedNavigation('cronograma');
-  }, [attemptProtectedNavigation]);
   const clearQuestionTransitionTimeout = React.useCallback(() => {
     if (questionTransitionTimeoutRef.current) {
       window.clearTimeout(questionTransitionTimeoutRef.current);
@@ -3319,6 +3334,15 @@ function App() {
 
     handleStartStudyFlowSafely();
   }, [canContinueWithQuestions, clearQuestionTransitionTimeout, handleStartQuestionsSafely, handleStartStudyFlowSafely]);
+  const officialStudyFallbackLabel = beginnerToolAccessLocked ? 'Abrir bloco de questoes' : 'Abrir cronograma';
+  const handleOpenOfficialStudyFallback = React.useCallback(() => {
+    if (beginnerToolAccessLocked) {
+      handleStartQuestionsSafely();
+      return;
+    }
+
+    attemptProtectedNavigation('cronograma');
+  }, [attemptProtectedNavigation, beginnerToolAccessLocked, handleStartQuestionsSafely]);
   const officialStudyCard = React.useMemo(() => {
     if (activeTab !== 'inicio' || showOnboarding || !isLoggedIn || !supabaseUserId || !isSupabaseConfigured) {
       return undefined;
@@ -3342,7 +3366,7 @@ function App() {
           void loadOfficialStudyHome();
         },
         secondaryAction: {
-          label: 'Abrir cronograma',
+          label: officialStudyFallbackLabel,
           onAction: handleOpenOfficialStudyFallback,
         },
       };
@@ -3354,7 +3378,7 @@ function App() {
         title: officialStudyHomeState.title,
         description: officialStudyHomeState.description,
         supportingText: officialStudyHomeState.supportingText,
-        actionLabel: 'Abrir cronograma',
+        actionLabel: officialStudyFallbackLabel,
         onAction: handleOpenOfficialStudyFallback,
       };
     }
@@ -3390,10 +3414,12 @@ function App() {
     };
   }, [
     activeTab,
+    beginnerToolAccessLocked,
     handleOpenOfficialStudyFallback,
     handleStartOfficialStudy,
     isLoggedIn,
     loadOfficialStudyHome,
+    officialStudyFallbackLabel,
     officialStudyHomeState,
     officialStudyStarting,
     showOnboarding,
