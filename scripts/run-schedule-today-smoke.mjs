@@ -1356,6 +1356,26 @@ const main = async () => {
     recordStep('operational_week_window_real', 'passed', {
       upcomingScheduleExcerpt,
     });
+    await waitFor(
+      browser.session,
+      `(() => {
+        ${BROWSER_NORMALIZE}
+        const summary = document.querySelector('[data-testid="weekly-load-summary-copy"]');
+        const loadBlocks = Array.from(document.querySelectorAll('[data-testid="upcoming-schedule-day-load"]'));
+        const levelBadges = Array.from(document.querySelectorAll('[data-testid="upcoming-schedule-day-level"]'))
+          .map((node) => normalize(node.textContent || ''))
+          .filter(Boolean);
+        if (!summary || loadBlocks.length === 0 || levelBadges.length === 0) return false;
+        return normalize(summary.textContent || '').length > 0
+          && loadBlocks.some((node) => normalize(node.textContent || '').includes('50 min'))
+          && levelBadges.some((label) => label.includes('ok'))
+          && levelBadges.some((label) => label.includes('leve'));
+      })()`,
+      { timeoutMs: 30000, label: 'carga semanal visivel no cronograma' },
+    );
+    recordStep('weekly_load_visualization_real', 'passed', {
+      excerpt: await getBodyTextExcerpt(browser.session, 800),
+    });
     await dismissKnownPrompts(browser.session);
     await waitForOperationalItemEditable(
       browser.session,
@@ -1615,6 +1635,79 @@ const main = async () => {
       beginnerState: persistedProgressAfterReload.beginnerState,
       beginnerSessionsCompleted: persistedProgressAfterReload.beginnerStats?.sessionsCompleted || 0,
       persistedScheduleEntry,
+    });
+
+    await clickBySelector(
+      browser.session,
+      `[data-testid="upcoming-schedule-day"][data-day-offset="5"] [data-testid="schedule-day-reinforce-cta"]`,
+    );
+    await waitFor(
+      browser.session,
+      `(() => {
+        const dayFive = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="5"]');
+        const daySix = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="6"]');
+        if (!dayFive || !daySix) return false;
+        const dayFiveText = dayFive.innerText || '';
+        const dayFiveItems = dayFive.querySelectorAll('[data-testid="upcoming-schedule-item"]').length;
+        const daySixItems = daySix.querySelectorAll('[data-testid="upcoming-schedule-item"]').length;
+        return dayFiveText.includes('Biologia')
+          && dayFiveItems === 2
+          && daySixItems === 1;
+      })()`,
+      { timeoutMs: 30000, label: 'reforcar dia redistribui carga semanal' },
+    );
+
+    await clickBySelector(
+      browser.session,
+      `[data-testid="upcoming-schedule-day"][data-day-offset="4"] [data-testid="schedule-day-rebalance-cta"]`,
+    );
+    await waitFor(
+      browser.session,
+      `(() => {
+        const dayFour = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="4"]');
+        const daySix = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="6"]');
+        if (!dayFour || !daySix) return false;
+        const dayFourText = dayFour.innerText || '';
+        const daySixText = daySix.innerText || '';
+        return dayFourText.includes('Humanas')
+          && !dayFourText.includes('Atualidades')
+          && daySixText.includes('Atualidades');
+      })()`,
+      { timeoutMs: 30000, label: 'aliviar dia redistribui carga semanal' },
+    );
+    await screenshot(browser.session, 'schedule-weekly-load-actions.png');
+    recordStep('weekly_load_day_actions', 'passed', {
+      screenshot: 'qa-artifacts/schedule-weekly-load-actions.png',
+      excerpt: await getBodyTextExcerpt(browser.session, 900),
+    });
+
+    await browser.session.send('Page.reload');
+    await waitFor(browser.session, 'document.readyState === "complete"', { label: 'reload complete weekly load' });
+    await dismissKnownPrompts(browser.session);
+    await waitForSelector(browser.session, '[data-testid="upcoming-schedule-panel"]', { timeoutMs: 30000 });
+    await waitFor(
+      browser.session,
+      `(() => {
+        const dayFour = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="4"]');
+        const dayFive = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="5"]');
+        const daySix = document.querySelector('[data-testid="upcoming-schedule-day"][data-day-offset="6"]');
+        if (!dayFour || !dayFive || !daySix) return false;
+        const dayFourText = dayFour.innerText || '';
+        const dayFiveText = dayFive.innerText || '';
+        const daySixText = daySix.innerText || '';
+        const dayFiveItems = dayFive.querySelectorAll('[data-testid="upcoming-schedule-item"]').length;
+        const daySixItems = daySix.querySelectorAll('[data-testid="upcoming-schedule-item"]').length;
+        return dayFourText.includes('Humanas')
+          && !dayFourText.includes('Atualidades')
+          && dayFiveText.includes('Biologia')
+          && dayFiveItems === 2
+          && daySixText.includes('Atualidades')
+          && daySixItems === 2;
+      })()`,
+      { timeoutMs: 30000, label: 'reload preserva ajustes leves da semana' },
+    );
+    recordStep('weekly_load_actions_persist_after_reload', 'passed', {
+      excerpt: await getBodyTextExcerpt(browser.session, 900),
     });
 
     report.summary = {

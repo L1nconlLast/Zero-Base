@@ -15,9 +15,16 @@ import type {
 } from '../../services/studySchedule.service';
 import type { Weekday } from '../../types';
 import { mapReasonSummaryToCopy } from '../../services/prioritizationReason';
+import {
+  type DailyLoadMetrics,
+  type WeeklyLoadSummary,
+  suggestRebalanceDay,
+  suggestReinforceDay,
+} from '../../services/weeklyLoad.service';
 
 interface UpcomingOperationalScheduleProps {
   days: OperationalScheduleWindowDay[];
+  weeklyLoadSummary: WeeklyLoadSummary;
   itemActionLabel: string;
   emptyActionLabel: string;
   onStartOfficialStudy?: (() => void) | null;
@@ -25,6 +32,8 @@ interface UpcomingOperationalScheduleProps {
   onMoveItem: (item: OperationalScheduleWindowItem, fromDate: string, toDate: string) => void;
   onPostponeItem: (item: OperationalScheduleWindowItem, fromDate: string) => void;
   onPrioritizeItem: (item: OperationalScheduleWindowItem, date: string) => void;
+  onRebalanceDay: (date: string) => void;
+  onReinforceDay: (date: string) => void;
 }
 
 const WEEKDAY_LABELS: Record<Weekday, string> = {
@@ -77,8 +86,33 @@ const getStudyTypeLabel = (studyType?: string): string => {
   return 'Estudo';
 };
 
+const LOAD_LEVEL_META: Record<
+  DailyLoadMetrics['level'],
+  { label: string; tone: string; barTone: string; message: string }
+> = {
+  low: {
+    label: 'Leve',
+    tone: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200',
+    barTone: 'bg-amber-400',
+    message: 'Dia com pouca carga',
+  },
+  ok: {
+    label: 'OK',
+    tone: 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200',
+    barTone: 'bg-emerald-500',
+    message: 'Dia equilibrado',
+  },
+  high: {
+    label: 'Pesado',
+    tone: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200',
+    barTone: 'bg-rose-500',
+    message: 'Dia com carga alta',
+  },
+};
+
 const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = ({
   days,
+  weeklyLoadSummary,
   itemActionLabel,
   emptyActionLabel,
   onStartOfficialStudy,
@@ -86,6 +120,8 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
   onMoveItem,
   onPostponeItem,
   onPrioritizeItem,
+  onRebalanceDay,
+  onReinforceDay,
 }) => {
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({});
   const moveOptionsByDay = useMemo(
@@ -94,6 +130,26 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
         acc[day.date] = days.filter((candidate) => candidate.date !== day.date);
         return acc;
       }, {} as Record<string, OperationalScheduleWindowDay[]>),
+    [days],
+  );
+  const loadByDate = useMemo(
+    () => new Map(weeklyLoadSummary.days.map((day) => [day.date, day])),
+    [weeklyLoadSummary.days],
+  );
+  const rebalancingSuggestions = useMemo(
+    () =>
+      days.reduce((acc, day) => {
+        acc[day.date] = suggestRebalanceDay(days, day.date);
+        return acc;
+      }, {} as Record<string, ReturnType<typeof suggestRebalanceDay>>),
+    [days],
+  );
+  const reinforcementSuggestions = useMemo(
+    () =>
+      days.reduce((acc, day) => {
+        acc[day.date] = suggestReinforceDay(days, day.date);
+        return acc;
+      }, {} as Record<string, ReturnType<typeof suggestReinforceDay>>),
     [days],
   );
 
@@ -116,14 +172,43 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
       </p>
     </div>
 
+      <div
+        data-testid="weekly-load-summary"
+        className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/30"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+              Leitura da semana
+            </p>
+            <p
+              data-testid="weekly-load-summary-copy"
+              className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100"
+            >
+              {weeklyLoadSummary.summaryCopy}
+            </p>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Media de {Math.round(weeklyLoadSummary.averageMinutes)} min por dia ativo
+          </p>
+        </div>
+      </div>
+
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {days.map((day) => (
-          <article
-            key={day.date}
-            data-testid="upcoming-schedule-day"
-            data-day-offset={day.offsetDays}
-            className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/30"
-          >
+          (() => {
+            const load = loadByDate.get(day.date);
+            const loadMeta = load ? LOAD_LEVEL_META[load.level] : null;
+            const canRebalance = Boolean(day.isActive && rebalancingSuggestions[day.date]);
+            const canReinforce = Boolean(day.isActive && reinforcementSuggestions[day.date]);
+
+            return (
+              <article
+                key={day.date}
+                data-testid="upcoming-schedule-day"
+                data-day-offset={day.offsetDays}
+                className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/30"
+              >
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
@@ -143,6 +228,64 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
               Ajustar
             </button>
           </div>
+
+                {load && loadMeta ? (
+                  <div
+                    data-testid="upcoming-schedule-day-load"
+                    className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-800 dark:bg-slate-900/80"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {load.totalMinutes} min • {load.sessions} {load.sessions === 1 ? 'sessao' : 'sessoes'}
+                        </p>
+                        <p
+                          data-testid="upcoming-schedule-day-load-message"
+                          className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                        >
+                          {loadMeta.message}
+                        </p>
+                      </div>
+                      <span
+                        data-testid="upcoming-schedule-day-level"
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${loadMeta.tone}`}
+                      >
+                        {loadMeta.label}
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                      <div
+                        data-testid="upcoming-schedule-day-load-bar"
+                        className={`h-full rounded-full transition-all ${loadMeta.barTone}`}
+                        style={{ width: `${Math.max(load.totalMinutes > 0 ? 8 : 0, Math.round(load.ratio * 100))}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {canRebalance ? (
+                        <button
+                          data-testid="schedule-day-rebalance-cta"
+                          type="button"
+                          onClick={() => onRebalanceDay(day.date)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200"
+                        >
+                          <SkipForward className="h-3.5 w-3.5" />
+                          Aliviar dia
+                        </button>
+                      ) : null}
+                      {canReinforce ? (
+                        <button
+                          data-testid="schedule-day-reinforce-cta"
+                          type="button"
+                          onClick={() => onReinforceDay(day.date)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+                        >
+                          <ChevronsUp className="h-3.5 w-3.5" />
+                          Reforcar dia
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
 
             {day.items.length === 0 ? (
               <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
@@ -300,7 +443,9 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
                 })}
               </div>
             )}
-          </article>
+              </article>
+            );
+          })()
         ))}
       </div>
     </section>

@@ -63,6 +63,11 @@ import {
   updateWeeklyDayPlan,
 } from '../../services/studySchedule.service';
 import {
+  getWeeklyLoadSummary,
+  suggestRebalanceDay,
+  suggestReinforceDay,
+} from '../../services/weeklyLoad.service';
+import {
   adjustPlanWithAi,
   createDefaultSmartProfile,
   generateBasePlan,
@@ -344,6 +349,14 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
       empty: 'Gerar sessao oficial',
     };
   }, [officialTodayActionCard]);
+  const operationalWeeklyLoadSummary = useMemo(
+    () =>
+      getWeeklyLoadSummary(
+        upcomingOperationalDays,
+        effectiveWeeklySchedule.preferences.defaultSessionDurationMinutes,
+      ),
+    [effectiveWeeklySchedule.preferences.defaultSessionDurationMinutes, upcomingOperationalDays],
+  );
 
   const selectedEntry = entries.find((entry) => entry.id === selectedEntryId) || null;
 
@@ -774,6 +787,44 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     toast.success(`${item.subject} foi priorizado no dia.`);
   }, [effectiveWeeklySchedule, entries, handleWeeklyScheduleChange, isSubjectPlannedForDate, prioritizeEntry]);
 
+  const handleOperationalRebalanceDay = useCallback((date: string) => {
+    const suggestion = suggestRebalanceDay(
+      upcomingOperationalDays,
+      date,
+      effectiveWeeklySchedule.preferences.defaultSessionDurationMinutes,
+    );
+
+    if (!suggestion) {
+      toast('Esse dia ja esta no melhor equilibrio disponivel.', { icon: 'ℹ️' });
+      return;
+    }
+
+    handleOperationalMove(suggestion.item, suggestion.fromDate, suggestion.toDate);
+  }, [
+    effectiveWeeklySchedule.preferences.defaultSessionDurationMinutes,
+    handleOperationalMove,
+    upcomingOperationalDays,
+  ]);
+
+  const handleOperationalReinforceDay = useCallback((date: string) => {
+    const suggestion = suggestReinforceDay(
+      upcomingOperationalDays,
+      date,
+      effectiveWeeklySchedule.preferences.defaultSessionDurationMinutes,
+    );
+
+    if (!suggestion) {
+      toast('Nao encontrei um bloco leve para reforcar esse dia.', { icon: 'ℹ️' });
+      return;
+    }
+
+    handleOperationalMove(suggestion.item, suggestion.fromDate, suggestion.toDate);
+  }, [
+    effectiveWeeklySchedule.preferences.defaultSessionDurationMinutes,
+    handleOperationalMove,
+    upcomingOperationalDays,
+  ]);
+
   useEffect(() => {
     if (entries.length > 0) {
       return;
@@ -1176,6 +1227,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
 
       <UpcomingOperationalSchedule
         days={upcomingOperationalDays}
+        weeklyLoadSummary={operationalWeeklyLoadSummary}
         itemActionLabel={operationalActionLabels.item}
         emptyActionLabel={operationalActionLabels.empty}
         onStartOfficialStudy={operationalLoopAction}
@@ -1183,6 +1235,8 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
         onMoveItem={handleOperationalMove}
         onPostponeItem={handleOperationalPostpone}
         onPrioritizeItem={handleOperationalPrioritize}
+        onRebalanceDay={handleOperationalRebalanceDay}
+        onReinforceDay={handleOperationalReinforceDay}
       />
 
       <div ref={weeklyGridSectionRef}>
