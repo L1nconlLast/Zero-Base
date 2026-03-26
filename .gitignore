@@ -36,3 +36,7 @@ cypress.env.json
 qa-artifacts/
 
 .vercel
+.deploy-*/
+.npm-cache*/
+.tmp/
+supabase/.temp/
