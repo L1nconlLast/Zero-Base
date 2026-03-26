@@ -1181,6 +1181,17 @@ const openAchievementsPage = async (session) => {
     return;
   }
 
+  try {
+    const origin = await evalInPage(session, '(() => window.location.origin)()');
+    if (origin) {
+      await navigate(session, `${origin}/?tab=conquistas`);
+      await waitForSelector(session, '[data-testid="achievements-page-ready"]', { timeoutMs: 10000 });
+      return;
+    }
+  } catch {
+    // fallback to UI navigation below
+  }
+
   const achievementsTabVisible = await evalInPage(
     session,
     `(() => {
