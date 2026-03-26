@@ -1,17 +1,9 @@
-/**
- * useAuth — Autenticação via Supabase Auth
- *
- * Fonte primária: supabase.auth (signUp / signInWithPassword / signOut)
- * Perfil na tabela public.users é garantido pela trigger SQL em auth.users.
- * Mantém compatibilidade com o tipo local `User` (nome, email, foto, etc.)
- */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { User } from '../types';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../services/supabase.client';
-import { logger } from '../utils/logger';
-import { STORAGE_KEYS } from '../constants';
+import type { User } from '../types';
 import { validateStrongPassword } from '../utils/passwordPolicy';
-import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { logger } from '../utils/logger';
 
 type OAuthProvider = 'google' | 'facebook';
 
@@ -38,116 +30,86 @@ const parseEnabledOAuthProviders = (): OAuthProvider[] => {
 
 const ENABLED_OAUTH_PROVIDERS = parseEnabledOAuthProviders();
 
-interface LocalSessionPayload {
-  user: User;
-  userId: string;
-}
-
-// ─── helpers ────────────────────────────────────────────────────
-
-/** Converte o objeto Supabase Auth → tipo local User */
-const mapSupabaseUser = (su: SupabaseUser): User => ({
-  nome: su.user_metadata?.name || su.email?.split('@')[0] || 'Usuário',
-  email: su.email || '',
-  dataCadastro: su.created_at || new Date().toISOString(),
-  foto: su.user_metadata?.avatar_url || '🧑‍⚕️',
-  examGoal: su.user_metadata?.exam_goal || 'ENEM',
-  examDate: su.user_metadata?.exam_date || '',
-  preferredTrack: su.user_metadata?.preferred_track || 'enem',
+const mapSupabaseUser = (supabaseUser: SupabaseUser): User => ({
+  nome: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'Usuario',
+  email: supabaseUser.email || '',
+  dataCadastro: supabaseUser.created_at || new Date().toISOString(),
+  foto: supabaseUser.user_metadata?.avatar_url || '🧑‍⚕️',
+  examGoal: supabaseUser.user_metadata?.exam_goal || 'ENEM',
+  examDate: supabaseUser.user_metadata?.exam_date || '',
+  preferredTrack: supabaseUser.user_metadata?.preferred_track || 'enem',
 });
 
-const buildLocalUserId = (email: string) => `local:${email.trim().toLowerCase()}`;
-
-const createLocalUser = (email: string, name?: string): User => {
-  const normalizedEmail = email.trim().toLowerCase();
-
-  return {
-    nome: name?.trim() || normalizedEmail.split('@')[0] || 'Usuário',
-    email: normalizedEmail,
-    dataCadastro: new Date().toISOString(),
-    foto: '🧑‍⚕️',
-    examGoal: 'ENEM',
-    examDate: '',
-    preferredTrack: 'enem',
-  };
-};
-
-const persistLocalSession = (session: LocalSessionPayload) => {
-  localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-  localStorage.removeItem('medicinaSession');
-};
-
-const readLocalSession = (): LocalSessionPayload | null => {
+const extractApiMessage = async (response: Response, fallback: string): Promise<string> => {
   try {
-    const rawSession = localStorage.getItem(STORAGE_KEYS.SESSION) || localStorage.getItem('medicinaSession');
-    if (!rawSession) return null;
-
-    const parsed = JSON.parse(rawSession) as Partial<LocalSessionPayload>;
-    if (!parsed.user || !parsed.userId || !parsed.user.email) {
-      return null;
-    }
-
-    return {
-      user: parsed.user,
-      userId: parsed.userId,
+    const payload = await response.json() as {
+      success?: boolean;
+      error?: { message?: string };
     };
+    return payload.error?.message || fallback;
   } catch {
-    return null;
+    return fallback;
   }
 };
 
-// ─── hook ───────────────────────────────────────────────────────
+const parseSessionPayload = async (response: Response): Promise<{
+  success: boolean;
+  message: string;
+  accessToken?: string;
+  refreshToken?: string;
+}> => {
+  const payload = await response.json().catch(() => null) as {
+    success?: boolean;
+    error?: { message?: string };
+    session?: {
+      accessToken?: string;
+      refreshToken?: string;
+    };
+  } | null;
+
+  if (!response.ok || !payload) {
+    return {
+      success: false,
+      message: payload?.error?.message || 'Falha ao autenticar usuario.',
+    };
+  }
+
+  return {
+    success: true,
+    message: 'ok',
+    accessToken: payload.session?.accessToken,
+    refreshToken: payload.session?.refreshToken,
+  };
+};
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [supabaseUserId, setSupabaseUserId] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  // Evita corrida de efeitos
   const mountedRef = useRef(true);
+
   useEffect(() => {
-    mountedRef.current = true; // Reset no remount (StrictMode)
-    return () => { mountedRef.current = false; };
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
-  // ── Listener principal: onAuthStateChange ──
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
-      const localSession = readLocalSession();
-      if (localSession && mountedRef.current) {
-        setUser(localSession.user);
-        setSupabaseUserId(localSession.userId);
-        setIsLoggedIn(true);
-      }
       setLoading(false);
       return;
     }
 
-    const client = supabase; // narrow para non-null
+    const client = supabase;
 
-    // 1) Hidratar sessão existente
     const hydrateSession = async () => {
       try {
         const { data: { session } } = await client.auth.getSession();
-        if (session?.user && mountedRef.current) {
-          setUser(mapSupabaseUser(session.user));
-          setSupabaseUserId(session.user.id);
-          setIsLoggedIn(true);
+        if (!mountedRef.current) {
+          return;
         }
-      } catch (err) {
-        logger.warn('Erro ao hidratar sessão', 'Auth', err);
-      } finally {
-        if (mountedRef.current) setLoading(false);
-      }
-    };
-
-    void hydrateSession();
-
-    // 2) Escutar mudanças de auth
-    const { data: { subscription } } = client.auth.onAuthStateChange(
-      (_event: string, session: Session | null) => {
-        if (!mountedRef.current) return;
 
         if (session?.user) {
           setUser(mapSupabaseUser(session.user));
@@ -158,187 +120,163 @@ export const useAuth = () => {
           setSupabaseUserId(null);
           setIsLoggedIn(false);
         }
+      } catch (error) {
+        logger.warn('Erro ao hidratar sessao', 'Auth', error);
+      } finally {
+        if (mountedRef.current) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void hydrateSession();
+
+    const { data: { subscription } } = client.auth.onAuthStateChange(
+      (_event: string, session: Session | null) => {
+        if (!mountedRef.current) {
+          return;
+        }
+
+        if (session?.user) {
+          setUser(mapSupabaseUser(session.user));
+          setSupabaseUserId(session.user.id);
+          setIsLoggedIn(true);
+          return;
+        }
+
+        setUser(null);
+        setSupabaseUserId(null);
+        setIsLoggedIn(false);
       },
     );
 
-    return () => { subscription.unsubscribe(); };
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // ── Login ──
-  const login = useCallback(
-    async (email: string, senha: string): Promise<{ success: boolean; message: string }> => {
-      if (!supabase) {
-        const cleanEmail = email.trim().toLowerCase();
+  const login = useCallback(async (email: string, senha: string): Promise<{ success: boolean; message: string }> => {
+    if (!supabase) {
+      return { success: false, message: 'Supabase nao configurado para login.' };
+    }
 
-        if (!cleanEmail || !senha.trim()) {
-          return { success: false, message: 'Preencha e-mail e senha.' };
-        }
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !senha.trim()) {
+      return { success: false, message: 'Preencha e-mail e senha.' };
+    }
 
-        const localUser = createLocalUser(cleanEmail);
-        const localSession = {
-          user: localUser,
-          userId: buildLocalUserId(cleanEmail),
-        };
-
-        persistLocalSession(localSession);
-        setUser(localUser);
-        setSupabaseUserId(localSession.userId);
-        setIsLoggedIn(true);
-
-        return { success: true, message: 'Entrando em modo local.' };
-      }
-
-      const cleanEmail = email.trim().toLowerCase();
-
-      const { error } = await supabase.auth.signInWithPassword({
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         email: cleanEmail,
         password: senha,
-      });
+      }),
+    });
 
-      if (error) {
-        logger.warn('Falha no login', 'Auth', { error: error.message });
+    const payload = await parseSessionPayload(response);
+    if (!payload.success || !payload.accessToken || !payload.refreshToken) {
+      logger.warn('Falha no login', 'Auth', { error: payload.message });
+      return { success: false, message: payload.message || 'Email ou senha incorretos.' };
+    }
 
-        // Mensagens amigáveis
-        if (error.message.includes('Invalid login credentials')) {
-          return { success: false, message: 'Email ou senha incorretos.' };
-        }
-        if (error.message.includes('Email not confirmed')) {
-          return { success: false, message: 'Confirme seu email antes de entrar.' };
-        }
-        return { success: false, message: error.message };
-      }
+    const { error } = await supabase.auth.setSession({
+      access_token: payload.accessToken,
+      refresh_token: payload.refreshToken,
+    });
 
-      return { success: true, message: 'Login realizado com sucesso!' };
-    },
-    [],
-  );
+    if (error) {
+      logger.warn('Falha ao persistir sessao', 'Auth', { error: error.message });
+      return { success: false, message: error.message };
+    }
 
-  // ── Cadastro ──
+    return { success: true, message: 'Login realizado com sucesso!' };
+  }, []);
+
   const register = useCallback(
-    async (
-      nome: string,
-      email: string,
-      senha: string,
-    ): Promise<{ success: boolean; message: string }> => {
+    async (nome: string, email: string, senha: string): Promise<{ success: boolean; message: string }> => {
       if (!supabase) {
-        const cleanName = nome.trim();
-        const cleanEmail = email.trim().toLowerCase();
-
-        if (cleanName.length < 3) {
-          return { success: false, message: 'Nome deve ter no mínimo 3 caracteres.' };
-        }
-        const passwordValidation = validateStrongPassword(senha);
-        if (!passwordValidation.valid) {
-          return { success: false, message: passwordValidation.message };
-        }
-
-        const localUser = createLocalUser(cleanEmail, cleanName);
-        const localSession = {
-          user: localUser,
-          userId: buildLocalUserId(cleanEmail),
-        };
-
-        persistLocalSession(localSession);
-        setUser(localUser);
-        setSupabaseUserId(localSession.userId);
-        setIsLoggedIn(true);
-
-        return { success: true, message: 'Conta local criada com sucesso!' };
+        return { success: false, message: 'Supabase nao configurado para cadastro.' };
       }
 
       const cleanName = nome.trim();
       const cleanEmail = email.trim().toLowerCase();
 
       if (cleanName.length < 3) {
-        return { success: false, message: 'Nome deve ter no mínimo 3 caracteres.' };
+        return { success: false, message: 'Nome deve ter no minimo 3 caracteres.' };
       }
+
       const passwordValidation = validateStrongPassword(senha);
       if (!passwordValidation.valid) {
         return { success: false, message: passwordValidation.message };
       }
 
-      const { data, error } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password: senha,
-        options: {
-          data: {
-            name: cleanName,
-            language: 'pt',
-          },
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          name: cleanName,
+          email: cleanEmail,
+          password: senha,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await extractApiMessage(response, 'Nao foi possivel concluir o cadastro.');
+        logger.warn('Falha no cadastro', 'Auth', { error: message });
+        return { success: false, message };
+      }
+
+      const payload = await response.json().catch(() => null) as {
+        session?: {
+          accessToken?: string;
+          refreshToken?: string;
+        };
+      } | null;
+
+      const accessToken = payload?.session?.accessToken;
+      const refreshToken = payload?.session?.refreshToken;
+      if (!accessToken || !refreshToken) {
+        return { success: false, message: 'Cadastro criado, mas a sessao nao foi retornada.' };
+      }
+
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
       });
 
       if (error) {
-        logger.warn('Falha no cadastro', 'Auth', { error: error.message });
-
-        const lowerError = error.message.toLowerCase();
-
-        if (lowerError.includes('already registered') || lowerError.includes('already been registered')) {
-          logger.info('signUp already_registered', 'Auth', { email: cleanEmail });
-          return { success: false, message: 'Este email já está cadastrado.' };
-        }
-        if (lowerError.includes('invalid api key')) {
-          return {
-            success: false,
-            message: 'Erro de configuração do Supabase. Verifique as variáveis de ambiente.',
-          };
-        }
-        if (lowerError.includes('over_email_send_rate_limit') || lowerError.includes('email rate limit exceeded')) {
-          logger.warn('signUp rate_limit', 'Auth', { email: cleanEmail, error: error.message });
-          return {
-            success: false,
-            message: 'Limite de envio de email temporariamente atingido. Tente novamente em alguns minutos.',
-          };
-        }
+        logger.warn('Falha ao persistir sessao apos cadastro', 'Auth', { error: error.message });
         return { success: false, message: error.message };
       }
 
-      if (data?.user) {
-        logger.info('signUp success', 'Auth', {
-          email: cleanEmail,
-          userId: data.user.id,
-          emailConfirmationRequired: !data.session,
-        });
-
-        if (!data.session) {
-          return {
-            success: true,
-            message: 'Conta criada! Verifique seu email para confirmar.',
-          };
-        }
-
-        return {
-          success: true,
-          message: 'Cadastro realizado com sucesso!',
-        };
-      }
-
-      return {
-        success: false,
-        message: 'Não foi possível concluir o cadastro. Tente novamente.',
-      };
+      return { success: true, message: 'Cadastro realizado com sucesso!' };
     },
     [],
   );
 
-  // ── Logout ──
   const logout = useCallback(async () => {
     if (supabase) {
       await supabase.auth.signOut();
     }
+
     setUser(null);
     setSupabaseUserId(null);
     setIsLoggedIn(false);
-    localStorage.removeItem(STORAGE_KEYS.SESSION);
   }, []);
 
-  // ── Esqueci minha senha ──
   const resetPassword = useCallback(
     async (email: string): Promise<{ success: boolean; message: string }> => {
       if (!supabase) {
         return {
           success: false,
-          message: 'Recuperação de senha indisponível no modo local.',
+          message: 'Recuperacao de senha indisponivel sem Supabase configurado.',
         };
       }
 
@@ -358,15 +296,14 @@ export const useAuth = () => {
 
       return {
         success: true,
-        message: 'Email de recuperação enviado! Verifique sua caixa de entrada.',
+        message: 'Email de recuperacao enviado! Verifique sua caixa de entrada.',
       };
     },
     [],
   );
 
-  // ── Manter compatibilidade ──
   const updateActivity = useCallback(() => {
-    // No-op: a sessão é gerenciada pelo Supabase (auto-refresh)
+    // No-op: sessao gerenciada pelo Supabase
   }, []);
 
   const loginWithOAuth = useCallback(
@@ -374,14 +311,14 @@ export const useAuth = () => {
       if (!supabase) {
         return {
           success: false,
-          message: 'Login social indisponível enquanto o Supabase não estiver configurado.',
+          message: 'Login social indisponivel enquanto o Supabase nao estiver configurado.',
         };
       }
 
       if (!ENABLED_OAUTH_PROVIDERS.includes(provider)) {
         return {
           success: false,
-          message: `${OAUTH_PROVIDER_LABEL[provider]} não está habilitado. Ative o provider no Supabase (Authentication > Providers) e adicione em VITE_SUPABASE_OAUTH_PROVIDERS.`,
+          message: `${OAUTH_PROVIDER_LABEL[provider]} nao esta habilitado. Ative o provider no Supabase e adicione em VITE_SUPABASE_OAUTH_PROVIDERS.`,
         };
       }
 
@@ -399,7 +336,7 @@ export const useAuth = () => {
 
       return {
         success: true,
-        message: `Redirecionando para autenticação com ${OAUTH_PROVIDER_LABEL[provider]}...`,
+        message: `Redirecionando para autenticacao com ${OAUTH_PROVIDER_LABEL[provider]}...`,
       };
     },
     [],

@@ -49,13 +49,15 @@ import type { UserData } from '../types';
 import { supabase } from '../services/supabase.client';
 import ProfileV2 from '../components/profile/ProfileV2';
 import ProfileStatsV2 from '../components/profile/ProfileStatsV2';
+import { buildProfileActivitySnapshot } from '../services/profileActivity.service';
+import { getProfileSettingsCopy, type ProfileSettingsLocale } from '../components/profile/profileSettingsCopy';
 
 type PrefThemeValues = 'Claro' | 'Escuro' | 'Sistema';
 type PrefLanguageValues = 'Português' | 'English' | 'Español';
 type PrefDensityValues = 'Compacto' | 'Normal' | 'Espaçoso';
 type PrefTimeValues = 'Manhã' | 'Tarde' | 'Noite' | 'Madrugada';
 type ThemeMode = 'light' | 'dark' | 'system';
-type Lang = 'pt' | 'en' | 'es';
+type Lang = ProfileSettingsLocale;
 type Density = 'compact' | 'normal' | 'spacious';
 type Period = 'morning' | 'afternoon' | 'night' | 'late_night';
 
@@ -68,6 +70,8 @@ type ProfileLoadResponse = {
     avatar_icon?: string | null;
     avatarUrl?: string | null;
     avatar_url?: string | null;
+    updatedAt?: string | null;
+    updated_at?: string | null;
     theme?: ThemeMode;
     language?: Lang;
     density?: Density;
@@ -91,6 +95,7 @@ type ProfileLoadResponse = {
     currentStreakDays?: number;
     totalMinutes365?: number;
     totalSessions365?: number;
+    activeDays365?: number;
     ranking?: number;
   };
   achievements?: Array<{
@@ -115,6 +120,107 @@ type ProfileLoadResponse = {
 };
 
 const PROFILE_CACHE_KEY = 'zb_profile_cache_v2';
+
+const THEME_STORAGE_KEY = 'settings-pref-theme';
+const LANG_STORAGE_KEY = 'settings-pref-lang';
+const DENSITY_STORAGE_KEY = 'settings-pref-density';
+const TIME_STORAGE_KEY = 'settings-pref-time';
+
+const LEGACY_THEME_MAP: Record<string, ThemeMode> = {
+  Claro: 'light',
+  Escuro: 'dark',
+  Sistema: 'system',
+};
+
+const LEGACY_LANG_MAP: Record<string, Lang> = {
+  Português: 'pt',
+  Portugues: 'pt',
+  English: 'en',
+  Español: 'es',
+  Espanol: 'es',
+};
+
+const LEGACY_DENSITY_MAP: Record<string, Density> = {
+  Compacto: 'compact',
+  Normal: 'normal',
+  Espaçoso: 'spacious',
+  Espacoso: 'spacious',
+};
+
+const LEGACY_PERIOD_MAP: Record<string, Period> = {
+  Manhã: 'morning',
+  Manha: 'morning',
+  Tarde: 'afternoon',
+  Noite: 'night',
+  Madrugada: 'late_night',
+};
+
+const parseStoredTheme = (raw: string | null | undefined, fallback: ThemeMode = 'system'): ThemeMode => {
+  if (raw === 'light' || raw === 'dark' || raw === 'system') return raw;
+  if (raw && LEGACY_THEME_MAP[raw]) return LEGACY_THEME_MAP[raw];
+  return fallback;
+};
+
+const parseStoredLang = (raw: string | null | undefined, fallback: Lang = 'pt'): Lang => {
+  if (raw === 'pt' || raw === 'en' || raw === 'es') return raw;
+  if (raw && LEGACY_LANG_MAP[raw]) return LEGACY_LANG_MAP[raw];
+  return fallback;
+};
+
+const parseStoredDensity = (raw: string | null | undefined, fallback: Density = 'normal'): Density => {
+  if (raw === 'compact' || raw === 'normal' || raw === 'spacious') return raw;
+  if (raw && LEGACY_DENSITY_MAP[raw]) return LEGACY_DENSITY_MAP[raw];
+  return fallback;
+};
+
+const parseStoredPeriod = (raw: string | null | undefined, fallback: Period = 'afternoon'): Period => {
+  if (raw === 'morning' || raw === 'afternoon' || raw === 'night' || raw === 'late_night') return raw;
+  if (raw && LEGACY_PERIOD_MAP[raw]) return LEGACY_PERIOD_MAP[raw];
+  return fallback;
+};
+
+const resolveSystemTheme = (): 'light' | 'dark' => (
+  window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+);
+
+const stripAvatarCacheKey = (value: string | null | undefined): string => {
+  if (!value || /^data:image\//i.test(value) || /^blob:/i.test(value)) {
+    return value || '';
+  }
+
+  try {
+    const url = new URL(value, window.location.origin);
+    url.searchParams.delete('v');
+    return url.toString();
+  } catch {
+    return value.replace(/([?&])v=[^&#]+(&)?/, (_match, prefix, suffix) => (prefix === '?' && suffix ? '?' : '')).replace(/[?&]$/, '');
+  }
+};
+
+const buildAvatarDisplayUrl = (value: string | null | undefined, cacheKey: string | null): string | null => {
+  if (!value) return null;
+  if (!cacheKey || /^data:image\//i.test(value) || /^blob:/i.test(value)) {
+    return value;
+  }
+
+  try {
+    const url = new URL(value, window.location.origin);
+    url.searchParams.set('v', cacheKey);
+    return url.toString();
+  } catch {
+    const separator = value.includes('?') ? '&' : '?';
+    return `${stripAvatarCacheKey(value)}${separator}v=${cacheKey}`;
+  }
+};
+
+const readFileAsDataUrl = (file: File): Promise<string> => (
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('file_reader_failed'));
+    reader.readAsDataURL(file);
+  })
+);
 
 const themeLabelFromMode = (value: ThemeMode): PrefThemeValues => {
   if (value === 'dark') return 'Escuro';
@@ -164,6 +270,21 @@ const periodCodeFromLabel = (value: PrefTimeValues): Period => {
   if (value === 'Noite') return 'night';
   if (value === 'Madrugada') return 'late_night';
   return 'afternoon';
+};
+
+const normalizeSettingsTabParam = (value: string | null | undefined): string => (
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+);
+
+const SETTINGS_TAB_DEEP_LINK_MAP: Record<string, string> = {
+  perfil: 'perfil',
+  estatisticas: 'estatísticas',
+  conquistas: 'conquistas',
+  preferencias: 'preferências',
 };
 
 const getStoredAuthToken = (): string | null => {
@@ -262,7 +383,24 @@ const getPalette = (isDark: boolean) => ({
   soft2: isDark ? '#475569' : '#e2e8f0',
 });
 
-const L = getPalette(false); // fallback static theme (claro)
+const L = {
+  bg: 'var(--bg-card-soft)',
+  surface: 'var(--bg-card)',
+  card: 'var(--bg-card)',
+  border: 'var(--border-default)',
+  border2: 'var(--border-default)',
+  accent: '#f97316',
+  indigo: '#6366f1',
+  green: '#16a34a',
+  amber: '#d97706',
+  red: '#dc2626',
+  blue: '#3b82f6',
+  text: 'var(--text-primary)',
+  sub: 'var(--text-muted)',
+  muted: 'var(--text-muted)',
+  soft: 'var(--bg-card-soft)',
+  soft2: 'var(--border-default)',
+};
 
 
 /* ─── DATA ────────────────────────────────────────────────── */
@@ -608,12 +746,19 @@ export default function SettingsPage({
     [profileAvatar],
   );
   const initialPhoto = useMemo(
-    () => (profileAvatar && (/^data:image\//i.test(profileAvatar) || /^https?:\/\//i.test(profileAvatar)) ? profileAvatar : null),
+    () => (
+      profileAvatar && (/^data:image\//i.test(profileAvatar) || /^https?:\/\//i.test(profileAvatar))
+        ? stripAvatarCacheKey(profileAvatar)
+        : null
+    ),
     [profileAvatar],
   );
 
   const [avatarId, setAvatarId] = useState(initialAvatar);
   const [photo, setPhoto] = useState<string | null>(initialPhoto);
+  const [avatarCacheKey, setAvatarCacheKey] = useState<string | null>(
+    initialPhoto && /^https?:\/\//i.test(initialPhoto) ? String(Date.now()) : null,
+  );
   const [name, setName] = useState(userName || 'Lin');
   const [prova, setProva] = useState(profileExamGoal || 'ENEM');
   const [trilha, setTrilha] = useState(preferredStudyTrack === 'enem' ? 'ENEM' : preferredStudyTrack === 'hibrido' ? 'Concurso' : 'Direito');
@@ -633,16 +778,60 @@ export default function SettingsPage({
   const [email, setEmail] = useState(userEmail || '');
   const [heatmap, setHeatmap] = useState<NonNullable<ProfileLoadResponse['heatmap']>>([]);
   const [cloudAchievements, setCloudAchievements] = useState<NonNullable<ProfileLoadResponse['achievements']>>([]);
-  const [statsSummary, setStatsSummary] = useState<{ streakDays?: number; totalHours?: number; sessions?: number; ranking?: number }>({});
+  const [statsSummary, setStatsSummary] = useState<{
+    totalMinutes?: number;
+    daysWithActivity?: number;
+    streakDays?: number;
+    totalHours?: number;
+    sessions?: number;
+    ranking?: number;
+  }>({});
   const [notifStudy, setNotifStudy] = useState(true);
   const [notifAchievements, setNotifAchievements] = useState(true);
   const [notifGroup, setNotifGroup] = useState(false);
   const [notifWeekly, setNotifWeekly] = useState(true);
 
-  const [prefTheme, setPrefTheme] = useState<PrefThemeValues>(darkMode ? 'Escuro' : 'Claro');
-  const [prefLang, setPrefLang] = useState<PrefLanguageValues>('Português');
-  const [prefDensity, setPrefDensity] = useState<PrefDensityValues>('Normal');
-  const [prefTime, setPrefTime] = useState<PrefTimeValues>('Tarde');
+  const [prefTheme, setPrefTheme] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') {
+      return darkMode ? 'dark' : 'light';
+    }
+
+    return parseStoredTheme(localStorage.getItem(THEME_STORAGE_KEY), darkMode ? 'dark' : 'light');
+  });
+  const [prefLang, setPrefLang] = useState<PrefLanguageValues>(() => {
+    if (typeof window === 'undefined') {
+      return 'Português';
+    }
+
+    return langLabelFromCode(parseStoredLang(localStorage.getItem(LANG_STORAGE_KEY), 'pt'));
+  });
+  const [prefDensity, setPrefDensity] = useState<Density>(() => {
+    if (typeof window === 'undefined') {
+      return 'normal';
+    }
+
+    return parseStoredDensity(localStorage.getItem(DENSITY_STORAGE_KEY), 'normal');
+  });
+  const [prefTime, setPrefTime] = useState<Period>(() => {
+    if (typeof window === 'undefined') {
+      return 'afternoon';
+    }
+
+    return parseStoredPeriod(localStorage.getItem(TIME_STORAGE_KEY), 'afternoon');
+  });
+
+  const locale = useMemo(() => langCodeFromLabel(prefLang), [prefLang]);
+  const copy = useMemo(() => getProfileSettingsCopy(locale), [locale]);
+  const displayPhoto = useMemo(() => buildAvatarDisplayUrl(photo, avatarCacheKey), [avatarCacheKey, photo]);
+  const effectiveSessions = useMemo(
+    () => (
+      Array.isArray(userData.sessions) && userData.sessions.length > 0
+        ? userData.sessions
+        : (userData.studyHistory || [])
+    ),
+    [userData.sessions, userData.studyHistory],
+  );
+  const activitySnapshot = useMemo(() => buildProfileActivitySnapshot(effectiveSessions), [effectiveSessions]);
 
 
   const theme = getPalette(darkMode);
@@ -651,92 +840,114 @@ export default function SettingsPage({
     () => Object.values(userData.weekProgress || {}).reduce((acc, day) => acc + (day?.minutes || 0), 0),
     [userData.weekProgress],
   );
-  const sessionsCount = (userData.sessions || userData.studyHistory || []).length;
+  const sessionsCount = effectiveSessions.length;
   const metaPct = metaMin > 0 ? Math.min(100, (studiedMin / metaMin) * 100) : 0;
+  const hasRealActivity = activitySnapshot.totalSessions > 0;
+  const resolvedHeatmap = hasRealActivity ? activitySnapshot.heatmap : heatmap;
+  const resolvedTotalMinutes = hasRealActivity ? activitySnapshot.totalMinutes : Number(statsSummary.totalMinutes || 0);
+  const resolvedDaysWithActivity = hasRealActivity ? activitySnapshot.daysWithActivity : Number(statsSummary.daysWithActivity || 0);
+  const resolvedStreakDays = hasRealActivity
+    ? activitySnapshot.currentStreak
+    : Number(statsSummary.streakDays ?? userData.currentStreak ?? userData.streak ?? 0);
+  const resolvedTotalHours = hasRealActivity
+    ? activitySnapshot.totalHours
+    : Number(statsSummary.totalHours ?? Math.floor((userData.totalPoints || 0) / 10));
+  const resolvedSessions = hasRealActivity ? activitySnapshot.totalSessions : Number(statsSummary.sessions ?? sessionsCount);
+  const resolvedRanking = Number(statsSummary.ranking || Math.max(1, 120 - (userData.level || 1) * 3));
 
   const stats = useMemo(
     () => [
       {
-        label: 'Streak',
-        val: statsSummary.streakDays ?? userData.currentStreak ?? userData.streak ?? 0,
-        unit: 'dias',
+        label: copy.stats.streakTitle,
+        val: resolvedStreakDays,
+        unit: copy.stats.daysUnit,
         Icon: Flame,
         color: '#f97316',
         bg: '#fff7ed',
         border: '#fed7aa',
       },
       {
-        label: 'Horas Estudadas',
-        val: statsSummary.totalHours ?? Math.floor((userData.totalPoints || 0) / 10),
-        unit: 'horas',
+        label: copy.stats.hoursTitle,
+        val: resolvedTotalHours,
+        unit: copy.stats.hoursUnit,
         Icon: Timer,
         color: '#6366f1',
         bg: '#eef2ff',
         border: '#c7d2fe',
       },
       {
-        label: 'Simulados',
-        val: statsSummary.sessions ?? sessionsCount,
-        unit: 'sessões',
+        label: copy.stats.sessionsTitle,
+        val: resolvedSessions,
+        unit: copy.stats.sessionsUnit,
         Icon: FileText,
         color: '#16a34a',
         bg: '#f0fdf4',
         border: '#bbf7d0',
       },
       {
-        label: 'Ranking',
-        val: statsSummary.ranking ?? Math.max(1, 120 - (userData.level || 1) * 3),
-        unit: 'global',
+        label: copy.stats.rankingTitle,
+        val: resolvedRanking,
+        unit: copy.stats.globalUnit,
         Icon: BarChart2,
         color: '#d97706',
         bg: '#fffbeb',
         border: '#fde68a',
       },
     ],
-    [sessionsCount, statsSummary.ranking, statsSummary.sessions, statsSummary.streakDays, statsSummary.totalHours, userData.currentStreak, userData.level, userData.streak, userData.totalPoints],
+    [copy.stats.daysUnit, copy.stats.globalUnit, copy.stats.hoursTitle, copy.stats.hoursUnit, copy.stats.rankingTitle, copy.stats.sessionsTitle, copy.stats.sessionsUnit, copy.stats.streakTitle, resolvedRanking, resolvedSessions, resolvedStreakDays, resolvedTotalHours],
   );
 
   useEffect(() => {
-    const storedTheme = localStorage.getItem('settings-pref-theme') as 'Claro' | 'Escuro' | 'Sistema' | null;
-    const storedLang = localStorage.getItem('settings-pref-lang') as 'Português' | 'English' | 'Español' | null;
-    const storedDensity = localStorage.getItem('settings-pref-density') as 'Compacto' | 'Normal' | 'Espaçoso' | null;
-    const storedTime = localStorage.getItem('settings-pref-time') as 'Manhã' | 'Tarde' | 'Noite' | 'Madrugada' | null;
-
-    if (storedTheme) {
-      setPrefTheme(storedTheme);
-    }
-    if (storedLang) {
-      setPrefLang(storedLang);
-    }
-    if (storedDensity) {
-      setPrefDensity(storedDensity);
-    }
-    if (storedTime) {
-      setPrefTime(storedTime);
-    }
-  }, []);
+    const storedTheme = parseStoredTheme(localStorage.getItem(THEME_STORAGE_KEY), darkMode ? 'dark' : 'light');
+    const storedLangCode = parseStoredLang(localStorage.getItem(LANG_STORAGE_KEY), 'pt');
+    const storedDensityCode = parseStoredDensity(localStorage.getItem(DENSITY_STORAGE_KEY), 'normal');
+    const storedTimeCode = parseStoredPeriod(localStorage.getItem(TIME_STORAGE_KEY), 'afternoon');
+    setPrefTheme(storedTheme);
+    setPrefLang(langLabelFromCode(storedLangCode));
+    setPrefDensity(storedDensityCode);
+    setPrefTime(storedTimeCode);
+  }, [darkMode]);
 
   useEffect(() => {
     setTimeout(() => setMounted(true), 80);
   }, []);
 
   useEffect(() => {
-    if (prefTheme === 'Claro' && darkMode) {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const syncSettingsTabFromUrl = () => {
+      const requestedSettingsTab = normalizeSettingsTabParam(new URL(window.location.href).searchParams.get('settingsTab'));
+      const targetTab = SETTINGS_TAB_DEEP_LINK_MAP[requestedSettingsTab];
+      if (targetTab) {
+        setTab(targetTab);
+      }
+    };
+
+    syncSettingsTabFromUrl();
+    window.addEventListener('popstate', syncSettingsTabFromUrl);
+    return () => window.removeEventListener('popstate', syncSettingsTabFromUrl);
+  }, []);
+
+  useEffect(() => {
+    const resolvedTheme = prefTheme === 'system' ? resolveSystemTheme() : prefTheme;
+
+    if (resolvedTheme === 'light' && darkMode) {
       onToggleDarkMode();
     }
-    if (prefTheme === 'Escuro' && !darkMode) {
+    if (resolvedTheme === 'dark' && !darkMode) {
       onToggleDarkMode();
     }
 
-    if (prefTheme !== 'Sistema') {
-      onSelectTheme(prefTheme.toLowerCase());
-    }
-
-    localStorage.setItem('settings-pref-theme', prefTheme);
-    localStorage.setItem('settings-pref-lang', prefLang);
-    localStorage.setItem('settings-pref-density', prefDensity);
-    localStorage.setItem('settings-pref-time', prefTime);
-  }, [prefTheme, prefLang, prefDensity, prefTime, darkMode, onToggleDarkMode, onSelectTheme]);
+    localStorage.setItem(THEME_STORAGE_KEY, prefTheme);
+    localStorage.setItem(LANG_STORAGE_KEY, locale);
+    localStorage.setItem(DENSITY_STORAGE_KEY, prefDensity);
+    localStorage.setItem(TIME_STORAGE_KEY, prefTime);
+    localStorage.setItem('darkMode', JSON.stringify(resolvedTheme === 'dark'));
+    document.documentElement.setAttribute('data-theme', resolvedTheme);
+    document.documentElement.setAttribute('lang', locale);
+  }, [prefTheme, locale, prefDensity, prefTime, darkMode, onToggleDarkMode]);
 
   useEffect(() => {
     setName(userName || 'Lin');
@@ -762,6 +973,7 @@ export default function SettingsPage({
   useEffect(() => {
     setAvatarId(initialAvatar);
     setPhoto(initialPhoto);
+    setAvatarCacheKey(initialPhoto && /^https?:\/\//i.test(initialPhoto) ? String(Date.now()) : null);
   }, [initialAvatar, initialPhoto]);
 
   useEffect(() => {
@@ -774,20 +986,34 @@ export default function SettingsPage({
       const loadedEmail = profile.email || '';
       const loadedAvatarIcon = profile.avatarIcon || profile.avatar_icon || 'brain';
       const loadedAvatarUrl = profile.avatarUrl || profile.avatar_url || '';
-      const loadedTheme = profile.theme || 'system';
-      const loadedLang = profile.language || 'pt';
-      const loadedDensity = profile.density || 'normal';
-      const loadedPeriod = profile.preferredPeriod || profile.preferred_period || 'morning';
+      const loadedAvatarUpdatedAt = profile.updatedAt || profile.updated_at || null;
+      const loadedTheme = parseStoredTheme(
+        localStorage.getItem(THEME_STORAGE_KEY),
+        parseStoredTheme(profile.theme, 'system'),
+      );
+      const loadedLang = parseStoredLang(
+        localStorage.getItem(LANG_STORAGE_KEY),
+        parseStoredLang(profile.language, 'pt'),
+      );
+      const loadedDensity = parseStoredDensity(
+        localStorage.getItem(DENSITY_STORAGE_KEY),
+        parseStoredDensity(profile.density, 'normal'),
+      );
+      const loadedPeriod = parseStoredPeriod(
+        localStorage.getItem(TIME_STORAGE_KEY),
+        parseStoredPeriod(profile.preferredPeriod || profile.preferred_period, 'morning'),
+      );
 
       setName(loadedName || userName || 'Lin');
       setEmail(loadedEmail || userEmail || '');
       setAvatarId(loadedAvatarIcon);
-      setPhoto(loadedAvatarUrl || null);
+      setPhoto(stripAvatarCacheKey(loadedAvatarUrl) || null);
+      setAvatarCacheKey(loadedAvatarUrl ? (loadedAvatarUpdatedAt || String(Date.now())) : null);
 
-      setPrefTheme(themeLabelFromMode(loadedTheme));
+      setPrefTheme(loadedTheme);
       setPrefLang(langLabelFromCode(loadedLang));
-      setPrefDensity(densityLabelFromCode(loadedDensity));
-      setPrefTime(periodLabelFromCode(loadedPeriod));
+      setPrefDensity(loadedDensity);
+      setPrefTime(loadedPeriod);
 
       setNotifStudy(Boolean(notifications.studyReminders ?? notifications.study_reminders ?? true));
       setNotifAchievements(Boolean(notifications.unlockedAchievements ?? notifications.unlocked_achievements ?? true));
@@ -799,6 +1025,8 @@ export default function SettingsPage({
 
       const totalMinutes = Number(data.stats?.totalMinutes365 || 0);
       setStatsSummary({
+        totalMinutes,
+        daysWithActivity: Number(data.stats?.activeDays365 || 0),
         streakDays: Number(data.stats?.currentStreakDays || 0),
         totalHours: Math.floor(totalMinutes / 60),
         sessions: Number(data.stats?.totalSessions365 || 0),
@@ -852,16 +1080,13 @@ export default function SettingsPage({
   const mark = () => setDirty(true);
 
   const applyDocumentPreferences = () => {
-    localStorage.setItem('settings-pref-theme', prefTheme);
+    localStorage.setItem(THEME_STORAGE_KEY, prefTheme);
 
-    const resolvedTheme = prefTheme === 'Escuro'
-      ? 'dark'
-      : prefTheme === 'Claro'
-        ? 'light'
-        : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const resolvedTheme = prefTheme === 'system' ? resolveSystemTheme() : prefTheme;
 
     document.documentElement.setAttribute('data-theme', resolvedTheme);
-    document.documentElement.setAttribute('lang', langCodeFromLabel(prefLang));
+    document.documentElement.setAttribute('lang', locale);
+    localStorage.setItem('darkMode', JSON.stringify(resolvedTheme === 'dark'));
   };
 
   const parsePreferredTrack = (track: string): 'enem' | 'concursos' | 'hibrido' => {
@@ -872,23 +1097,24 @@ export default function SettingsPage({
   };
 
   async function handleSave() {
+    const normalizedAvatar = stripAvatarCacheKey(photo);
     const localPayload = {
-      name: name.trim() || 'Estudante',
-      avatar: photo || avatarId,
+      name: name.trim() || copy.profile.fallbackName,
+      avatar: displayPhoto || normalizedAvatar || avatarId,
       examGoal: prova,
       examDate: dataProva,
       preferredTrack: mapTrackFromTrilha(trilha),
     };
 
     const cloudPayload = {
-      displayName: name.trim() || 'Estudante',
+      displayName: name.trim() || copy.profile.fallbackName,
       email: email || undefined,
       avatarIcon: avatarId,
-      avatarUrl: photo || null,
-      theme: themeModeFromLabel(prefTheme),
-      language: langCodeFromLabel(prefLang),
-      density: densityCodeFromLabel(prefDensity),
-      preferredPeriod: periodCodeFromLabel(prefTime),
+      avatarUrl: normalizedAvatar && !/^data:image\//i.test(normalizedAvatar) ? normalizedAvatar : null,
+      theme: prefTheme,
+      language: locale,
+      density: prefDensity,
+      preferredPeriod: prefTime,
     };
 
     let cloudOk = false;
@@ -928,6 +1154,9 @@ export default function SettingsPage({
 
       if (cloudOk || localOk) {
         applyDocumentPreferences();
+        if (cloudPayload.avatarUrl) {
+          setAvatarCacheKey(String(Date.now()));
+        }
         setDirty(false);
         setSaved(true);
         toast.success(cloudOk ? feedbackMessage : 'Perfil salvo localmente (modo fallback).');
@@ -952,7 +1181,7 @@ export default function SettingsPage({
         groupActivity: notifGroup,
         weeklyReport: notifWeekly,
       });
-      toast.success('Notificações salvas com sucesso!');
+      toast.success(copy.preferences.saveNotifications);
       setDirty(false);
     } catch {
       localStorage.setItem(
@@ -985,24 +1214,21 @@ export default function SettingsPage({
       return;
     }
 
-    if (photo && photo.startsWith('blob:')) {
-      URL.revokeObjectURL(photo);
-    }
-
-    const localPreview = URL.createObjectURL(file);
+    const localPreview = await readFileAsDataUrl(file);
     setPhoto(localPreview);
+    setAvatarCacheKey(null);
     mark();
 
     try {
       const uploadedUrl = await uploadAvatarApi(file);
       if (uploadedUrl) {
-        setPhoto(uploadedUrl);
+        setPhoto(stripAvatarCacheKey(uploadedUrl));
+        setAvatarCacheKey(String(Date.now()));
         toast.success('Avatar enviado e sincronizado!');
       }
     } catch {
       toast.error('Upload em nuvem indisponível. Avatar salvo localmente.');
     }
-
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1066,10 +1292,84 @@ export default function SettingsPage({
     ? Math.max(0, Math.round((new Date(dataProva).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
     : null;
 
+  const notificationItems = [
+    {
+      label: copy.preferences.notificationStudyReminders,
+      desc: copy.preferences.notificationStudyRemindersDesc,
+      Icon: BellRing,
+      on: notifStudy,
+      setter: setNotifStudy,
+    },
+    {
+      label: copy.preferences.notificationAchievements,
+      desc: copy.preferences.notificationAchievementsDesc,
+      Icon: Award,
+      on: notifAchievements,
+      setter: setNotifAchievements,
+    },
+    {
+      label: copy.preferences.notificationGroup,
+      desc: copy.preferences.notificationGroupDesc,
+      Icon: Bell,
+      on: notifGroup,
+      setter: setNotifGroup,
+    },
+    {
+      label: copy.preferences.notificationWeekly,
+      desc: copy.preferences.notificationWeeklyDesc,
+      Icon: FileText,
+      on: notifWeekly,
+      setter: setNotifWeekly,
+    },
+  ];
+
+  const appearanceFields = [
+    {
+      key: 'theme',
+      label: copy.preferences.theme,
+      value: prefTheme,
+      options: [
+        { value: 'light' as ThemeMode, label: copy.preferences.themeOptions.light, Icon: Sun },
+        { value: 'dark' as ThemeMode, label: copy.preferences.themeOptions.dark, Icon: Moon },
+        { value: 'system' as ThemeMode, label: copy.preferences.themeOptions.system, Icon: Globe },
+      ],
+      onSelect: (value: string) => setPrefTheme(value as ThemeMode),
+    },
+    {
+      key: 'language',
+      label: copy.preferences.language,
+      value: prefLang,
+      options: [
+        { value: 'Português', label: copy.preferences.languageOptions.pt, Icon: Globe },
+        { value: 'English', label: copy.preferences.languageOptions.en, Icon: Globe },
+        { value: 'Español', label: copy.preferences.languageOptions.es, Icon: Globe },
+      ],
+      onSelect: (value: string) => setPrefLang(value as PrefLanguageValues),
+    },
+    {
+      key: 'density',
+      label: copy.preferences.density,
+      value: prefDensity,
+      options: [
+        { value: 'compact' as Density, label: copy.preferences.densityOptions.compact, Icon: Minus },
+        { value: 'normal' as Density, label: copy.preferences.densityOptions.normal, Icon: AlignJustify },
+        { value: 'spacious' as Density, label: copy.preferences.densityOptions.spacious, Icon: LayoutDashboard },
+      ],
+      onSelect: (value: string) => setPrefDensity(value as Density),
+    },
+  ];
+
+  const preferredTimeOptions = [
+    { value: 'morning' as Period, label: copy.preferences.timeOptions.morning, Icon: Sunrise },
+    { value: 'afternoon' as Period, label: copy.preferences.timeOptions.afternoon, Icon: Sun },
+    { value: 'night' as Period, label: copy.preferences.timeOptions.night, Icon: Sunset },
+    { value: 'late_night' as Period, label: copy.preferences.timeOptions.late_night, Icon: Moon },
+  ];
+
   const TABS = [
-    { key: 'perfil', label: 'Perfil', Icon: User },
+    { key: 'perfil', label: copy.tabs.profile, Icon: User },
     { key: 'estatísticas', label: 'Estatísticas', Icon: BarChart2 },
-    { key: 'conquistas', label: 'Conquistas', Icon: Trophy },
+    { key: 'conquistas', label: copy.tabs.achievements, Icon: Trophy },
     { key: 'preferências', label: 'Preferências', Icon: Settings },
   ];
 
@@ -1080,7 +1380,7 @@ export default function SettingsPage({
         *{box-sizing:border-box;margin:0;padding:0;}
         ::-webkit-scrollbar{width:5px;} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px;}
         input,select,button,textarea{font-family:'DM Sans',sans-serif;outline:none;}
-        select option{background:#fff;color:#0f172a;}
+        select option{background:var(--bg-card);color:var(--text-primary);}
         @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
@@ -1130,13 +1430,13 @@ export default function SettingsPage({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: accent, animation: 'pulse 2s infinite' }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: L.muted, letterSpacing: 1.6, textTransform: 'uppercase' }}>Zero Base · Meu Perfil</span>
-              {loadingProfile && <span style={{ fontSize: 10.5, color: accent, fontWeight: 700 }}>Sincronizando...</span>}
+              <span style={{ fontSize: 11, fontWeight: 700, color: L.muted, letterSpacing: 1.6, textTransform: 'uppercase' }}>{copy.page.eyebrow}</span>
+              {loadingProfile && <span style={{ fontSize: 10.5, color: accent, fontWeight: 700 }}>{copy.page.syncing}</span>}
             </div>
             <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 30, fontWeight: 800, color: L.text, letterSpacing: '-0.8px', lineHeight: 1.1 }}>
-              Configurações de perfil
+              {copy.page.title}
             </h1>
-            <p style={{ fontSize: 13.5, color: L.sub, marginTop: 5 }}>Gerencie sua identidade, metas e preferências de estudo</p>
+            <p style={{ fontSize: 13.5, color: L.sub, marginTop: 5 }}>{copy.page.subtitle}</p>
           </div>
           {dirty && (
             <div style={{ display: 'flex', gap: 8, animation: 'fadeIn .2s ease' }}>
@@ -1145,7 +1445,7 @@ export default function SettingsPage({
                 onClick={() => setDirty(false)}
                 style={{ padding: '9px 18px', borderRadius: 12, border: `1px solid ${L.border2}`, background: L.surface, color: L.sub, fontSize: 13, fontWeight: 600 }}
               >
-                Descartar
+                {copy.page.discard}
               </button>
               <button
                 className="btn-primary"
@@ -1166,7 +1466,7 @@ export default function SettingsPage({
                   opacity: savingProfile ? 0.75 : 1,
                 }}
               >
-                <Save size={14} />{savingProfile ? 'Salvando...' : 'Salvar perfil'}
+                <Save size={14} />{savingProfile ? copy.page.saving : copy.page.save}
               </button>
             </div>
           )}
@@ -1178,7 +1478,7 @@ export default function SettingsPage({
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <XPRing current={userData.totalPoints || 555} max={Math.max((userData.level || 2) * 1000, 2000)} color={accent} size={108} />
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <AvatarDisplay iconId={avatarId} photo={photo} size={66} />
+                  <AvatarDisplay iconId={avatarId} photo={displayPhoto} size={66} />
                 </div>
                 <button
                   onClick={() => fileRef.current?.click()}
@@ -1206,10 +1506,10 @@ export default function SettingsPage({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
                   <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 26, fontWeight: 800, color: L.text, letterSpacing: '-0.5px' }}>{name}</h2>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: `${accent}12`, color: accent, border: `1px solid ${accent}28` }}>
-                    NÍV. {userData.level || 1}
+                    {copy.hero.level} {userData.level || 1}
                   </span>
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0' }}>
-                    Estudante
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'rgba(22, 163, 74, 0.12)', color: '#16a34a', border: '1px solid rgba(22, 163, 74, 0.2)' }}>
+                    {copy.common.student}
                   </span>
                   <span
                     style={{
@@ -1220,20 +1520,20 @@ export default function SettingsPage({
                       fontWeight: 600,
                       padding: '3px 10px',
                       borderRadius: 20,
-                      background: '#fef3c7',
+                      background: 'rgba(245, 158, 11, 0.14)',
                       color: '#d97706',
-                      border: '1px solid #fde68a',
+                      border: '1px solid rgba(245, 158, 11, 0.24)',
                     }}
                   >
-                    <Sparkles size={10} />Sincronizado
+                    <Sparkles size={10} />{copy.common.synced}
                   </span>
                 </div>
-                <p style={{ fontSize: 13, color: L.muted, marginBottom: 14 }}>{email || userEmail || 'conta@zero-base.app'}</p>
+                <p style={{ fontSize: 13, color: L.muted, marginBottom: 14 }}>{email || userEmail || copy.common.fallbackEmail}</p>
 
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 11.5, color: L.sub, fontWeight: 600 }}>Progresso para próximo nível</span>
-                    <span style={{ fontSize: 11.5, color: accent, fontWeight: 700 }}>{userData.totalPoints || 0} XP</span>
+                    <span style={{ fontSize: 11.5, color: L.sub, fontWeight: 600 }}>{copy.hero.progressToNextLevel}</span>
+                    <span style={{ fontSize: 11.5, color: accent, fontWeight: 700 }}>{userData.totalPoints || 0} {copy.hero.xp}</span>
                   </div>
                   <div style={{ height: 6, borderRadius: 20, background: L.soft2, overflow: 'hidden' }}>
                     <div
@@ -1279,6 +1579,13 @@ export default function SettingsPage({
         >
           {TABS.map(({ key, label, Icon: TabIcon }) => {
             const active = tab === key;
+            const tabLabel = key === 'perfil'
+              ? copy.tabs.profile
+              : key === 'conquistas'
+                ? copy.tabs.achievements
+                : key.includes('estat')
+                  ? copy.tabs.stats
+                  : copy.tabs.preferences;
             return (
               <button
                 key={key}
@@ -1300,7 +1607,7 @@ export default function SettingsPage({
                 }}
               >
                 <TabIcon size={14} strokeWidth={active ? 2.4 : 2} color={active ? accent : theme.muted} />
-                {label}
+                {tabLabel || label}
               </button>
             );
           })}
@@ -1311,7 +1618,7 @@ export default function SettingsPage({
             displayName={name}
             email={email || userEmail || ''}
             avatarIcon={avatarId}
-            avatarUrl={photo || ''}
+            avatarUrl={displayPhoto || ''}
             onChangeDisplayName={(value) => {
               setName(value);
               mark();
@@ -1319,21 +1626,26 @@ export default function SettingsPage({
             onSelectAvatar={(value) => {
               setAvatarId(value);
               setPhoto(null);
+              setAvatarCacheKey(null);
               mark();
             }}
             onUploadAvatar={handleAvatarUpload}
             onSave={handleSave}
             saving={savingProfile}
+            locale={locale}
           />
         )}
 
         {tab === 'estatísticas' && (
           <ProfileStatsV2
-            heatmap={heatmap}
-            streakDays={statsSummary.streakDays || 0}
-            totalHours={statsSummary.totalHours || 0}
-            sessions={statsSummary.sessions || 0}
-            ranking={statsSummary.ranking || 0}
+            heatmap={resolvedHeatmap}
+            streakDays={resolvedStreakDays}
+            totalHours={resolvedTotalHours}
+            sessions={resolvedSessions}
+            ranking={resolvedRanking}
+            totalMinutes={resolvedTotalMinutes}
+            daysWithActivity={resolvedDaysWithActivity}
+            locale={locale}
           />
         )}
 
@@ -1418,13 +1730,8 @@ export default function SettingsPage({
         {tab === 'preferências' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, animation: 'fadeUp .3s ease' }} className="two-col">
             <Card accentTop={L.indigo} style={{ padding: '26px 28px' }}>
-              <SLabel color={L.indigo} icon={Bell}>Notificações</SLabel>
-              {[
-                { label: 'Lembretes de estudo', desc: 'Aviso diário na hora configurada', Icon: BellRing, on: notifStudy, setter: setNotifStudy },
-                { label: 'Conquistas desbloqueadas', desc: 'Notifique ao ganhar badges', Icon: Award, on: notifAchievements, setter: setNotifAchievements },
-                { label: 'Atividade do grupo', desc: 'Mensagens e novidades nos grupos', Icon: Bell, on: notifGroup, setter: setNotifGroup },
-                { label: 'Relatório semanal', desc: 'Resumo de desempenho todo domingo', Icon: FileText, on: notifWeekly, setter: setNotifWeekly },
-              ].map((n, i) => (
+              <SLabel color={L.indigo} icon={Bell}>{copy.preferences.notifications}</SLabel>
+              {notificationItems.map((n, i) => (
                 <div key={n.label} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 0', borderBottom: i < 3 ? `1px solid ${L.border}` : 'none' }}>
                   <div style={{ width: 34, height: 34, borderRadius: 10, background: n.on ? '#eef2ff' : L.soft, border: `1px solid ${n.on ? '#c7d2fe' : L.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <n.Icon size={15} color={n.on ? L.indigo : L.muted} strokeWidth={1.8} />
@@ -1462,32 +1769,20 @@ export default function SettingsPage({
                   opacity: savingNotifications ? 0.7 : 1,
                 }}
               >
-                {savingNotifications ? 'Salvando notificações...' : 'Salvar notificações'}
+                {savingNotifications ? copy.preferences.savingNotifications : copy.preferences.saveNotifications}
               </button>
             </Card>
 
             <Card accentTop={accent} style={{ padding: '26px 28px' }}>
-              <SLabel color={accent} icon={Palette}>Aparência</SLabel>
-              {[
-                { label: 'Tema', opts: [{ l: 'Claro', Icon: Sun }, { l: 'Escuro', Icon: Moon }, { l: 'Sistema', Icon: Globe }], value: prefTheme, setValue: setPrefTheme },
-                { label: 'Idioma', opts: [{ l: 'Português', Icon: Globe }, { l: 'English', Icon: Globe }, { l: 'Español', Icon: Globe }], value: prefLang, setValue: setPrefLang },
-                { label: 'Densidade', opts: [{ l: 'Compacto', Icon: Minus }, { l: 'Normal', Icon: AlignJustify }, { l: 'Espaçoso', Icon: LayoutDashboard }], value: prefDensity, setValue: setPrefDensity },
-              ].map((f) => (
+              <SLabel color={accent} icon={Palette}>{copy.preferences.appearance}</SLabel>
+              {appearanceFields.map((f) => (
                 <Field key={f.label} label={f.label}>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {f.opts.map((o) => (
+                    {f.options.map((o) => (
                       <button
-                        key={`${f.label}-${o.l}`}
+                        key={`${f.label}-${o.value}`}
                         onClick={() => {
-                          if (f.label === 'Tema') {
-                            setPrefTheme(o.l as PrefThemeValues);
-                          }
-                          if (f.label === 'Idioma') {
-                            setPrefLang(o.l as PrefLanguageValues);
-                          }
-                          if (f.label === 'Densidade') {
-                            setPrefDensity(o.l as PrefDensityValues);
-                          }
+                          f.onSelect(o.value);
                           mark();
                         }}
                         style={{
@@ -1497,9 +1792,9 @@ export default function SettingsPage({
                           cursor: 'pointer',
                           fontSize: 12,
                           fontWeight: 600,
-                          border: `1.5px solid ${f.value === o.l ? `${accent}55` : theme.border}`,
-                          background: f.value === o.l ? `${accent}0e` : theme.soft,
-                          color: f.value === o.l ? accent : theme.sub,
+                          border: `1.5px solid ${f.value === o.value ? `${accent}55` : theme.border}`,
+                          background: f.value === o.value ? `${accent}0e` : theme.soft,
+                          color: f.value === o.value ? accent : theme.sub,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -1508,25 +1803,20 @@ export default function SettingsPage({
                         }}
                       >
                         <o.Icon size={12} strokeWidth={2} />
-                        {o.l}
+                        {o.label}
                       </button>
                     ))}
                   </div>
                 </Field>
               ))}
               <div style={{ borderTop: `1px solid ${L.border}`, paddingTop: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: L.sub, marginBottom: 9 }}>Horário preferido</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: L.sub, marginBottom: 9 }}>{copy.preferences.preferredTime}</div>
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                  {[
-                    { l: 'Manhã', Icon: Sunrise },
-                    { l: 'Tarde', Icon: Sun },
-                    { l: 'Noite', Icon: Sunset },
-                    { l: 'Madrugada', Icon: Moon },
-                  ].map(({ l, Icon: HIcon }) => (
+                  {preferredTimeOptions.map(({ value, label, Icon: HIcon }) => (
                     <button
-                      key={l}
+                      key={value}
                       onClick={() => {
-                        setPrefTime(l as PrefTimeValues);
+                        setPrefTime(value);
                         mark();
                       }}
                       style={{
@@ -1538,14 +1828,14 @@ export default function SettingsPage({
                         cursor: 'pointer',
                         fontSize: 12,
                         fontWeight: 600,
-                        border: `1.5px solid ${prefTime === l ? `${accent}55` : theme.border}`,
-                        background: prefTime === l ? `${accent}0e` : theme.soft,
-                        color: prefTime === l ? accent : theme.sub,
+                        border: `1.5px solid ${prefTime === value ? `${accent}55` : theme.border}`,
+                        background: prefTime === value ? `${accent}0e` : theme.soft,
+                        color: prefTime === value ? accent : theme.sub,
                         transition: 'all .15s',
                       }}
                     >
                       <HIcon size={12} strokeWidth={2} />
-                      {l}
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -1613,7 +1903,7 @@ export default function SettingsPage({
                 onClick={() => setDirty(false)}
                 style={{ padding: '8px 16px', borderRadius: 10, border: `1px solid ${L.border2}`, background: L.soft, color: L.sub, fontSize: 13, fontWeight: 600 }}
               >
-                Descartar
+                {copy.page.discard}
               </button>
               <button
                 className="btn-primary"

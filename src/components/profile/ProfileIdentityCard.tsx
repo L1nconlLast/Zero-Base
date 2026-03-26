@@ -1,30 +1,44 @@
 import type { CSSProperties } from 'react';
+import { getProfileSettingsCopy, type ProfileSettingsLocale } from './profileSettingsCopy';
 
 interface ProfileIdentityCardProps {
   displayName: string;
   email: string;
   onChangeDisplayName: (value: string) => void;
+  locale?: ProfileSettingsLocale;
 }
 
-export default function ProfileIdentityCard({ displayName, email, onChangeDisplayName }: ProfileIdentityCardProps) {
+export default function ProfileIdentityCard({
+  displayName,
+  email,
+  onChangeDisplayName,
+  locale = 'pt',
+}: ProfileIdentityCardProps) {
+  const copy = getProfileSettingsCopy(locale);
+
   return (
     <article style={cardStyle}>
       <header style={headerStyle}>
-        <h3 style={titleStyle}>Identidade</h3>
-        <span style={pillStyle}>Conta verificada</span>
+        <h3 style={titleStyle}>{copy.profile.identityTitle}</h3>
+        <span style={pillStyle}>{copy.profile.verifiedAccount}</span>
       </header>
 
-      <label style={labelStyle} htmlFor="profile-display-name">Nome exibido</label>
+      <label style={labelStyle} htmlFor="profile-display-name">{copy.profile.displayName}</label>
       <input
         id="profile-display-name"
         value={displayName}
         onChange={(event) => onChangeDisplayName(event.target.value)}
         style={inputStyle}
-        placeholder="Como você quer aparecer"
+        placeholder={copy.profile.displayNamePlaceholder}
       />
 
-      <label style={{ ...labelStyle, marginTop: 12 }} htmlFor="profile-email">Email</label>
-      <input id="profile-email" value={email || 'conta@zero-base.app'} readOnly style={{ ...inputStyle, background: 'var(--bg-card-soft)', color: 'var(--text-muted)' }} />
+      <label style={{ ...labelStyle, marginTop: 12 }} htmlFor="profile-email">{copy.profile.email}</label>
+      <input
+        id="profile-email"
+        value={email || copy.common.fallbackEmail}
+        readOnly
+        style={{ ...inputStyle, background: 'var(--bg-card-soft)', color: 'var(--text-muted)' }}
+      />
     </article>
   );
 }
@@ -53,8 +67,8 @@ const titleStyle: CSSProperties = {
 const pillStyle: CSSProperties = {
   fontSize: 11,
   color: '#15803d',
-  background: '#ecfdf5',
-  border: '1px solid #bbf7d0',
+  background: 'rgba(22, 163, 74, 0.1)',
+  border: '1px solid rgba(22, 163, 74, 0.2)',
   borderRadius: 999,
   padding: '4px 8px',
   fontWeight: 700,

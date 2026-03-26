@@ -5,6 +5,7 @@ import './index.css';
 import './styles/theme.css';
 
 type UiTheme = 'Claro' | 'Escuro' | 'Sistema';
+type UiLanguage = 'pt' | 'en' | 'es';
 
 const getSystemThemeAttr = (): 'light' | 'dark' => (
   window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -20,15 +21,27 @@ const applyTheme = (pref: UiTheme): void => {
   document.documentElement.setAttribute('data-theme', resolveDataTheme(pref));
 };
 
+const resolveStoredLanguage = (): UiLanguage => {
+  const raw = localStorage.getItem('settings-pref-lang');
+  if (raw === 'pt' || raw === 'en' || raw === 'es') return raw;
+  if (raw === 'English') return 'en';
+  if (raw === 'Español' || raw === 'Espanol') return 'es';
+  return 'pt';
+};
+
 const getStoredPrefTheme = (): UiTheme => {
   const raw = localStorage.getItem('settings-pref-theme');
   if (raw === 'Claro' || raw === 'Escuro' || raw === 'Sistema') return raw;
+  if (raw === 'light') return 'Claro';
+  if (raw === 'dark') return 'Escuro';
+  if (raw === 'system') return 'Sistema';
   return 'Sistema';
 };
 
 // 1) aplica no startup (evita flash branco)
 const initialPref = getStoredPrefTheme();
 applyTheme(initialPref);
+document.documentElement.setAttribute('lang', resolveStoredLanguage());
 
 // 2) reage a mudanças do sistema quando pref = Sistema
 const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -47,6 +60,9 @@ if (typeof media.addEventListener === 'function') {
 window.addEventListener('storage', (event) => {
   if (event.key === 'settings-pref-theme') {
     applyTheme(getStoredPrefTheme());
+  }
+  if (event.key === 'settings-pref-lang') {
+    document.documentElement.setAttribute('lang', resolveStoredLanguage());
   }
 });
 

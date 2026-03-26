@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Home, GraduationCap, Brain, Clock3, BarChart3, Trophy, Settings, Database, Info, Heart, CalendarDays, HelpCircle, Layers, BookOpen, Zap, Users, GitBranch, Cloud, AlertTriangle, CheckCircle2, Flame, Package, Puzzle, Scale, Sprout, Target } from 'lucide-react';
+import { Home, GraduationCap, Brain, Clock3, BarChart3, Trophy, Settings, Database, Info, Heart, CalendarDays, HelpCircle, Layers, BookOpen, Zap, Users, GitBranch, Cloud, AlertTriangle, CheckCircle2, Flame, Package, Puzzle, Scale, Sprout, Target, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
 import { NotificationSetup } from './components/NotificationSetup';
 
 // static theme definitions (won't change per render)
@@ -24,13 +24,20 @@ import { PomodoroTimer } from './components/Timer/PomodoroTimer';
 import { ModeSelector } from './components/Timer/ModeSelector';
 import AchievementNotification from './components/Dashboard/AchievementNotification';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { OnboardingFlow } from './components/Onboarding/OnboardingFlow';
+import { BeginnerOnboarding, type BeginnerOnboardingPayload } from './components/Beginner/BeginnerOnboarding';
+import { BeginnerSessionResult } from './components/Beginner/BeginnerSessionResult';
+import { BeginnerWeekSummaryModal } from './components/Beginner/BeginnerWeekSummary';
+import { ConfirmModal } from './components/UI/ConfirmModal';
+import { DevPhaseSwitcher } from './components/UI/DevPhaseSwitcher';
+import { StudyExecutionBanner } from './components/Study/StudyExecutionBanner';
+import { ProfileAdminSnapshotCard } from './components/profile/ProfileAdminSnapshotCard';
 
 // Constants
 import { INITIAL_USER_DATA, STORAGE_KEYS } from './constants';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
+import type { ProductPhase, ProductPhaseOverride } from './hooks/useEffectivePhase';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useAchievements } from './hooks/useAchievements';
 import { useStudyMode } from './hooks/useStudyMode';
@@ -43,18 +50,183 @@ import { userProfileService } from './services/userProfile.service';
 import { xpEngineService } from './services/xpEngine.service';
 import { offlineSyncService } from './services/offlineSync.service';
 import { weeklyStreakService } from './services/weeklyStreak.service';
-import { STUDY_METHODS } from './data/studyMethods';
-import type { SmartScheduleProfile } from './utils/smartScheduleEngine';
+import { beginnerFlowService } from './services/beginnerFlow.service';
+import { beginnerProgressService } from './services/beginnerProgress.service';
+import {
+  buildStudyContextForToday,
+  createDefaultWeeklyStudySchedule,
+  getNextStudyCopy,
+  getNextStudySuggestion,
+  getPaceCopy,
+  getWeekdayFromDate,
+  getRecentPaceState,
+  getWeeklyPlanConfidenceState,
+  sanitizeWeeklyStudySchedule,
+} from './services/studySchedule.service';
+import { STUDY_METHODS, getStudyMethodById } from './data/studyMethods';
+import { createDefaultSmartProfile, type SmartScheduleProfile } from './utils/smartScheduleEngine';
 
 // Types & Utils
+import type {
+  BeginnerPlan,
+  BeginnerProgressStage,
+  BeginnerState,
+  BeginnerStats,
+  PersistedStudySession,
+  BeginnerWeekSummary,
+  StudyContextForToday,
+  StudyExecutionState,
+  Weekday,
+  WeeklyStudySchedule,
+} from './types';
 import { UserData, MateriaTipo } from './types';
 import { getDayOfWeek } from './utils/helpers';
-import { trackEvent } from './utils/analytics';
+import { analytics, trackEvent } from './utils/analytics';
 import { buildWeeklyRetentionSnapshot } from './utils/weeklyRetention';
+import {
+  getSuggestedContentPathBySubjectLabel,
+  getSuggestedNextTopicAligned,
+  getSuggestedTopicCopy,
+} from './utils/contentTree';
+import { getStableHeroVariant, type HeroVariant } from './lib/ab';
 
 type StudyMode = 'pomodoro' | 'livre';
 type StudyTrack = 'enem' | 'concursos' | 'hibrido';
 type QuizTrackFilter = 'enem' | 'concurso' | 'ambos';
+type QuickSessionDuration = 15 | 25 | 30 | 50;
+type CtaSource = 'hero_cta' | 'next_mission' | 'quick_15' | 'quick_25' | 'quick_50';
+type CtrEntry = { impressions: number; clicks: number; ctr: number };
+type CtrMetrics = Record<CtaSource, CtrEntry>;
+type HeroAttribution = { variant: HeroVariant; clickedAt: number };
+type HeroVariantMetricsEntry = {
+  impressions: number;
+  clicks: number;
+  completions: number;
+  ctr: number;
+  completionRate: number;
+  clickToCompletion: number;
+};
+type HeroAbMetrics = {
+  hero_v1: HeroVariantMetricsEntry;
+  hero_v2: HeroVariantMetricsEntry;
+  upliftCtr: number;
+  upliftCompletionRate: number;
+  winnerByCtr: HeroVariant | 'tie';
+  winnerByCompletionRate: HeroVariant | 'tie';
+};
+type BeginnerSessionUiResult = {
+  completedMissionId: string;
+  completedMissionLabel: string;
+  nextMissionId?: string;
+  nextMissionLabel?: string;
+  totalQuestions?: number | null;
+  correctAnswers?: number | null;
+  xpGained: number;
+};
+
+type BeginnerAssessmentResult = {
+  correctAnswers: number;
+  totalQuestions: number;
+  xpGained: number;
+};
+
+type BeginnerWeekSummaryAction = 'continue_guided' | 'explore_tools';
+type StudyFlowStep = 'idle' | 'focusing' | 'focusCompleted' | 'questionTransition' | 'questioning';
+type LastCompletedFocus = {
+  subject: string;
+  topicName?: string;
+  duration: number;
+  targetQuestions: number;
+  todaySessionCount: number;
+  completedAt: string;
+};
+
+const readPersistedStudySession = (storageKey: string): PersistedStudySession | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as PersistedStudySession | null;
+    if (!parsed || (parsed.status !== 'running' && parsed.status !== 'paused')) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const getActiveStudySessionEntries = (
+  storageScope: string,
+): Array<{ storageKey: string; session: PersistedStudySession }> =>
+  [
+    `study-timer-session_${storageScope}`,
+    `pomodoro-session_${storageScope}`,
+  ]
+    .map((storageKey) => ({
+      storageKey,
+      session: readPersistedStudySession(storageKey),
+    }))
+    .filter((entry): entry is { storageKey: string; session: PersistedStudySession } => Boolean(entry.session));
+
+const getLatestActiveStudySessionEntry = (
+  storageScope: string,
+): { storageKey: string; session: PersistedStudySession } | null => {
+  const activeEntries = getActiveStudySessionEntries(storageScope);
+  if (activeEntries.length === 0) {
+    return null;
+  }
+
+  return [...activeEntries].sort((left, right) => {
+    const rightTime = Date.parse(right.session.updatedAt || right.session.startedAt);
+    const leftTime = Date.parse(left.session.updatedAt || left.session.startedAt);
+    return rightTime - leftTime;
+  })[0];
+};
+
+const clearPersistedStudySession = (storageKey: string) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(storageKey);
+  } catch {
+    // noop
+  }
+};
+
+const normalizeQuickSessionDuration = (value: number): QuickSessionDuration => {
+  if (value <= 15) return 15;
+  if (value <= 25) return 25;
+  if (value <= 30) return 30;
+  return 50;
+};
+
+const BEGINNER_UNLOCKED_TABS = new Set(['inicio', 'foco', 'questoes', 'simulado']);
+const BEGINNER_LOCKED_LABELS: Record<string, string> = {
+  arvore: 'Arvore',
+  departamento: 'Departamento',
+  mentor: 'Mentor IA',
+  'mentor-admin': 'Mentor Admin',
+  cronograma: 'Cronograma',
+  metodos: 'Metodos',
+  dashboard: 'Dashboard',
+  flashcards: 'Flashcards',
+  vespera: 'Vespera',
+  grupos: 'Grupos',
+  'ranking-global': 'Ranking Global',
+  conquistas: 'Conquistas',
+  configuracoes: 'Configuracoes',
+  dados: 'Dados',
+};
 
 interface QuizPrefilter {
   nonce: number;
@@ -96,7 +268,7 @@ const EveOfExamPage = lazy(() => import('./components/ExamPrep/EveOfExamPage'));
 const GroupsPage = lazy(() => import('./components/Social/GroupsPage'));
 const GlobalRankingPage = lazy(() => import('./components/Social/GlobalRankingPage'));
 const FeedbackButton = lazy(() => import('./components/UI/FeedbackButton'));
-const EmptyState = lazy(() => import('./components/UI/EmptyState'));
+const EmptyState = lazy(() => import('./components/Dashboard/ProgressEmptyState'));
 const MentorAdminDashboard = lazy(() => import('./pages/MentorAdminDashboard'));
 const KnowledgeGenealogyTree = lazy(() => import('./components/Dashboard/KnowledgeGenealogyTree'));
 
@@ -125,6 +297,11 @@ function App() {
       legacyKeys: [`medicinaData_${user?.email || 'default'}`],
     }
   );
+  const defaultWeeklySchedule = React.useMemo(() => createDefaultWeeklyStudySchedule(), []);
+  const [weeklyScheduleRaw, setWeeklyScheduleRaw] = useLocalStorage<WeeklyStudySchedule>(
+    `weeklyStudySchedule_${userStorageScope}`,
+    defaultWeeklySchedule,
+  );
 
   // UI State
   const [darkMode, setDarkMode] = useLocalStorage('darkMode', false);
@@ -135,11 +312,12 @@ function App() {
   // supabaseUserId agora vem direto do useAuth (Supabase session)
   const supabaseUserId = authSupabaseUserId;
   const [activeStudyMode, setActiveStudyMode] = useLocalStorage<StudyMode>(`activeStudyMode_${userStorageScope}`, 'pomodoro');
+  const [plannedFocusDuration, setPlannedFocusDuration] = useLocalStorage<QuickSessionDuration>(`plannedFocusDuration_${userStorageScope}`, 25);
   const [preferredStudyTrack, setPreferredStudyTrack] = useLocalStorage<StudyTrack>(`preferredStudyTrack_${userStorageScope}`, 'enem');
   const [hybridEnemWeight, setHybridEnemWeight] = useLocalStorage<number>(`hybridEnemWeight_${userStorageScope}`, 70);
   const [weeklyGoalMinutes, setWeeklyGoalMinutes] = useLocalStorage<number>(`weeklyGoalMinutes_${userStorageScope}`, 900);
   const [profileDisplayName, setProfileDisplayName] = useLocalStorage<string>(`profileDisplayName_${userStorageScope}`, '');
-  const [profileAvatar, setProfileAvatar] = useLocalStorage<string>(`profileAvatar_${userStorageScope}`, '🧑‍⚕️');
+  const [profileAvatar, setProfileAvatar] = useLocalStorage<string>(`profileAvatar_${userStorageScope}`, '\u{1F464}');
   const [profileExamGoal, setProfileExamGoal] = useLocalStorage<string>(`profileExamGoal_${userStorageScope}`, 'ENEM');
   const [profileExamDate, setProfileExamDate] = useLocalStorage<string>(`profileExamDate_${userStorageScope}`, '');
   const [lastProfileSavedAt, setLastProfileSavedAt] = useLocalStorage<string | null>(`lastProfileSavedAt_${userStorageScope}`, null);
@@ -152,6 +330,19 @@ function App() {
   const [profileSyncStatus, setProfileSyncStatus] = useState<'local' | 'syncing' | 'synced' | 'error'>('local');
   const [lastProfileSyncAt, setLastProfileSyncAt] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('inicio');
+  const [phaseOverride, setPhaseOverride] = useLocalStorage<ProductPhaseOverride>('zb_phase_override', null);
+  const [hasInternalAccess, setHasInternalAccess] = useLocalStorage<boolean>('zb_internal_access', false);
+  const [isAdminMode, setIsAdminMode] = useLocalStorage<boolean>('zb_admin_mode', false);
+  const [studyExecutionState, setStudyExecutionState] = useLocalStorage<StudyExecutionState | null>(
+    `studyExecutionState_${userStorageScope}`,
+    null,
+  );
+  const [showStudyAdjustments, setShowStudyAdjustments] = useState(false);
+  const [requestedScheduleEditDay, setRequestedScheduleEditDay] = useState<Weekday | null>(null);
+  const [requestedScheduleEditNonce, setRequestedScheduleEditNonce] = useState(0);
+  const [studyFlowStep, setStudyFlowStep] = useState<StudyFlowStep>('idle');
+  const [lastCompletedFocus, setLastCompletedFocus] = useState<LastCompletedFocus | null>(null);
+  const [showAdminSupportTools, setShowAdminSupportTools] = useState(false);
   const [shouldScrollToRanks, setShouldScrollToRanks] = useState(false);
   const [rankHighlightSignal, setRankHighlightSignal] = useState(0);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -159,6 +350,70 @@ function App() {
   const [mockExamPrefilter, setMockExamPrefilter] = useState<MockExamPrefilter | null>(null);
   const [syncUiStatus, setSyncUiStatus] = useState(offlineSyncService.getStatus());
   const [academyQuickStartSignal, setAcademyQuickStartSignal] = useState(0);
+  const [pendingHeroAttribution, setPendingHeroAttribution] = useState<HeroAttribution | null>(null);
+  const [beginnerState, setBeginnerState] = useLocalStorage<BeginnerState | null>(`beginnerState_${userStorageScope}`, null);
+  const [beginnerPlan, setBeginnerPlan] = useLocalStorage<BeginnerPlan | null>(`beginnerPlan_${userStorageScope}`, null);
+  const [beginnerStats, setBeginnerStats] = useLocalStorage<BeginnerStats | null>(`beginnerStats_${userStorageScope}`, null);
+  const [lastBeginnerResult, setLastBeginnerResult] = useState<BeginnerSessionUiResult | null>(null);
+  const [showBeginnerWeekSummary, setShowBeginnerWeekSummary] = useState(false);
+  const [lockedNavigationTarget, setLockedNavigationTarget] = useState<{ tabId: string; label: string } | null>(null);
+  const [showIntermediateUnlockBanner, setShowIntermediateUnlockBanner] = useState(false);
+  const lastMissionViewKeyRef = React.useRef<string | null>(null);
+  const lastQuestionsStartKeyRef = React.useRef<string | null>(null);
+  const lastPostSessionViewKeyRef = React.useRef<string | null>(null);
+  const lastWeekSummaryViewKeyRef = React.useRef<string | null>(null);
+  const questionTransitionTimeoutRef = React.useRef<number | null>(null);
+  const isBeginnerFocus = Boolean(beginnerState && beginnerState !== 'week_complete');
+  const isLocalEnvironment = React.useMemo(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    return ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  }, []);
+  const canAccessInternalTools = isLocalEnvironment || hasInternalAccess || isAdminMode;
+  const weeklySchedule = React.useMemo(
+    () => sanitizeWeeklyStudySchedule(weeklyScheduleRaw),
+    [weeklyScheduleRaw],
+  );
+
+  React.useEffect(() => {
+    if (JSON.stringify(weeklySchedule) !== JSON.stringify(weeklyScheduleRaw)) {
+      setWeeklyScheduleRaw(weeklySchedule);
+    }
+  }, [setWeeklyScheduleRaw, weeklySchedule, weeklyScheduleRaw]);
+
+  const handleResetInternalMode = React.useCallback(() => {
+    try {
+      localStorage.removeItem('zb_internal_access');
+      localStorage.removeItem('zb_phase_override');
+      localStorage.removeItem('zb_admin_mode');
+    } catch {
+      // ignore local storage failures
+    }
+
+    setHasInternalAccess(false);
+    setPhaseOverride(null);
+    setIsAdminMode(false);
+    toast.success('Modo interno resetado');
+  }, [setHasInternalAccess, setIsAdminMode, setPhaseOverride]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('internal') !== '1') {
+      return;
+    }
+
+    setHasInternalAccess(true);
+    setIsAdminMode(true);
+    url.searchParams.delete('internal');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    toast.success('Modo interno liberado neste navegador');
+  }, [setHasInternalAccess, setIsAdminMode]);
 
   const applyAchievementReward = React.useCallback(
     (achievementId: string, points: number) => {
@@ -168,10 +423,417 @@ function App() {
   );
 
   // Achievements Hook (com cloud sync)
-  const { newlyUnlocked } = useAchievements(userData, supabaseUserId, applyAchievementReward);
+  const lastAchievementToastRef = React.useRef<string | null>(null);
+  const { newlyUnlocked, dismissNewlyUnlocked, unlockedAchievements } = useAchievements(
+    userData,
+    supabaseUserId,
+    applyAchievementReward,
+    {
+      storageScope: userStorageScope,
+      weeklyGoalMinutes,
+    },
+  );
 
-  // Study mode (Exploração / Focado) — persistido em localStorage
+  // Study mode (Exploracao / Focado) persistido em localStorage
   const { studyMode, toggleStudyMode } = useStudyMode();
+  const abUserId = (supabaseUserId || user?.email || userStorageScope || 'anonymous').toLowerCase();
+  const heroVariant = React.useMemo<HeroVariant>(() => getStableHeroVariant(abUserId), [abUserId]);
+
+  React.useEffect(() => {
+    if (!newlyUnlocked) return;
+    if (lastAchievementToastRef.current === newlyUnlocked.id) return;
+
+    lastAchievementToastRef.current = newlyUnlocked.id;
+    toast.custom(
+      (toastState) => (
+        <div
+          className={`pointer-events-auto w-full max-w-md rounded-2xl border border-amber-200 bg-slate-950/95 p-4 text-slate-50 shadow-2xl transition-all ${
+            toastState.visible ? 'translate-y-0 opacity-100' : '-translate-y-2 opacity-0'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/15 text-amber-300 ring-1 ring-amber-300/25">
+              <Trophy className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-200/90">
+                Conquista desbloqueada
+              </p>
+              <h4 className="mt-1 text-base font-bold text-white">{newlyUnlocked.title}</h4>
+              <p className="mt-1 text-sm text-slate-300">{newlyUnlocked.description}</p>
+              <div className="mt-3 flex items-center gap-2 text-xs text-amber-200">
+                <span className="rounded-full border border-amber-300/25 bg-amber-400/10 px-2 py-1 font-semibold uppercase tracking-wide">
+                  {newlyUnlocked.rarity}
+                </span>
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 font-semibold">
+                  +{newlyUnlocked.points} pontos
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+      {
+        id: `achievement-${newlyUnlocked.id}`,
+        duration: 4500,
+      },
+    );
+  }, [newlyUnlocked]);
+
+  const trackBeginnerEvent = React.useCallback(
+    (name: Parameters<typeof analytics.trackBeginnerEvent>[0], payload?: Record<string, unknown>) => {
+      analytics.trackBeginnerEvent(name, payload, { userEmail: user?.email });
+    },
+    [user?.email],
+  );
+  const trackIntermediateEvent = React.useCallback(
+    (name: Parameters<typeof analytics.trackIntermediateEvent>[0], payload?: Record<string, unknown>) => {
+      analytics.trackIntermediateEvent(name, payload, { userEmail: user?.email });
+    },
+    [user?.email],
+  );
+  const weeklyStudyContext = React.useMemo(
+    () => buildStudyContextForToday(weeklySchedule),
+    [weeklySchedule],
+  );
+  const defaultExecutionBlueprint = React.useMemo(() => {
+    if (weeklyStudyContext.state.type === 'planned') {
+      return {
+        subject: weeklyStudyContext.eligibleSubjects[0] || 'Matematica',
+        topicName: undefined,
+        objective: 'Executar o bloco planejado para hoje.',
+        duration: normalizeQuickSessionDuration(weeklyStudyContext.defaultSessionDurationMinutes),
+        targetQuestions: 10,
+      };
+    }
+
+    if (beginnerPlan) {
+      const mission = beginnerFlowService.getTodayMission(beginnerPlan);
+      const firstTask = mission?.tasks?.[0];
+
+      if (mission && firstTask) {
+        return {
+          subject: firstTask.discipline,
+          topicName: firstTask.topic,
+          objective: mission.focus,
+          duration: mission.studyMinutes,
+          targetQuestions: mission.questionCount,
+        };
+      }
+    }
+
+    if (preferredStudyTrack === 'concursos') {
+      return {
+        subject: 'Portugues',
+        topicName: 'Interpretacao de texto',
+        objective: 'Executar o bloco principal do plano antes de abrir variacoes.',
+        duration: plannedFocusDuration,
+        targetQuestions: 10,
+      };
+    }
+
+    if (preferredStudyTrack === 'hibrido') {
+      return {
+        subject: 'Matematica',
+        topicName: 'Regra de 3',
+        objective: 'Manter o bloco central em movimento e validar com pratica guiada.',
+        duration: plannedFocusDuration,
+        targetQuestions: 10,
+      };
+    }
+
+    return {
+      subject: 'Matematica',
+      topicName: 'Porcentagem',
+      objective: 'Executar o bloco principal do plano de hoje.',
+      duration: plannedFocusDuration,
+      targetQuestions: 10,
+    };
+  }, [beginnerPlan, plannedFocusDuration, preferredStudyTrack, weeklyStudyContext]);
+  const buildStudyExecutionState = React.useCallback(
+    (overrides?: {
+      currentBlock?: Partial<StudyExecutionState['currentBlock']>;
+      recommendedMethodId?: string;
+      source?: StudyExecutionState['source'];
+    }): StudyExecutionState => ({
+      currentBlock: {
+        subject: defaultExecutionBlueprint.subject,
+        topicName: defaultExecutionBlueprint.topicName,
+        objective: defaultExecutionBlueprint.objective,
+        type: 'focus',
+        duration: defaultExecutionBlueprint.duration,
+        targetQuestions: defaultExecutionBlueprint.targetQuestions,
+        ...(overrides?.currentBlock || {}),
+      },
+      recommendedMethodId: overrides?.recommendedMethodId || selectedMethodId,
+      source: overrides?.source || (beginnerPlan ? 'plan' : 'ai'),
+      updatedAt: new Date().toISOString(),
+    }),
+    [beginnerPlan, defaultExecutionBlueprint, selectedMethodId],
+  );
+  const effectiveStudyExecutionState = React.useMemo(
+    () => studyExecutionState || buildStudyExecutionState(),
+    [buildStudyExecutionState, studyExecutionState],
+  );
+  const activeStudyMethod = React.useMemo(
+    () => STUDY_METHODS.find((method) => method.id === effectiveStudyExecutionState.recommendedMethodId) || STUDY_METHODS[0],
+    [effectiveStudyExecutionState.recommendedMethodId],
+  );
+  const setFocusExecutionState = React.useCallback(
+    (overrides?: Partial<StudyExecutionState['currentBlock']>, source?: StudyExecutionState['source'], methodId?: string) => {
+      setStudyExecutionState(
+        buildStudyExecutionState({
+          currentBlock: {
+            ...overrides,
+            type: 'focus',
+          },
+          source: source || 'plan',
+          recommendedMethodId: methodId || activeStudyMethod.id,
+        }),
+      );
+    },
+    [activeStudyMethod.id, buildStudyExecutionState, setStudyExecutionState],
+  );
+  const applyPomodoroMethod = React.useCallback(
+    (methodId: string) => {
+      const method = getStudyMethodById(methodId);
+      setSelectedMethodId(methodId);
+      setFocusExecutionState({ duration: method.focusMinutes }, 'manual', methodId);
+      setActiveStudyMode('pomodoro');
+    },
+    [setActiveStudyMode, setFocusExecutionState, setSelectedMethodId],
+  );
+  const handleStudyModeChange = React.useCallback(
+    (nextMode: StudyMode) => {
+      const activeSessionEntry = getLatestActiveStudySessionEntry(userStorageScope);
+      if (!activeSessionEntry) {
+        setActiveStudyMode(nextMode);
+        return;
+      }
+
+      const lockedMode: StudyMode =
+        activeSessionEntry.session.source === 'pomodoro' ? 'pomodoro' : 'livre';
+
+      if (nextMode !== lockedMode) {
+        toast.error('Finalize ou reinicie a sessao atual antes de trocar de modo.');
+        return;
+      }
+
+      setActiveStudyMode(nextMode);
+    },
+    [setActiveStudyMode, userStorageScope],
+  );
+  const setQuestionsExecutionState = React.useCallback(
+    (overrides?: Partial<StudyExecutionState['currentBlock']>, source?: StudyExecutionState['source']) => {
+      setStudyExecutionState(
+        buildStudyExecutionState({
+          currentBlock: {
+            ...effectiveStudyExecutionState.currentBlock,
+            ...overrides,
+            type: 'questions',
+          },
+          source: source || 'plan',
+          recommendedMethodId: activeStudyMethod.id,
+        }),
+      );
+    },
+    [activeStudyMethod.id, buildStudyExecutionState, effectiveStudyExecutionState.currentBlock, setStudyExecutionState],
+  );
+  const handleStartRecommendedFocus = React.useCallback(() => {
+    setLastCompletedFocus(null);
+    setStudyFlowStep('focusing');
+    setFocusExecutionState(undefined, effectiveStudyExecutionState.source, activeStudyMethod.id);
+    setPlannedFocusDuration((effectiveStudyExecutionState.currentBlock.duration as QuickSessionDuration) || plannedFocusDuration);
+    setSelectedMethodId(activeStudyMethod.id);
+    setActiveTab('foco');
+  }, [
+    activeStudyMethod.id,
+    effectiveStudyExecutionState.currentBlock.duration,
+    effectiveStudyExecutionState.source,
+    plannedFocusDuration,
+    setActiveTab,
+    setFocusExecutionState,
+    setPlannedFocusDuration,
+    setSelectedMethodId,
+  ]);
+  const handleStartRecommendedQuestions = React.useCallback(() => {
+    setStudyFlowStep('questioning');
+    const nextFilter = {
+      nonce: Date.now(),
+      subject: effectiveStudyExecutionState.currentBlock.subject,
+      topicName: effectiveStudyExecutionState.currentBlock.topicName,
+      track:
+        preferredStudyTrack === 'concursos'
+          ? 'concurso'
+          : preferredStudyTrack === 'enem'
+            ? 'enem'
+            : 'ambos' as QuizTrackFilter,
+    };
+    setQuestionsExecutionState(undefined, effectiveStudyExecutionState.source);
+    setQuizPrefilter(nextFilter);
+    setActiveTab('questoes');
+  }, [
+    effectiveStudyExecutionState.currentBlock.subject,
+    effectiveStudyExecutionState.currentBlock.topicName,
+    effectiveStudyExecutionState.source,
+    preferredStudyTrack,
+    setActiveTab,
+    setQuestionsExecutionState,
+  ]);
+  const focusTimerSectionRef = React.useRef<HTMLDivElement | null>(null);
+  const studyFlowTopRef = React.useRef<HTMLDivElement | null>(null);
+  const studyQuestionsSectionRef = React.useRef<HTMLDivElement | null>(null);
+  const studyAdjustmentsSectionRef = React.useRef<HTMLDivElement | null>(null);
+  const scrollToFocusTimer = React.useCallback(() => {
+    focusTimerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const homeCtrMetrics = React.useMemo<CtrMetrics>(() => {
+    const buildEntry = (): CtrEntry => ({ impressions: 0, clicks: 0, ctr: 0 });
+    const metrics: CtrMetrics = {
+      hero_cta: buildEntry(),
+      next_mission: buildEntry(),
+      quick_15: buildEntry(),
+      quick_25: buildEntry(),
+      quick_50: buildEntry(),
+    };
+
+    const events = analytics.getEvents();
+    events.forEach((event) => {
+      if (event.name !== 'home_cta_click' && event.name !== 'home_cta_impression') return;
+      const source = event.payload?.source;
+      if (
+        source !== 'hero_cta' &&
+        source !== 'next_mission' &&
+        source !== 'quick_15' &&
+        source !== 'quick_25' &&
+        source !== 'quick_50'
+      ) {
+        return;
+      }
+
+      if (event.name === 'home_cta_impression') {
+        metrics[source].impressions += 1;
+      }
+
+      if (event.name === 'home_cta_click') {
+        metrics[source].clicks += 1;
+      }
+    });
+
+    (Object.keys(metrics) as CtaSource[]).forEach((source) => {
+      const entry = metrics[source];
+      entry.ctr = entry.impressions > 0 ? entry.clicks / entry.impressions : 0;
+    });
+
+    return metrics;
+  }, [activeTab]);
+
+  const homeHeroAbMetrics = React.useMemo<HeroAbMetrics>(() => {
+    const buildEntry = (): HeroVariantMetricsEntry => ({
+      impressions: 0,
+      clicks: 0,
+      completions: 0,
+      ctr: 0,
+      completionRate: 0,
+      clickToCompletion: 0,
+    });
+
+    const metrics: HeroAbMetrics = {
+      hero_v1: buildEntry(),
+      hero_v2: buildEntry(),
+      upliftCtr: 0,
+      upliftCompletionRate: 0,
+      winnerByCtr: 'tie',
+      winnerByCompletionRate: 'tie',
+    };
+
+    const events = analytics.getEvents();
+    events.forEach((event) => {
+      const source = event.payload?.source;
+      const variant = event.payload?.variant;
+      if (source !== 'hero_cta' || (variant !== 'hero_v1' && variant !== 'hero_v2')) {
+        return;
+      }
+
+      if (event.name === 'home_cta_impression') {
+        metrics[variant].impressions += 1;
+      }
+
+      if (event.name === 'home_cta_click') {
+        metrics[variant].clicks += 1;
+      }
+
+      if (event.name === 'home_hero_completion') {
+        metrics[variant].completions += 1;
+      }
+    });
+
+    (['hero_v1', 'hero_v2'] as HeroVariant[]).forEach((variant) => {
+      const entry = metrics[variant];
+      entry.ctr = entry.impressions > 0 ? entry.clicks / entry.impressions : 0;
+      entry.completionRate = entry.impressions > 0 ? entry.completions / entry.impressions : 0;
+      entry.clickToCompletion = entry.clicks > 0 ? entry.completions / entry.clicks : 0;
+    });
+
+    const v1Ctr = metrics.hero_v1.ctr;
+    const v2Ctr = metrics.hero_v2.ctr;
+    const v1Completion = metrics.hero_v1.completionRate;
+    const v2Completion = metrics.hero_v2.completionRate;
+
+    metrics.upliftCtr = v1Ctr > 0 ? (v2Ctr - v1Ctr) / v1Ctr : 0;
+    metrics.upliftCompletionRate = v1Completion > 0 ? (v2Completion - v1Completion) / v1Completion : 0;
+
+    if (v2Ctr > v1Ctr) {
+      metrics.winnerByCtr = 'hero_v2';
+    } else if (v1Ctr > v2Ctr) {
+      metrics.winnerByCtr = 'hero_v1';
+    }
+
+    if (v2Completion > v1Completion) {
+      metrics.winnerByCompletionRate = 'hero_v2';
+    } else if (v1Completion > v2Completion) {
+      metrics.winnerByCompletionRate = 'hero_v1';
+    }
+
+    return metrics;
+  }, [activeTab, userData.sessions?.length, userData.studyHistory?.length]);
+
+  const startQuickSession = React.useCallback((duration: QuickSessionDuration, source: CtaSource, variant?: HeroVariant) => {
+    setLastBeginnerResult(null);
+    setShowBeginnerWeekSummary(false);
+    setLastCompletedFocus(null);
+    setStudyFlowStep('focusing');
+    setPlannedFocusDuration(duration);
+    setFocusExecutionState({
+      type: 'focus',
+      duration,
+    }, beginnerPlan ? 'plan' : 'ai', selectedMethodId);
+    trackEvent('home_cta_click', { source, variant, ts: Date.now() });
+    if (source === 'hero_cta' && variant) {
+      setPendingHeroAttribution({ variant, clickedAt: Date.now() });
+    } else {
+      setPendingHeroAttribution(null);
+    }
+    setActiveTab('foco');
+    setActiveStudyMode('pomodoro');
+    if (beginnerPlan) {
+      const todayMission = beginnerFlowService.getTodayMission(beginnerPlan);
+      setBeginnerStats((prev) =>
+        beginnerProgressService.recordSessionStarted(prev, {
+          day: todayMission?.dayNumber || 1,
+          missionId: todayMission?.id || 'starter-session',
+          plannedMinutes: duration,
+        }),
+      );
+      trackBeginnerEvent('beginner_session_started', {
+        day: todayMission?.dayNumber || 1,
+        missionId: todayMission?.id || 'starter-session',
+        plannedMinutes: duration,
+      });
+      setBeginnerState(beginnerFlowService.startSession(beginnerPlan));
+    }
+  }, [beginnerPlan, selectedMethodId, setActiveStudyMode, setActiveTab, setBeginnerState, setFocusExecutionState, setPendingHeroAttribution, setPlannedFocusDuration, setBeginnerStats, trackBeginnerEvent]);
 
   // Apply dark mode
   useEffect(() => {
@@ -238,8 +900,14 @@ function App() {
 
   const handleLogout = React.useCallback(async () => {
     await logout();
+    setBeginnerState(null);
+    setBeginnerPlan(null);
+    setBeginnerStats(null);
+    setLastBeginnerResult(null);
+    setShowBeginnerWeekSummary(false);
+    setShowIntermediateUnlockBanner(false);
     toast.success('Logout realizado com sucesso!');
-  }, [logout]);
+  }, [logout, setBeginnerPlan, setBeginnerState, setBeginnerStats]);
 
   const handleSocialLogin = React.useCallback(
     async (provider: 'google' | 'facebook') => {
@@ -289,7 +957,7 @@ function App() {
   const handleShowConflictHistory = React.useCallback(() => {
     const history = offlineSyncService.getConflictHistory();
     if (history.length === 0) {
-      toast('Sem conflitos resolvidos automaticamente até agora.', { icon: 'ℹ️' });
+      toast('Sem conflitos resolvidos automaticamente at\u00e9 agora.', { icon: 'i' });
       return;
     }
 
@@ -355,17 +1023,197 @@ function App() {
   useEffect(() => {
     if (!isLoggedIn || !user?.email) {
       setShowOnboarding(false);
+      setBeginnerState(null);
       return;
     }
 
     const onboardingKey = `mdzOnboardingCompleted_${user.email}`;
     const completed = window.localStorage.getItem(onboardingKey) === 'true';
     setShowOnboarding(!completed);
-  }, [isLoggedIn, user?.email]);
+    setBeginnerState((prev) => {
+      if (!completed) {
+        return 'onboarding';
+      }
+
+      return beginnerFlowService.syncState(beginnerPlan, prev) ?? 'ready_for_first_session';
+    });
+  }, [beginnerPlan, isLoggedIn, setBeginnerState, user?.email]);
+
+  useEffect(() => {
+    if (!beginnerPlan || beginnerState === 'onboarding' || !isLoggedIn) {
+      return;
+    }
+
+    const syncedState = beginnerFlowService.syncState(beginnerPlan, beginnerState);
+    if (syncedState && syncedState !== beginnerState) {
+      setBeginnerState(syncedState);
+    }
+  }, [beginnerPlan, beginnerState, isLoggedIn, setBeginnerState]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !beginnerPlan || beginnerStats) {
+      return;
+    }
+
+    setBeginnerStats(beginnerProgressService.createInitialStats());
+  }, [beginnerPlan, beginnerStats, isLoggedIn, setBeginnerStats]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !beginnerPlan || activeTab !== 'inicio' || showOnboarding || lastBeginnerResult || showBeginnerWeekSummary) {
+      return;
+    }
+
+    const mission = beginnerFlowService.getTodayMission(beginnerPlan);
+    if (!mission) {
+      return;
+    }
+
+    const nextKey = `${mission.id}:${beginnerState || 'unknown'}`;
+    if (lastMissionViewKeyRef.current === nextKey) {
+      return;
+    }
+
+    lastMissionViewKeyRef.current = nextKey;
+    trackBeginnerEvent('beginner_mission_viewed', {
+      day: mission.dayNumber,
+      missionId: mission.id,
+      state: beginnerState,
+      target: mission.target,
+    });
+  }, [activeTab, beginnerPlan, beginnerState, isLoggedIn, lastBeginnerResult, showBeginnerWeekSummary, showOnboarding, trackBeginnerEvent]);
+
+  useEffect(() => {
+    if (activeTab !== 'questoes' && activeTab !== 'simulado') {
+      lastQuestionsStartKeyRef.current = null;
+      return;
+    }
+
+    if (!isLoggedIn || !beginnerPlan) {
+      return;
+    }
+
+    const mission = beginnerFlowService.getTodayMission(beginnerPlan);
+    if (!mission) {
+      return;
+    }
+
+    const nextKey = `${activeTab}:${mission.id}:${quizPrefilter?.nonce || 'default'}`;
+    if (lastQuestionsStartKeyRef.current === nextKey) {
+      return;
+    }
+
+    lastQuestionsStartKeyRef.current = nextKey;
+    trackBeginnerEvent('beginner_questions_started', {
+      day: mission.dayNumber,
+      missionId: mission.id,
+      subject: quizPrefilter?.subject || mission.tasks[0]?.discipline || mission.focus,
+      topic: quizPrefilter?.topicName || mission.tasks[0]?.topic || null,
+      target: activeTab === 'simulado' ? 'simulado' : mission.target,
+    });
+  }, [activeTab, beginnerPlan, isLoggedIn, quizPrefilter, trackBeginnerEvent]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !lastBeginnerResult) {
+      return;
+    }
+
+    const nextKey = lastBeginnerResult.completedMissionId;
+    if (lastPostSessionViewKeyRef.current === nextKey) {
+      return;
+    }
+
+    lastPostSessionViewKeyRef.current = nextKey;
+    trackBeginnerEvent('beginner_post_session_viewed', {
+      completedMissionId: lastBeginnerResult.completedMissionId,
+      nextMissionId: lastBeginnerResult.nextMissionId || null,
+      totalQuestions: typeof lastBeginnerResult.totalQuestions === 'number' ? lastBeginnerResult.totalQuestions : null,
+      correctAnswers: typeof lastBeginnerResult.correctAnswers === 'number' ? lastBeginnerResult.correctAnswers : null,
+    });
+  }, [isLoggedIn, lastBeginnerResult, trackBeginnerEvent]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !beginnerStats) {
+      return;
+    }
+
+    if (!beginnerProgressService.shouldTrackReturnNextDay(beginnerStats)) {
+      return;
+    }
+
+    const nextStats = beginnerProgressService.recordReturnedNextDay(beginnerStats);
+    setBeginnerStats(nextStats);
+    trackBeginnerEvent('beginner_returned_next_day', {
+      day: nextStats.activeDates.length + 1,
+      streak: nextStats.streak,
+    });
+
+    if (nextStats.progressStage === 'ready_for_intermediate') {
+      trackIntermediateEvent('intermediate_returned_next_day', {
+        day: nextStats.activeDates.length + 1,
+        streak: nextStats.streak,
+      });
+    }
+  }, [beginnerStats, isLoggedIn, setBeginnerStats, trackBeginnerEvent, trackIntermediateEvent]);
+
+  useEffect(() => {
+    if (!beginnerProgressService.shouldShowWeekSummary(beginnerStats)) {
+      return;
+    }
+
+    setShowBeginnerWeekSummary(true);
+  }, [beginnerStats]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !showBeginnerWeekSummary || !beginnerStats) {
+      return;
+    }
+
+    const nextKey = `${beginnerStats.sessionsCompleted}:${beginnerStats.progressStage}`;
+    if (lastWeekSummaryViewKeyRef.current === nextKey) {
+      return;
+    }
+
+    lastWeekSummaryViewKeyRef.current = nextKey;
+    trackBeginnerEvent('beginner_week_summary_viewed', {
+      sessionsCompleted: beginnerStats.sessionsCompleted,
+      progressStage: beginnerStats.progressStage,
+      returnedNextDayCount: beginnerStats.returnedNextDayCount,
+    });
+  }, [beginnerStats, isLoggedIn, showBeginnerWeekSummary, trackBeginnerEvent]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !beginnerState || beginnerState === 'week_complete') {
+      return;
+    }
+
+    const resolveDropStep = (): 'onboarding' | 'session' | 'questions' | 'post_session' | null => {
+      if (showOnboarding) return 'onboarding';
+      if (lastBeginnerResult) return 'post_session';
+      if (activeTab === 'questoes' || activeTab === 'simulado') return 'questions';
+      if (activeTab === 'foco' && beginnerState === 'in_session') return 'session';
+      return null;
+    };
+
+    const handleBeforeUnload = () => {
+      const dropStep = resolveDropStep();
+      if (!dropStep) return;
+
+      setBeginnerStats((previous) => beginnerProgressService.recordDropOff(previous, dropStep));
+      trackBeginnerEvent('beginner_dropped_at', {
+        step: dropStep,
+        day: beginnerFlowService.getTodayMission(beginnerPlan)?.dayNumber || 1,
+      });
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [activeTab, beginnerPlan, beginnerState, isLoggedIn, lastBeginnerResult, setBeginnerStats, showOnboarding, trackBeginnerEvent]);
 
   const handleFinishStudySession = React.useCallback(
     (minutes: number, subject: MateriaTipo, methodId?: string) => {
+      const keepContinuousPomodoroFlow = activeStudyMode === 'pomodoro' && Boolean(methodId);
       const points = minutes * 10;
+      const currentIntermediateStage = beginnerProgressService.evaluateBeginnerState(beginnerStats);
       const existingSessions = userData.sessions || userData.studyHistory || [];
       const previousWeeklyRetention = buildWeeklyRetentionSnapshot(existingSessions);
       const isFirstSession = existingSessions.length === 0;
@@ -378,10 +1226,36 @@ function App() {
         methodId,
       };
       const nextWeeklyRetention = buildWeeklyRetentionSnapshot([...existingSessions, newSession]);
+      const nextTodaySessionCount = [...existingSessions, newSession].filter((session) => {
+        const sessionDate = typeof session.date === 'string' ? session.date : '';
+        return sessionDate.slice(0, 10) === newSession.date.slice(0, 10);
+      }).length;
+      if (!keepContinuousPomodoroFlow) {
+        setQuestionsExecutionState(
+          {
+            subject: effectiveStudyExecutionState.currentBlock.subject,
+            topicName: effectiveStudyExecutionState.currentBlock.topicName,
+            objective: `Validar ${effectiveStudyExecutionState.currentBlock.subject} com pratica recomendada.`,
+            targetQuestions: effectiveStudyExecutionState.currentBlock.targetQuestions ?? 10,
+          },
+          effectiveStudyExecutionState.source,
+        );
+      }
+      if (!isBeginnerFocus && !keepContinuousPomodoroFlow) {
+        setLastCompletedFocus({
+          subject: effectiveStudyExecutionState.currentBlock.subject,
+          topicName: effectiveStudyExecutionState.currentBlock.topicName,
+          duration: minutes,
+          targetQuestions: effectiveStudyExecutionState.currentBlock.targetQuestions ?? 10,
+          todaySessionCount: nextTodaySessionCount,
+          completedAt: newSession.date,
+        });
+        setStudyFlowStep('focusCompleted');
+      }
 
       setUserData((prev) => xpEngineService.applyStudySessions(prev, [newSession]));
-      toast.success(`Sessão finalizada. Você ganhou ${points} pontos.`, {
-        duration: 4000
+      toast.success(`Boa. +${minutes} min focado. Agora valide com questoes e siga em ${nextWeeklyRetention.studiedDays}/${nextWeeklyRetention.targetDays} dias da semana.`, {
+        duration: 5000
       });
 
       trackEvent(
@@ -397,6 +1271,26 @@ function App() {
         },
         { userEmail: user?.email },
       );
+
+      if (pendingHeroAttribution) {
+        const attributionWindowMs = 3 * 60 * 60 * 1000;
+        const elapsedMs = Date.now() - pendingHeroAttribution.clickedAt;
+        if (elapsedMs >= 0 && elapsedMs <= attributionWindowMs) {
+          trackEvent(
+            'home_hero_completion',
+            {
+              source: 'hero_cta',
+              variant: pendingHeroAttribution.variant,
+              minutes,
+              subject,
+              methodId: methodId || null,
+              ts: Date.now(),
+            },
+            { userEmail: user?.email },
+          );
+        }
+        setPendingHeroAttribution(null);
+      }
 
       const progressedWeek = nextWeeklyRetention.studiedDays > previousWeeklyRetention.studiedDays;
       if (progressedWeek) {
@@ -444,6 +1338,70 @@ function App() {
         );
       }
 
+      if (currentIntermediateStage === 'ready_for_intermediate') {
+        trackIntermediateEvent('intermediate_day_plan_completed', {
+          minutes,
+          subject,
+          methodId: methodId || null,
+          points,
+          weeklyMaintained: nextWeeklyRetention.isMaintained,
+        });
+        try {
+          sessionStorage.setItem('zb_intermediate_plan_completed_at', newSession.date);
+        } catch {
+          // ignore session storage failures
+        }
+      }
+
+      if (beginnerPlan) {
+        const currentMission = beginnerFlowService.getTodayMission(beginnerPlan);
+        const beginnerProgress = beginnerFlowService.submitSession({
+          plan: beginnerPlan,
+          completedAt: newSession.date,
+        });
+        setBeginnerPlan(beginnerProgress.plan);
+        setBeginnerState(beginnerProgress.state);
+        setBeginnerStats((prev) =>
+          beginnerProgressService.recordSessionCompleted(prev, {
+            day: currentMission?.dayNumber || beginnerProgress.completedMission?.dayNumber || 1,
+            duration: minutes,
+            completed: true,
+            at: newSession.date,
+          }),
+        );
+
+        if (beginnerProgress.completedMission) {
+          setLastBeginnerResult({
+            completedMissionId: beginnerProgress.completedMission.id,
+            nextMissionId: beginnerProgress.nextMission?.id,
+            completedMissionLabel: `${beginnerProgress.completedMission.dayLabel} • ${beginnerProgress.completedMission.focus}`,
+            nextMissionLabel: beginnerProgress.nextMission
+              ? `${beginnerProgress.nextMission.dayLabel} • ${beginnerProgress.nextMission.focus}`
+              : undefined,
+            totalQuestions: beginnerProgress.completedMission.questionCount,
+            xpGained: points,
+          });
+          setActiveTab('inicio');
+
+          trackEvent(
+            'beginner_mission_completed',
+            {
+              missionId: beginnerProgress.completedMission.id,
+              dayNumber: beginnerProgress.completedMission.dayNumber,
+              nextMissionId: beginnerProgress.nextMission?.id || null,
+            },
+            { userEmail: user?.email },
+          );
+          trackBeginnerEvent('beginner_session_completed', {
+            day: beginnerProgress.completedMission.dayNumber,
+            missionId: beginnerProgress.completedMission.id,
+            nextMissionId: beginnerProgress.nextMission?.id || null,
+            duration: minutes,
+            completed: true,
+          });
+        }
+      }
+
       if (isSupabaseConfigured && supabaseUserId) {
         void sessionService
           .create(supabaseUserId, newSession)
@@ -453,7 +1411,27 @@ function App() {
           });
       }
     },
-    [userData, setUserData, supabaseUserId, user?.email]
+    [
+      beginnerPlan,
+      beginnerStats,
+      activeStudyMode,
+      effectiveStudyExecutionState.currentBlock.subject,
+      effectiveStudyExecutionState.currentBlock.targetQuestions,
+      effectiveStudyExecutionState.currentBlock.topicName,
+      effectiveStudyExecutionState.source,
+      isBeginnerFocus,
+      pendingHeroAttribution,
+      setActiveTab,
+      setBeginnerPlan,
+      setBeginnerState,
+      setBeginnerStats,
+      setQuestionsExecutionState,
+      setUserData,
+      supabaseUserId,
+      trackBeginnerEvent,
+      trackIntermediateEvent,
+      userData,
+    ]
   );
 
   const handleImportData = React.useCallback((data: UserData) => {
@@ -471,7 +1449,7 @@ function App() {
       methodId: string;
       smartProfile: SmartScheduleProfile;
       onboardingMeta?: {
-        focus: 'enem' | 'concurso' | 'faculdade' | 'outros';
+        focus: 'enem' | 'concurso' | 'faculdade' | 'outros' | 'hibrido';
         concurso: {
           id: string;
           nome: string;
@@ -510,15 +1488,41 @@ function App() {
         }
       );
 
+      const beginnerTrack: StudyTrack =
+        onboardingMeta?.focus === 'hibrido'
+          ? 'hibrido'
+          : onboardingMeta?.focus === 'concurso'
+            ? 'concursos'
+            : preferredStudyTrack === 'hibrido'
+              ? 'hibrido'
+              : 'enem';
+      const beginnerSetup = beginnerFlowService.completeOnboarding(beginnerTrack, dailyGoal);
+      const nextBeginnerStats = beginnerProgressService.completeOnboarding(
+        beginnerStats,
+        beginnerTrack,
+        Math.max(30, Math.min(120, dailyGoal)) as 30 | 60 | 120,
+      );
+
       setUserData((prev) => ({
         ...prev,
         dailyGoal,
       }));
+      setPreferredStudyTrack(beginnerTrack);
       setSelectedMethodId(methodId);
+      setBeginnerPlan(beginnerSetup.plan);
+      setBeginnerStats(nextBeginnerStats);
+      setBeginnerState(beginnerSetup.state);
+      setLastBeginnerResult(null);
+      setShowIntermediateUnlockBanner(false);
       setActiveStudyMode('pomodoro');
-      setActiveTab('cronograma');
+      setActiveTab('inicio');
       setShowOnboarding(false);
-      toast.success('Configuração inicial concluída! Cronograma inteligente gerado.');
+      toast.success('Modo iniciante liberado. Sua 1a missao ja esta pronta.');
+
+      trackBeginnerEvent('onboarding_completed', {
+        focus: beginnerTrack,
+        timeAvailable: Math.max(30, Math.min(120, dailyGoal)),
+      });
 
       if (supabaseUserId && isSupabaseConfigured) {
         void saasPlanningService
@@ -529,19 +1533,231 @@ function App() {
           });
       }
     },
-    [setUserData, setSelectedMethodId, setActiveStudyMode, user?.email, supabaseUserId]
+    [beginnerStats, preferredStudyTrack, setBeginnerPlan, setBeginnerState, setBeginnerStats, setPreferredStudyTrack, setSelectedMethodId, setUserData, setActiveStudyMode, supabaseUserId, trackBeginnerEvent]
   );
 
-  const handleOnboardingStepProgressSave = React.useCallback(
-    ({ smartProfile }: { step: number; focusType: string; smartProfile: SmartScheduleProfile }) => {
-      if (!supabaseUserId || !isSupabaseConfigured) return;
+  const handleCompleteBeginnerOnboarding = React.useCallback(
+    ({ focus, dailyGoalMinutes }: BeginnerOnboardingPayload) => {
+      const smartProfile = createDefaultSmartProfile();
 
-      void saasPlanningService.upsertProfile(supabaseUserId, smartProfile).catch(() => {
-        // fallback silencioso: progresso já permanece no localStorage
+      smartProfile.hoursPerDay = Math.max(1, Math.round(dailyGoalMinutes / 60));
+      smartProfile.studyStyle = 'pomodoro_25_5';
+      smartProfile.availableWeekDays = [1, 2, 3, 4, 5];
+
+      if (focus === 'concursos') {
+        smartProfile.examName = 'CONCURSO';
+        smartProfile.subjectDifficulty = {
+          Portugues: 'fraco',
+          'Raciocinio Logico': 'medio',
+          'Direito Constitucional': 'medio',
+          'Direito Administrativo': 'medio',
+          Informatica: 'fraco',
+        };
+        smartProfile.subjectWeight = {
+          Portugues: 30,
+          'Raciocinio Logico': 24,
+          'Direito Constitucional': 20,
+          'Direito Administrativo': 14,
+          Informatica: 12,
+        };
+      }
+
+      handleCompleteOnboarding({
+        dailyGoal: dailyGoalMinutes,
+        methodId: 'pomodoro',
+        smartProfile,
+        onboardingMeta: {
+          focus: focus === 'concursos' ? 'concurso' : focus,
+          concurso:
+            focus === 'concursos'
+              ? {
+                  id: 'starter-beginner',
+                  nome: 'Base inicial',
+                  banca: 'Mista',
+                  area: 'Geral',
+                }
+              : null,
+          enem:
+            focus === 'concursos'
+              ? null
+              : {
+                  goalId: null,
+                  targetCollege: null,
+                  targetCourse: null,
+                },
+        },
       });
     },
-    [supabaseUserId]
+    [handleCompleteOnboarding]
   );
+
+  const handleCompleteBeginnerAssessment = React.useCallback(
+    ({ correctAnswers, totalQuestions, xpGained }: BeginnerAssessmentResult) => {
+      if (!beginnerPlan) {
+        return;
+      }
+
+      const completedMission = [...beginnerPlan.missions]
+        .reverse()
+        .find((mission) => mission.status === 'completed');
+
+      if (!completedMission) {
+        return;
+      }
+
+      const nextMission = beginnerPlan.missions.find((mission) => mission.status === 'ready') ?? null;
+      const primarySubject = completedMission.tasks[0]?.discipline || completedMission.focus;
+
+      setLastBeginnerResult((previous) => ({
+        completedMissionId: previous?.completedMissionId || completedMission.id,
+        nextMissionId: previous?.nextMissionId || nextMission?.id,
+        completedMissionLabel: previous?.completedMissionLabel || `${completedMission.dayLabel} • ${completedMission.focus}`,
+        nextMissionLabel: nextMission ? `${nextMission.dayLabel} • ${nextMission.focus}` : undefined,
+        correctAnswers,
+        totalQuestions,
+        xpGained: previous?.xpGained ?? xpGained,
+      }));
+      setBeginnerStats((previous) =>
+        beginnerProgressService.recordAssessmentCompleted(previous, {
+          day: completedMission.dayNumber,
+          missionId: completedMission.id,
+          subject: primarySubject,
+          correct: correctAnswers,
+          total: totalQuestions,
+          xpGained,
+        }),
+      );
+      trackBeginnerEvent('beginner_questions_completed', {
+        missionId: completedMission.id,
+        correct: correctAnswers,
+        total: totalQuestions,
+        accuracy: totalQuestions > 0 ? correctAnswers / totalQuestions : 0,
+        subject: primarySubject,
+        day: completedMission.dayNumber,
+      });
+      setActiveTab('inicio');
+    },
+    [beginnerPlan, setActiveTab, setBeginnerStats, trackBeginnerEvent]
+  );
+
+  const beginnerProgressStage = React.useMemo<BeginnerProgressStage>(
+    () => beginnerProgressService.evaluateBeginnerState(beginnerStats),
+    [beginnerStats],
+  );
+  const detectedProductPhase = React.useMemo<ProductPhase>(
+    () => (beginnerProgressStage === 'ready_for_intermediate' ? 'intermediate' : 'beginner'),
+    [beginnerProgressStage],
+  );
+  const effectiveProductPhase = phaseOverride ?? detectedProductPhase;
+
+  const beginnerToolAccessLocked =
+    effectiveProductPhase === 'beginner' && isBeginnerFocus && (phaseOverride === 'beginner' || beginnerProgressStage !== 'ready_for_intermediate');
+  const todayWeekday = React.useMemo(() => getWeekdayFromDate(), []);
+  const effectiveStudyContextForToday = React.useMemo<StudyContextForToday>(
+    () =>
+      beginnerToolAccessLocked
+        ? {
+            state: {
+              type: 'planned',
+              day: todayWeekday,
+              subjectLabels: [defaultExecutionBlueprint.subject],
+            },
+            eligibleSubjects: [defaultExecutionBlueprint.subject],
+            defaultSessionDurationMinutes: defaultExecutionBlueprint.duration,
+          }
+        : weeklyStudyContext,
+    [beginnerToolAccessLocked, defaultExecutionBlueprint.duration, defaultExecutionBlueprint.subject, todayWeekday, weeklyStudyContext],
+  );
+  const isStudyFlowBlockedBySchedule = !beginnerToolAccessLocked && effectiveStudyContextForToday.state.type !== 'planned';
+  const currentTargetQuestions = effectiveStudyExecutionState.currentBlock.targetQuestions ?? 10;
+  const showPostFocusState = !isStudyFlowBlockedBySchedule && studyFlowStep === 'focusCompleted' && Boolean(lastCompletedFocus);
+  const showQuestionTransitionState = !isStudyFlowBlockedBySchedule && studyFlowStep === 'questionTransition';
+  const canContinueWithQuestions = !isStudyFlowBlockedBySchedule && (lastCompletedFocus?.targetQuestions ?? 0) > 0;
+  const todaySessionGoal = Math.max(
+    weeklySchedule.preferences.sessionsPerDay || 1,
+    lastCompletedFocus?.todaySessionCount || 1,
+  );
+  const postFocusPrimaryActionLabel = canContinueWithQuestions ? 'Continuar com questões' : 'Continuar estudando';
+  const postFocusProgressCopy = lastCompletedFocus
+    ? todaySessionGoal > 1
+      ? `${lastCompletedFocus.todaySessionCount} de ${todaySessionGoal} sessões concluídas hoje`
+      : '1 sessão concluída hoje'
+    : 'Mais uma etapa concluída.';
+  const postFocusSecondaryCopy = canContinueWithQuestions
+    ? 'Agora vamos validar esse conteúdo.'
+    : 'Seu cronograma não sugere questões agora. Continue no próximo bloco de foco.';
+  const questionTransitionTitle = lastCompletedFocus
+    ? `Preparando questões de ${getSuggestedContentPathBySubjectLabel(lastCompletedFocus.subject).shortLabel}...`
+    : 'Preparando suas questões...';
+  const questionTransitionDescription = lastCompletedFocus
+    ? 'Mantendo o contexto do que você acabou de estudar.'
+    : 'Estamos abrindo a prática do bloco que você acabou de concluir.';
+
+  const beginnerWeekSummary = React.useMemo<BeginnerWeekSummary>(
+    () => beginnerProgressService.generateWeekSummary(beginnerStats, userData.sessions || userData.studyHistory || []),
+    [beginnerStats, userData.sessions, userData.studyHistory],
+  );
+
+  const attemptProtectedNavigation = React.useCallback(
+    (tabId: string): boolean => {
+      if (!beginnerToolAccessLocked || BEGINNER_UNLOCKED_TABS.has(tabId)) {
+        setActiveTab(tabId);
+        return true;
+      }
+
+      const targetLabel = BEGINNER_LOCKED_LABELS[tabId] || 'Essa area';
+      trackBeginnerEvent('beginner_blocked_feature_clicked', {
+        tabId,
+        label: targetLabel,
+        state: beginnerState,
+        progressStage: beginnerProgressStage,
+      });
+      setLockedNavigationTarget({ tabId, label: targetLabel });
+      return false;
+    },
+    [beginnerProgressStage, beginnerState, beginnerToolAccessLocked, setActiveTab, trackBeginnerEvent],
+  );
+
+  const completeBeginnerWeekSummary = React.useCallback(
+    (action: BeginnerWeekSummaryAction | 'dismiss') => {
+      trackBeginnerEvent('beginner_week_summary_completed', {
+        action,
+        progressStage: beginnerProgressStage,
+        sessionsCompleted: beginnerStats?.sessionsCompleted || 0,
+      });
+      setBeginnerStats((previous) => beginnerProgressService.markWeekSummarySeen(previous));
+      setShowBeginnerWeekSummary(false);
+      setShowIntermediateUnlockBanner(true);
+      toast.success('Voce subiu de nivel. Novas ferramentas ja foram liberadas.', {
+        duration: 5000,
+      });
+    },
+    [beginnerProgressStage, beginnerStats?.sessionsCompleted, setBeginnerStats, trackBeginnerEvent],
+  );
+
+  const handleBeginnerWeekSummaryAction = React.useCallback(
+    (action: BeginnerWeekSummaryAction) => {
+      completeBeginnerWeekSummary(action);
+
+      if (action === 'explore_tools') {
+        setActiveTab('dashboard');
+        return;
+      }
+
+      setActiveTab('inicio');
+    },
+    [completeBeginnerWeekSummary, setActiveTab],
+  );
+
+  useEffect(() => {
+    if (!beginnerToolAccessLocked || showOnboarding) {
+      return;
+    }
+
+    if (!BEGINNER_UNLOCKED_TABS.has(activeTab)) {
+      setActiveTab('inicio');
+    }
+  }, [activeTab, beginnerToolAccessLocked, setActiveTab, showOnboarding]);
 
   useEffect(() => {
     if (!isLoggedIn || !supabaseUserId || !isSupabaseConfigured) {
@@ -595,7 +1811,7 @@ function App() {
     };
   }, [isLoggedIn, supabaseUserId, setUserData]);
 
-  // ── Sync do perfil do usuário (XP, level, streak) com a nuvem ──
+  // Sync do perfil do usuario (XP, level, streak) com a nuvem
   useEffect(() => {
     if (!isLoggedIn || !supabaseUserId || !isSupabaseConfigured) return;
 
@@ -610,7 +1826,7 @@ function App() {
           // Merge: nuvem ganha se tiver mais pontos (dados mais recentes)
           const cloudWins = cloudProfile.totalPoints > prev.totalPoints;
           if (!cloudWins) {
-            // Local tem mais pontos — push para nuvem
+            // Local tem mais pontos: push para nuvem
             void userProfileService.upsert(supabaseUserId, {
               totalPoints: prev.totalPoints,
               level: prev.level,
@@ -641,7 +1857,7 @@ function App() {
     return () => { cancelled = true; };
   }, [isLoggedIn, supabaseUserId, setUserData]);
 
-  // ── Push mudanças de userData para a nuvem (debounced) ──
+  // Push mudancas de userData para a nuvem (debounced)
   useEffect(() => {
     if (!supabaseUserId || !isSupabaseConfigured || !isLoggedIn) return;
 
@@ -666,7 +1882,14 @@ function App() {
 
   const handleClearData = React.useCallback(() => {
     setUserData(INITIAL_USER_DATA);
-  }, [setUserData]);
+    setBeginnerState('ready_for_first_session');
+    setBeginnerStats(beginnerProgressService.createInitialStats());
+    setLastBeginnerResult(null);
+    setShowBeginnerWeekSummary(false);
+    if (beginnerPlan) {
+      setBeginnerPlan(beginnerFlowService.generatePlan(beginnerPlan.track, INITIAL_USER_DATA.dailyGoal));
+    }
+  }, [beginnerPlan, setBeginnerPlan, setBeginnerState, setBeginnerStats, setUserData]);
 
   const handleCompleteAcademyContent = React.useCallback(
     (contentId: string, xpReward: number) => {
@@ -716,6 +1939,238 @@ function App() {
 
     return [];
   }, [userData.sessions, userData.studyHistory]);
+  const progressWeekStart = React.useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(now.getDate() + diffToMonday);
+    return start;
+  }, []);
+  const progressWeekEnd = React.useMemo(() => {
+    const end = new Date(progressWeekStart);
+    end.setDate(progressWeekStart.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return end;
+  }, [progressWeekStart]);
+  const todayDateKey = React.useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }, []);
+  const getSessionProgressDate = React.useCallback((rawDate?: string | null) => {
+    if (!rawDate) {
+      return null;
+    }
+
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+      ? new Date(`${rawDate}T12:00:00`)
+      : new Date(rawDate);
+
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }, []);
+  const weeklyCompletedSessions = React.useMemo(
+    () =>
+      effectiveSessions.filter((session) => {
+        const sessionDate = getSessionProgressDate(session.timestamp || session.date);
+        return Boolean(sessionDate && sessionDate >= progressWeekStart && sessionDate <= progressWeekEnd);
+      }).length,
+    [effectiveSessions, getSessionProgressDate, progressWeekEnd, progressWeekStart],
+  );
+  const todayCompletedSessions = React.useMemo(
+    () =>
+      effectiveSessions.filter((session) => {
+        const rawDate = session.timestamp || session.date;
+        if (!rawDate) {
+          return false;
+        }
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+          return rawDate === todayDateKey;
+        }
+
+        const sessionDate = getSessionProgressDate(rawDate);
+        if (!sessionDate) {
+          return false;
+        }
+
+        const sessionDateKey = `${sessionDate.getFullYear()}-${String(sessionDate.getMonth() + 1).padStart(2, '0')}-${String(sessionDate.getDate()).padStart(2, '0')}`;
+        return sessionDateKey === todayDateKey;
+      }).length,
+    [effectiveSessions, getSessionProgressDate, todayDateKey],
+  );
+  const completedWeekdays = React.useMemo(
+    () =>
+      effectiveSessions.reduce((acc, session) => {
+        const sessionDate = getSessionProgressDate(session.timestamp || session.date);
+        if (!sessionDate || sessionDate < progressWeekStart || sessionDate > progressWeekEnd) {
+          return acc;
+        }
+
+        acc[getWeekdayFromDate(sessionDate)] = true;
+        return acc;
+      }, {} as Partial<Record<Weekday, boolean>>),
+    [effectiveSessions, getSessionProgressDate, progressWeekEnd, progressWeekStart],
+  );
+  const weeklyProgressCopy = weeklySchedule.preferences.weeklyGoalSessions
+    ? weeklyCompletedSessions + ' de ' + weeklySchedule.preferences.weeklyGoalSessions + ' sessoes concluidas esta semana'
+    : weeklyCompletedSessions + ' sessoes concluidas esta semana';
+  const weeklyPlanConfidenceState = getWeeklyPlanConfidenceState(
+    weeklyCompletedSessions,
+    weeklySchedule.preferences.weeklyGoalSessions,
+  );
+  const completedSessionDateKeys = React.useMemo(
+    () =>
+      effectiveSessions
+        .map((session) => session.timestamp || session.date)
+        .filter(Boolean) as string[],
+    [effectiveSessions],
+  );
+  const recentPaceState = React.useMemo(
+    () => getRecentPaceState(weeklySchedule, completedSessionDateKeys, new Date()),
+    [completedSessionDateKeys, weeklySchedule],
+  );
+  const recentTopicLabelsBySubject = React.useMemo(
+    () =>
+      effectiveSessions.reduce((acc, session) => {
+        const subjectLabel = typeof session.subject === 'string' ? session.subject.trim() : '';
+        const topicLabel =
+          typeof (session as { topicName?: string }).topicName === 'string'
+            ? (session as { topicName?: string }).topicName?.trim()
+            : typeof (session as { topic?: string }).topic === 'string'
+              ? (session as { topic?: string }).topic?.trim()
+              : '';
+
+        if (!subjectLabel || !topicLabel) {
+          return acc;
+        }
+
+        acc[subjectLabel] = acc[subjectLabel] ?? [];
+        if (!acc[subjectLabel].includes(topicLabel)) {
+          acc[subjectLabel].push(topicLabel);
+        }
+
+        return acc;
+      }, {} as Record<string, string[]>),
+    [effectiveSessions],
+  );
+  const paceCopy = React.useMemo(
+    () => getPaceCopy({ state: recentPaceState, date: new Date() }),
+    [recentPaceState],
+  );
+  const postFocusPlanConfidenceCopy = recentPaceState !== 'on_track' && paceCopy?.postFocus
+    ? paceCopy.postFocus
+    : weeklyPlanConfidenceState === 'on_track'
+      ? 'Voce esta seguindo seu plano.'
+      : 'Seu plano da semana comeca com esta sessao.';
+  const currentBlockContentPath = React.useMemo(
+    () =>
+      getSuggestedContentPathBySubjectLabel(
+        effectiveStudyExecutionState.currentBlock.subject,
+        effectiveStudyExecutionState.currentBlock.topicName,
+        recentTopicLabelsBySubject[effectiveStudyExecutionState.currentBlock.subject] ?? [],
+      ),
+    [
+      effectiveStudyExecutionState.currentBlock.subject,
+      effectiveStudyExecutionState.currentBlock.topicName,
+      recentTopicLabelsBySubject,
+    ],
+  );
+  const currentBlockDisplayLabel = currentBlockContentPath.shortLabel;
+  const currentBlockSuggestedTopicCopy = React.useMemo(
+    () =>
+      effectiveStudyExecutionState.currentBlock.topicName
+        ? undefined
+        : (() => {
+            const suggestion = getSuggestedNextTopicAligned({
+              todaySubjectLabels: [effectiveStudyExecutionState.currentBlock.subject],
+              preferredFrontLabelBySubject: {
+                [effectiveStudyExecutionState.currentBlock.subject]: currentBlockContentPath.frontLabel,
+              },
+              recentTopicLabelsBySubject,
+            });
+
+            if (!suggestion) {
+              return undefined;
+            }
+
+            return getSuggestedTopicCopy({
+              source: suggestion.source,
+              topicLabel: suggestion.topicLabel,
+              frontLabel: suggestion.frontLabel,
+              subjectLabel: suggestion.subjectLabel,
+              variant: 'study',
+            });
+          })(),
+    [
+      currentBlockContentPath.frontLabel,
+      effectiveStudyExecutionState.currentBlock.subject,
+      effectiveStudyExecutionState.currentBlock.topicName,
+      recentTopicLabelsBySubject,
+    ],
+  );
+  const lastCompletedFocusContentPath = React.useMemo(
+    () => (lastCompletedFocus ? getSuggestedContentPathBySubjectLabel(lastCompletedFocus.subject) : null),
+    [lastCompletedFocus],
+  );
+  const lastCompletedFocusDisplayLabel = lastCompletedFocusContentPath?.shortLabel || lastCompletedFocus?.subject || '';
+  const preferredTreeContext = React.useMemo(() => {
+    if (lastCompletedFocus?.subject) {
+      return {
+        disciplineName: lastCompletedFocus.subject,
+        sourceLabel: 'Ultimo foco',
+      };
+    }
+
+    if (effectiveStudyExecutionState.currentBlock.subject) {
+      return {
+        disciplineName: effectiveStudyExecutionState.currentBlock.subject,
+        sourceLabel: 'Bloco atual',
+      };
+    }
+
+    if (weeklyStudyContext.state.type === 'planned' && weeklyStudyContext.state.subjectLabels[0]) {
+      return {
+        disciplineName: weeklyStudyContext.state.subjectLabels[0],
+        sourceLabel: 'Plano do dia',
+      };
+    }
+
+    return null;
+  }, [
+    effectiveStudyExecutionState.currentBlock.subject,
+    lastCompletedFocus?.subject,
+    weeklyStudyContext,
+  ]);
+  const preferredTreeDisciplineName = preferredTreeContext?.disciplineName;
+  const preferredTreeDisciplineSourceLabel = preferredTreeContext?.sourceLabel;
+  const nextStudySuggestion = React.useMemo(() => {
+    if (!lastCompletedFocus) {
+      return null;
+    }
+
+    return getNextStudySuggestion({
+      weeklySchedule,
+      today: getWeekdayFromDate(),
+      currentSubjectLabel: lastCompletedFocus.subject,
+    });
+  }, [lastCompletedFocus, weeklySchedule]);
+  const nextStudySuggestionCopy = React.useMemo(() => {
+    if (!nextStudySuggestion?.subjectLabel) {
+      return '';
+    }
+
+    const nextContentPath = getSuggestedContentPathBySubjectLabel(
+      nextStudySuggestion.subjectLabel,
+      undefined,
+      recentTopicLabelsBySubject[nextStudySuggestion.subjectLabel] ?? [],
+    );
+
+    return getNextStudyCopy({
+      ...nextStudySuggestion,
+      subjectLabel: nextContentPath.shortLabel,
+    });
+  }, [nextStudySuggestion, recentTopicLabelsBySubject]);
 
   const weeklyStudiedMinutes = React.useMemo(() => {
     const now = new Date();
@@ -783,7 +2238,7 @@ function App() {
 
     profileHydratedEmailRef.current = user.email;
     setProfileDisplayName((previous) => previous || user.nome || '');
-    setProfileAvatar((previous) => previous || user.foto || '🧑‍⚕️');
+    setProfileAvatar((previous) => previous || user.foto || '\u{1F464}');
     setProfileExamGoal((previous) => previous || user.examGoal || '');
     setProfileExamDate((previous) => previous || user.examDate || '');
     if (!lastProfileSavedAt && user.preferredTrack) {
@@ -837,7 +2292,7 @@ function App() {
 
         if (cloudWins) {
           setProfileDisplayName(cloudProfile.displayName || '');
-          setProfileAvatar(cloudProfile.avatar || '🧑‍⚕️');
+          setProfileAvatar(cloudProfile.avatar || '\u{1F464}');
           setProfileExamGoal(cloudProfile.examGoal || '');
           setProfileExamDate(cloudProfile.examDate || '');
           setPreferredStudyTrack(cloudProfile.preferredTrack || 'enem');
@@ -1059,7 +2514,7 @@ function App() {
   const tabList = React.useMemo(
     () => [
       { id: 'inicio', label: 'Início', icon: Home },
-      { id: 'arvore', label: 'Árvore', icon: GitBranch },
+      { id: 'arvore', label: '\u00c1rvore', icon: GitBranch },
       { id: 'departamento', label: 'Departamento', icon: GraduationCap },
       { id: 'mentor', label: 'Mentor IA', icon: Brain },
       { id: 'mentor-admin', label: 'Mentor Admin', icon: BarChart3 },
@@ -1098,7 +2553,7 @@ function App() {
       },
       {
         id: 'arvore-domain',
-        label: 'Árvore',
+        label: '\u00c1rvore',
         icon: GitBranch,
         defaultTab: 'arvore',
         tabIds: ['arvore'],
@@ -1159,17 +2614,228 @@ function App() {
     [domainList, activeDomainId]
   );
 
+  const isUnifiedStudyFlow = activeDomain.id === 'estudo-domain';
+
   const activeSubTabs = React.useMemo(
-    () => tabList.filter((tab) => activeDomain.tabIds.includes(tab.id)),
-    [tabList, activeDomain]
+    () =>
+      tabList.filter((tab) => {
+        if (!activeDomain.tabIds.includes(tab.id)) {
+          return false;
+        }
+
+        if (tab.id === 'mentor-admin' && !canAccessInternalTools) {
+          return false;
+        }
+
+        return true;
+      }),
+    [activeDomain, canAccessInternalTools, tabList]
   );
 
   const configTabs = React.useMemo(
-    () => tabList.filter((tab) => tab.id === 'configuracoes' || tab.id === 'dados'),
-    [tabList]
+    () =>
+      tabList.filter((tab) =>
+        tab.id === 'configuracoes'
+        || tab.id === 'dados'
+        || (canAccessInternalTools && tab.id === 'mentor-admin')
+      ),
+    [canAccessInternalTools, tabList]
   );
 
+  React.useEffect(() => {
+    if (!isLoggedIn || typeof window === 'undefined') {
+      return;
+    }
+
+    const syncTabFromUrl = () => {
+      const requestedTab = new URL(window.location.href).searchParams.get('tab');
+      if (!requestedTab) {
+        return;
+      }
+
+      const targetTab = tabList.find((tab) => tab.id === requestedTab)?.id;
+      if (!targetTab) {
+        return;
+      }
+
+      if (beginnerToolAccessLocked && !BEGINNER_UNLOCKED_TABS.has(targetTab)) {
+        return;
+      }
+
+      setActiveTab(targetTab);
+    };
+
+    syncTabFromUrl();
+    window.addEventListener('popstate', syncTabFromUrl);
+    return () => window.removeEventListener('popstate', syncTabFromUrl);
+  }, [beginnerToolAccessLocked, isLoggedIn, tabList]);
+
+  useEffect(() => {
+    if (!isUnifiedStudyFlow) {
+      return;
+    }
+
+    if (activeTab === 'metodos' || activeTab === 'cronograma') {
+      setShowStudyAdjustments(true);
+    }
+
+    const targetRef =
+      activeTab === 'questoes'
+        ? studyQuestionsSectionRef
+        : activeTab === 'foco'
+          ? focusTimerSectionRef
+          : activeTab === 'metodos' || activeTab === 'cronograma'
+            ? studyAdjustmentsSectionRef
+            : studyFlowTopRef;
+
+    const frameId = window.requestAnimationFrame(() => {
+      targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeTab, isUnifiedStudyFlow]);
+
+  const beginnerUnlockedTabs = React.useMemo(() => new Set(['inicio', 'foco', 'questoes', 'simulado']), []);
+  const openScheduleForDay = React.useCallback(
+    (day: Weekday) => {
+      setRequestedScheduleEditDay(day);
+      setRequestedScheduleEditNonce((current) => current + 1);
+      setShowStudyAdjustments(true);
+      setActiveTab('cronograma');
+    },
+    [setActiveTab],
+  );
+  const handleOpenTodaySchedule = React.useCallback(() => {
+    openScheduleForDay(todayWeekday);
+  }, [openScheduleForDay, todayWeekday]);
+  const clearQuestionTransitionTimeout = React.useCallback(() => {
+    if (questionTransitionTimeoutRef.current) {
+      window.clearTimeout(questionTransitionTimeoutRef.current);
+      questionTransitionTimeoutRef.current = null;
+    }
+  }, []);
+  const handleStartStudyFlowSafely = React.useCallback(() => {
+    if (isStudyFlowBlockedBySchedule) {
+      handleOpenTodaySchedule();
+      return;
+    }
+
+    handleStartRecommendedFocus();
+  }, [handleOpenTodaySchedule, handleStartRecommendedFocus, isStudyFlowBlockedBySchedule]);
+  const handleStartQuestionsSafely = React.useCallback(() => {
+    if (isStudyFlowBlockedBySchedule) {
+      handleOpenTodaySchedule();
+      return;
+    }
+
+    handleStartRecommendedQuestions();
+  }, [handleOpenTodaySchedule, handleStartRecommendedQuestions, isStudyFlowBlockedBySchedule]);
+  const handleContinueAfterFocus = React.useCallback(() => {
+    if (canContinueWithQuestions) {
+      setStudyFlowStep('questionTransition');
+      clearQuestionTransitionTimeout();
+      questionTransitionTimeoutRef.current = window.setTimeout(() => {
+        questionTransitionTimeoutRef.current = null;
+        handleStartQuestionsSafely();
+      }, 420);
+      return;
+    }
+
+    handleStartStudyFlowSafely();
+  }, [canContinueWithQuestions, clearQuestionTransitionTimeout, handleStartQuestionsSafely, handleStartStudyFlowSafely]);
+
+  React.useEffect(() => {
+    if (studyFlowStep !== 'questionTransition') {
+      clearQuestionTransitionTimeout();
+      return;
+    }
+
+    if (isStudyFlowBlockedBySchedule || activeTab !== 'foco') {
+      clearQuestionTransitionTimeout();
+      setStudyFlowStep((current) => (current === 'questionTransition' ? 'idle' : current));
+    }
+  }, [activeTab, clearQuestionTransitionTimeout, isStudyFlowBlockedBySchedule, studyFlowStep]);
+
+  React.useEffect(() => () => {
+    clearQuestionTransitionTimeout();
+  }, [clearQuestionTransitionTimeout]);
+
   // Aguardar verificação de sessão do Supabase
+  const studySessionRestoreAppliedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    studySessionRestoreAppliedRef.current = false;
+  }, [userStorageScope]);
+
+  React.useEffect(() => {
+    if (!isLoggedIn || !user?.email || studySessionRestoreAppliedRef.current) {
+      return;
+    }
+
+    studySessionRestoreAppliedRef.current = true;
+
+    const persistedSessionEntries = getActiveStudySessionEntries(userStorageScope);
+    if (persistedSessionEntries.length === 0) {
+      return;
+    }
+
+    const restoredEntry = getLatestActiveStudySessionEntry(userStorageScope);
+    if (!restoredEntry) {
+      return;
+    }
+
+    persistedSessionEntries.forEach((entry) => {
+      if (entry.storageKey !== restoredEntry.storageKey) {
+        clearPersistedStudySession(entry.storageKey);
+      }
+    });
+
+    const restoredSession = restoredEntry.session;
+
+    clearQuestionTransitionTimeout();
+    setLastCompletedFocus(null);
+    setShowStudyAdjustments(false);
+    setStudyFlowStep('focusing');
+
+    const restoredFocusMinutes = Math.max(1, Math.round(restoredSession.plannedDurationMs / 60000));
+    const normalizedRestoredDuration = normalizeQuickSessionDuration(restoredFocusMinutes);
+
+    setFocusExecutionState(
+      {
+        subject: restoredSession.subject,
+        ...(restoredSession.source === 'pomodoro'
+          ? { duration: normalizedRestoredDuration }
+          : {}),
+      },
+      'manual',
+      restoredSession.methodId ?? activeStudyMethod.id,
+    );
+
+    if (restoredSession.methodId) {
+      setSelectedMethodId(restoredSession.methodId);
+    }
+
+    if (restoredSession.source === 'pomodoro') {
+      setPlannedFocusDuration(normalizedRestoredDuration);
+      setActiveStudyMode('pomodoro');
+    } else {
+      setActiveStudyMode('livre');
+    }
+
+    setActiveTab('foco');
+  }, [
+    activeStudyMethod.id,
+    clearQuestionTransitionTimeout,
+    isLoggedIn,
+    setActiveStudyMode,
+    setActiveTab,
+    setFocusExecutionState,
+    setPlannedFocusDuration,
+    setSelectedMethodId,
+    user?.email,
+    userStorageScope,
+  ]);
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
@@ -1210,14 +2876,14 @@ function App() {
   return (
     <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors ${darkMode ? 'dark' : ''}`}>
       <Toaster position="top-center" />
-      <NotificationSetup />
-      {/* Achievement Notification */}
-      {newlyUnlocked && (
-        <AchievementNotification 
-          achievement={newlyUnlocked} 
-          onClose={() => {}} 
-        />
-      )}
+        <NotificationSetup />
+        {/* Achievement Notification */}
+        {newlyUnlocked && (
+          <AchievementNotification 
+            achievement={newlyUnlocked} 
+            onClose={dismissNewlyUnlocked} 
+          />
+        )}
       
       <Header
         userName={resolvedDisplayName}
@@ -1237,18 +2903,17 @@ function App() {
       />
 
       {showOnboarding && (
-        <OnboardingFlow
+        <BeginnerOnboarding
           userName={resolvedDisplayName}
-          initialDailyGoal={userData.dailyGoal || 90}
-          initialMethodId={selectedMethodId}
-          onStepProgressSave={handleOnboardingStepProgressSave}
-          onComplete={handleCompleteOnboarding}
+          initialFocus={preferredStudyTrack}
+          initialDailyGoalMinutes={userData.dailyGoal || 60}
+          onComplete={handleCompleteBeginnerOnboarding}
         />
       )}
 
       <main className="max-w-[1440px] mx-auto px-3 sm:px-4 py-6 sm:py-8">
         <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-4 lg:gap-8">
-          <aside className="hidden lg:flex lg:flex-col lg:sticky lg:top-24 h-[calc(100vh-7rem)] rounded-2xl bg-slate-900 border border-slate-800 p-3">
+          <aside className={`hidden lg:flex lg:flex-col lg:sticky lg:top-24 h-[calc(100vh-7rem)] rounded-2xl bg-slate-900 border border-slate-800 p-3 transition-opacity ${beginnerToolAccessLocked ? 'opacity-60' : 'opacity-100'}`}>
             <p className="px-3 py-2 text-xs uppercase tracking-[0.14em] text-slate-400 font-semibold">Navegação</p>
 
             <div className="space-y-1.5 mt-1">
@@ -1256,7 +2921,7 @@ function App() {
                 <button
                   key={domain.id}
                   type="button"
-                  onClick={() => setActiveTab(domain.defaultTab)}
+                  onClick={() => attemptProtectedNavigation(domain.defaultTab)}
                   className={`w-full px-3 py-2.5 rounded-xl text-sm font-semibold transition flex items-center gap-2.5 ${
                     activeDomainId === domain.id
                       ? 'text-white'
@@ -1275,7 +2940,7 @@ function App() {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => attemptProtectedNavigation(tab.id)}
                   className={`w-full px-3 py-2.5 rounded-xl text-sm font-medium transition text-left ${
                     activeTab === tab.id
                       ? 'text-white'
@@ -1291,12 +2956,12 @@ function App() {
 
           <section className="min-w-0">
             <div className="mb-6 sm:mb-8 space-y-3">
-              <div className="lg:hidden flex gap-2 overflow-x-auto pb-1">
+              <div className={`lg:hidden flex gap-2 overflow-x-auto pb-1 transition-opacity ${beginnerToolAccessLocked ? 'opacity-60' : 'opacity-100'}`}>
                 {domainList.map((domain) => (
                   <button
                     key={domain.id}
                     type="button"
-                    onClick={() => setActiveTab(domain.defaultTab)}
+                    onClick={() => attemptProtectedNavigation(domain.defaultTab)}
                     className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
                       activeDomainId === domain.id
                         ? 'text-white'
@@ -1310,12 +2975,12 @@ function App() {
                 ))}
               </div>
 
-              <div className="lg:hidden flex gap-2 overflow-x-auto pb-1">
+              <div className={`lg:hidden flex gap-2 overflow-x-auto pb-1 transition-opacity ${beginnerToolAccessLocked ? 'opacity-60' : 'opacity-100'}`}>
                 {configTabs.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => attemptProtectedNavigation(tab.id)}
                     className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition ${
                       activeTab === tab.id
                         ? 'text-white'
@@ -1328,18 +2993,13 @@ function App() {
                 ))}
               </div>
 
-              <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 font-semibold">Área ativa</p>
-                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 mt-0.5">{activeDomain.label}</p>
-              </div>
-
-              {activeSubTabs.length > 1 && (
+              {!isUnifiedStudyFlow && activeSubTabs.length > 1 && (
                 <div className="flex flex-wrap gap-2">
                   {activeSubTabs.map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
-                      onClick={() => setActiveTab(tab.id)}
+                      onClick={() => attemptProtectedNavigation(tab.id)}
                       className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium border transition ${
                         activeTab === tab.id
                           ? 'text-white border-transparent'
@@ -1363,16 +3023,24 @@ function App() {
                 userName={resolvedDisplayName}
                 totalPoints={userData.totalPoints}
                 level={userData.level}
+                heroVariant={heroVariant}
                 todayMinutes={todayMinutes}
                 dailyGoalMinutes={userData.dailyGoal || 90}
                 completedContentIds={completedContentIds}
                 currentStreak={userData.currentStreak || 0}
                 sessions={userData.sessions || userData.studyHistory || []}
                 supabaseUserId={supabaseUserId}
+                beginnerState={beginnerState}
+                beginnerPlan={beginnerPlan}
+                beginnerProgressStage={beginnerProgressStage}
+                beginnerPromotedAt={beginnerStats?.promotedAt || null}
+                phaseOverride={canAccessInternalTools ? phaseOverride : null}
+                showIntermediateUnlockBanner={showIntermediateUnlockBanner}
                 preferredTrack={preferredStudyTrack}
                 studyMode={studyMode}
-                onNavigate={(tab) => setActiveTab(tab)}
-                onRecalculateAI={() => setActiveTab('mentor')}
+                onDismissIntermediateUnlockBanner={() => setShowIntermediateUnlockBanner(false)}
+                onNavigate={(tab) => attemptProtectedNavigation(tab)}
+                onRecalculateAI={() => attemptProtectedNavigation('mentor')}
                 onOpenTopicQuestions={({ areaName, disciplineName, topicName, target }) => {
                   const normalizedArea = areaName.trim().toLowerCase();
                   const inferredTrack: QuizTrackFilter | undefined = normalizedArea.includes('enem')
@@ -1389,6 +3057,22 @@ function App() {
                   };
 
                   if (target === 'simulado') {
+                    setQuestionsExecutionState({
+                      type: 'questions',
+                      subject: disciplineName,
+                      topicName,
+                      objective: `Validar ${disciplineName} com pratica de simulado.`,
+                    }, 'plan');
+                  } else {
+                    setQuestionsExecutionState({
+                      type: 'questions',
+                      subject: disciplineName,
+                      topicName,
+                      objective: `Praticar ${disciplineName} no bloco atual.`,
+                    }, 'plan');
+                  }
+
+                  if (target === 'simulado') {
                     setMockExamPrefilter(prefilterPayload);
                     setActiveTab('simulado');
                     return;
@@ -1398,31 +3082,641 @@ function App() {
                   setActiveTab('questoes');
                 }}
                 onOpenRanks={() => {
-                  setActiveTab('dashboard');
+                  if (!attemptProtectedNavigation('dashboard')) {
+                    return;
+                  }
                   setShouldScrollToRanks(true);
                   setRankHighlightSignal((previous) => previous + 1);
                 }}
+                ctrMetrics={homeCtrMetrics}
+                heroAbMetrics={homeHeroAbMetrics}
+                onStartQuickSession={(duration, source, variant) => {
+                  if (isStudyFlowBlockedBySchedule) {
+                    handleOpenTodaySchedule();
+                    return;
+                  }
+
+                  startQuickSession(duration, source, variant);
+                }}
                 onContinueNow={() => {
-                  setActiveTab('foco');
-                  setActiveStudyMode('pomodoro');
+                  if (isStudyFlowBlockedBySchedule) {
+                    handleOpenTodaySchedule();
+                    return;
+                  }
+
+                  startQuickSession(25, 'hero_cta', heroVariant);
                 }}
               />
             </Suspense>
           )}
 
           {/* Página Métodos */}
-          {activeTab === 'metodos' && (
+          {isUnifiedStudyFlow && activeTab !== 'metodos' && activeTab !== 'cronograma' && (
+            <div className="max-w-4xl mx-auto space-y-6">
+              {isStudyFlowBlockedBySchedule ? (
+                <div ref={studyFlowTopRef}>
+                  <StudyExecutionBanner
+                    eyebrow="Antes de estudar"
+                    title={
+                      effectiveStudyContextForToday.state.type === 'inactive'
+                        ? 'Hoje está livre no seu cronograma'
+                        : 'Defina as disciplinas de hoje antes de começar'
+                    }
+                    description={
+                      effectiveStudyContextForToday.state.type === 'inactive'
+                        ? 'O estudo não vai inventar uma sessão normal hoje. Reative o dia no cronograma para voltar ao fluxo.'
+                        : 'O dia está ativo, mas sem disciplinas definidas. Ajuste o cronograma para o estudo subir com contexto.'
+                    }
+                    primaryActionLabel={
+                      effectiveStudyContextForToday.state.type === 'inactive'
+                        ? 'Abrir cronograma'
+                        : 'Definir disciplinas'
+                    }
+                    onPrimaryAction={handleOpenTodaySchedule}
+                    meta={[]}
+                  />
+                </div>
+              ) : showQuestionTransitionState ? (
+                <div
+                  ref={studyFlowTopRef}
+                  className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm transition-all duration-200 ease-out dark:border-sky-900 dark:bg-sky-950/30"
+                >
+                  <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">
+                    <span className="h-2 w-2 rounded-full bg-sky-500 motion-safe:animate-pulse" />
+                    Transição
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold tracking-tight text-sky-950 dark:text-sky-100">
+                    {questionTransitionTitle}
+                  </h2>
+                  <p className="mt-2 text-sm text-sky-900/80 dark:text-sky-100/80">
+                    {questionTransitionDescription}
+                  </p>
+                </div>
+              ) : showPostFocusState && lastCompletedFocus ? (
+                <div ref={studyFlowTopRef}>
+                  <StudyExecutionBanner
+                    eyebrow="Depois do foco"
+                    title="Sessão concluída"
+                    description={`Você focou em ${lastCompletedFocusDisplayLabel}.`}
+                    supportingText={[postFocusPlanConfidenceCopy, postFocusSecondaryCopy, nextStudySuggestionCopy]
+                      .filter(Boolean)
+                      .join(' ')}
+                    primaryActionLabel={postFocusPrimaryActionLabel}
+                    onPrimaryAction={handleContinueAfterFocus}
+                    secondaryActionLabel="Ajustar plano"
+                    onSecondaryAction={handleOpenTodaySchedule}
+                    className="transition-all duration-200 ease-out"
+                    meta={[
+                      { label: 'Bloco', value: lastCompletedFocusDisplayLabel },
+                      { label: 'Hoje', value: postFocusProgressCopy },
+                      { label: 'Semana', value: weeklyProgressCopy },
+                      { label: 'Próximo passo', value: canContinueWithQuestions ? 'Continuar com questões' : 'Continuar estudando' },
+                    ]}
+                  />
+                </div>
+              ) : (
+              <div ref={studyFlowTopRef}>
+                <StudyExecutionBanner
+                  eyebrow={isStudyFlowBlockedBySchedule ? 'Antes de estudar' : 'Agora'}
+                  title={`${currentBlockDisplayLabel} • ${effectiveStudyExecutionState.currentBlock.duration || plannedFocusDuration} min de foco`}
+                  description="Seu proximo passo e comecar. As questoes entram depois."
+                  supportingText={!isStudyFlowBlockedBySchedule ? currentBlockSuggestedTopicCopy : undefined}
+                  primaryActionLabel="Comecar agora"
+                  onPrimaryAction={scrollToFocusTimer}
+                  meta={[]}
+                />
+              </div>
+              )}
+
+              {!isStudyFlowBlockedBySchedule && !showPostFocusState && (
+              <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+                <div className="text-center">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Sessao de foco</p>
+                  <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">Foco</h2>
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                    Execute primeiro. Depois disso, a tela continua em pratica recomendada.
+                  </p>
+                </div>
+
+                <div
+                  ref={focusTimerSectionRef}
+                  className="mt-6 space-y-5"
+                  data-testid="study-focus-container"
+                >
+                  {activeStudyMode === 'pomodoro' ? (
+                    <PomodoroTimer
+                      onFinishSession={handleFinishStudySession}
+                      selectedMethodId={selectedMethodId}
+                      onSelectMethod={(methodId) => {
+                        applyPomodoroMethod(methodId);
+                      }}
+                      quickStartSignal={academyQuickStartSignal}
+                      initialFocusMinutes={effectiveStudyExecutionState.currentBlock.duration}
+                      preferredTrack={preferredStudyTrack}
+                      hybridEnemWeight={hybridEnemWeight}
+                      compact
+                      displaySubjectLabel={currentBlockDisplayLabel}
+                      sessionStorageScope={userStorageScope}
+                      userEmail={user?.email}
+                    />
+                  ) : (
+                    <div className="max-w-2xl mx-auto">
+                      <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando timer...</div>}>
+                        <StudyTimer
+                          onFinishSession={handleFinishStudySession}
+                          preferredTrack={preferredStudyTrack}
+                          hybridEnemWeight={hybridEnemWeight}
+                          compact
+                          displaySubjectLabel={currentBlockDisplayLabel}
+                          sessionStorageScope={userStorageScope}
+                          userEmail={user?.email}
+                        />
+                      </Suspense>
+                    </div>
+                  )}
+                </div>
+              </section>
+              )}
+
+              {!isStudyFlowBlockedBySchedule && !showQuestionTransitionState && (
+              <section ref={studyQuestionsSectionRef} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="max-w-2xl">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Depois do foco</p>
+                    <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                      {showPostFocusState ? 'Agora vamos validar esse conteúdo' : 'Valide o que você acabou de estudar'}
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                      {showPostFocusState
+                        ? 'A pratica entra como continuacao natural da sessao que voce acabou de concluir.'
+                        : 'Pratique o bloco recomendado antes de abrir qualquer outra frente.'}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleStartQuestionsSafely}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 dark:border-slate-700"
+                  >
+                    {showPostFocusState ? 'Continuar com questões' : 'Validar com questões'}
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className={activeTab === 'questoes' ? 'mt-6' : 'hidden'}>
+                  <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando questões...</div>}>
+                {isStudyFlowBlockedBySchedule ? (
+                  <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-900 dark:bg-amber-950/30 sm:p-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Pratica protegida</p>
+                    <h2 className="mt-2 text-2xl font-bold tracking-tight text-amber-950 dark:text-amber-100">
+                      Ajuste o dia antes de validar com questoes
+                    </h2>
+                    <p className="mt-2 text-sm text-amber-900/80 dark:text-amber-100/80">
+                      O fluxo de pratica so abre quando o cronograma de hoje estiver coerente com o que pode subir na execucao.
+                    </p>
+                  </div>
+                ) : (
+                  <QuizPage
+                    supabaseUserId={supabaseUserId}
+                    initialFilter={quizPrefilter || undefined}
+                    recommendedContext={
+                      lastCompletedFocus
+                        ? {
+                            title: `Questões de ${lastCompletedFocusDisplayLabel}`,
+                            subtitle: 'Baseado na sua última sessão',
+                          }
+                        : undefined
+                    }
+                    onEarnXP={(xp) => {
+                      setUserData((prev) => xpEngineService.applyXpDelta(prev, xp));
+                      toast.success(`+${xp} XP ganhos nas questões!`);
+                    }}
+                    onCompleteAttempt={handleCompleteBeginnerAssessment}
+                  />
+                )}
+                  </Suspense>
+                </div>
+              </section>
+              )}
+
+              <section ref={studyAdjustmentsSectionRef} className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowStudyAdjustments(true);
+                    setActiveTab('cronograma');
+                  }}
+                  className="flex w-full items-center justify-between gap-4 text-left"
+                >
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Ajustes opcionais</p>
+                    <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                      Abrir ajustes do plano em um espaco separado
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                      Cronograma e metodo ficam fora da tela principal para nao competir com a execucao.
+                    </p>
+                  </div>
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    <ArrowRight className="h-5 w-5" />
+                  </span>
+                </button>
+
+                {showStudyAdjustments && activeTab === 'metodos' && (
+                  <div className="mt-6 space-y-6">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                        Modo da sessao
+                      </p>
+                      <div className="mt-4">
+                        <ModeSelector currentMode={activeStudyMode} onModeChange={handleStudyModeChange} />
+                      </div>
+
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Configuracao do estudo</p>
+                          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                            Ajuste trilha, peso e meta semanal apenas quando isso melhorar a execucao real.
+                          </p>
+                        </div>
+                        <span
+                          className="text-xs font-semibold px-3 py-1 rounded-full border"
+                          style={{
+                            color: 'var(--color-primary)',
+                            borderColor: 'color-mix(in srgb, var(--color-primary) 30%, transparent)',
+                            backgroundColor: 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
+                          }}
+                        >
+                          Modo ativo: {preferredStudyTrack === 'enem' ? 'ENEM' : preferredStudyTrack === 'concursos' ? 'Concurso' : 'Hibrido'}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-1.5 dark:border-slate-700 dark:bg-slate-900">
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            onClick={() => setPreferredStudyTrack('enem')}
+                            className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                              preferredStudyTrack === 'enem'
+                                ? 'text-white shadow-sm'
+                                : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                            style={preferredStudyTrack === 'enem' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                          >
+                            ENEM
+                          </button>
+                          <button
+                            onClick={() => setPreferredStudyTrack('concursos')}
+                            className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                              preferredStudyTrack === 'concursos'
+                                ? 'text-white shadow-sm'
+                                : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                            style={preferredStudyTrack === 'concursos' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                          >
+                            Concurso
+                          </button>
+                          <button
+                            onClick={() => setPreferredStudyTrack('hibrido')}
+                            className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                              preferredStudyTrack === 'hibrido'
+                                ? 'text-white shadow-sm'
+                                : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                            style={preferredStudyTrack === 'hibrido' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                          >
+                            Hibrido
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                        {preferredStudyTrack === 'hibrido' && (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                            <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">Peso por objetivo</p>
+                            <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                              <span>ENEM: {hybridEnemWeight}%</span>
+                              <span>Concurso: {hybridConcursoWeight}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={10}
+                              max={90}
+                              step={5}
+                              value={hybridEnemWeight}
+                              onChange={(event) => setHybridEnemWeight(Number(event.target.value))}
+                              className="w-full accent-[var(--color-primary)]"
+                            />
+                          </div>
+                        )}
+
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                          <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">Meta semanal</p>
+                          <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                            <span>{weeklyGoalMinutes} min/semana</span>
+                            <span>{activeStudyMethod.name}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={300}
+                            max={2400}
+                            step={30}
+                            value={weeklyGoalMinutes}
+                            onChange={(event) => setWeeklyGoalMinutes(Number(event.target.value))}
+                            className="w-full accent-[var(--color-primary)]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 text-xs rounded-lg bg-white border border-slate-200 p-3 dark:bg-slate-900 dark:border-slate-700">
+                        {preferencesSyncStatus === 'syncing' && (
+                          <p className="text-sky-600 dark:text-sky-300 inline-flex items-center gap-1"><Cloud className="w-3.5 h-3.5" />Sincronizando preferencias na nuvem...</p>
+                        )}
+                        {preferencesSyncStatus === 'synced' && (
+                          <p className="text-emerald-600 dark:text-emerald-300 inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" />Preferencias sincronizadas com a nuvem.</p>
+                        )}
+                        {preferencesSyncStatus === 'error' && (
+                          <p className="text-amber-600 dark:text-amber-300 inline-flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" />Modo local ativo. A sincronizacao sera retomada quando possivel.</p>
+                        )}
+                        {preferencesSyncStatus === 'local' && (
+                          <p className="text-slate-500 dark:text-slate-400 inline-flex items-center gap-1"><Package className="w-3.5 h-3.5" />Preferencias salvas localmente neste dispositivo.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Metodo</p>
+                          <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                            Escolha metodo so quando isso ajudar a executar melhor
+                          </h3>
+                        </div>
+                        <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando métodos...</div>}>
+                          <StudyMethodHub
+                            userData={userData}
+                            selectedMethodId={selectedMethodId}
+                            onSelectMethod={(methodId) => {
+                              applyPomodoroMethod(methodId);
+                            }}
+                            onStartMethod={(methodId) => {
+                              applyPomodoroMethod(methodId);
+                              scrollToFocusTimer();
+                            }}
+                          />
+                        </Suspense>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Cronograma</p>
+                          <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                            Seu plano base ja esta definido. Ajuste so se precisar.
+                          </h3>
+                        </div>
+                        <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando cronograma...</div>}>
+                          <StudyScheduleCalendar
+                            userId={supabaseUserId}
+                            weeklySchedule={weeklySchedule}
+                            onChangeWeeklySchedule={setWeeklyScheduleRaw}
+                            studyContextForToday={effectiveStudyContextForToday}
+                            weeklyCompletedSessions={weeklyCompletedSessions}
+                            todayCompletedSessions={todayCompletedSessions}
+                            completedWeekdays={completedWeekdays}
+                            requestedEditDay={requestedScheduleEditDay}
+                            requestedEditNonce={requestedScheduleEditNonce}
+                          />
+                        </Suspense>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {isUnifiedStudyFlow && (activeTab === 'metodos' || activeTab === 'cronograma') && (
+            <div ref={studyAdjustmentsSectionRef} className="max-w-6xl mx-auto space-y-6">
+              <StudyExecutionBanner
+                eyebrow="Ajustes do plano"
+                title={activeTab === 'cronograma' ? 'Organize sua semana' : 'Como voce vai focar'}
+                description="Aqui voce decide o plano. Depois, volta para continuar a execucao do bloco principal."
+                primaryActionLabel="Voltar para estudar"
+                onPrimaryAction={() => {
+                  setActiveTab('foco');
+                  window.setTimeout(() => {
+                    scrollToFocusTimer();
+                  }, 60);
+                }}
+                meta={[
+                  { label: 'Bloco atual', value: currentBlockDisplayLabel },
+                  { label: 'Modo ativo', value: activeStudyMode === 'pomodoro' ? 'Pomodoro' : 'Cronometro livre' },
+                  { label: 'Meta semanal', value: `${weeklyGoalMinutes} min` },
+                ]}
+              />
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('cronograma')}
+                  className={`px-4 py-2 rounded-2xl text-sm font-semibold transition ${
+                    activeTab === 'cronograma'
+                      ? 'text-white'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                  }`}
+                  style={activeTab === 'cronograma' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                >
+                  Cronograma
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('metodos')}
+                  className={`px-4 py-2 rounded-2xl text-sm font-semibold transition ${
+                    activeTab === 'metodos'
+                      ? 'text-white'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                  }`}
+                  style={activeTab === 'metodos' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                >
+                  Metodo
+                </button>
+              </div>
+
+              <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+                {activeTab === 'cronograma' ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                        Configuracao base
+                      </p>
+                      <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                        Ajuste o contexto da sua semana antes de mexer no cronograma.
+                      </p>
+                      <div className="mt-4">
+                        <ModeSelector currentMode={activeStudyMode} onModeChange={handleStudyModeChange} />
+                      </div>
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-1.5 dark:border-slate-700 dark:bg-slate-900">
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            onClick={() => setPreferredStudyTrack('enem')}
+                            className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                              preferredStudyTrack === 'enem'
+                                ? 'text-white shadow-sm'
+                                : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                            style={preferredStudyTrack === 'enem' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                          >
+                            ENEM
+                          </button>
+                          <button
+                            onClick={() => setPreferredStudyTrack('concursos')}
+                            className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                              preferredStudyTrack === 'concursos'
+                                ? 'text-white shadow-sm'
+                                : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                            style={preferredStudyTrack === 'concursos' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                          >
+                            Concurso
+                          </button>
+                          <button
+                            onClick={() => setPreferredStudyTrack('hibrido')}
+                            className={`px-2.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                              preferredStudyTrack === 'hibrido'
+                                ? 'text-white shadow-sm'
+                                : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                            style={preferredStudyTrack === 'hibrido' ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                          >
+                            Hibrido
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Cronograma inteligente</p>
+                        <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                          Monte sua semana de estudo
+                        </h3>
+                        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                          Defina quando e o que estudar. A execucao do dia continua separada.
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                        <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 mb-2">Meta semanal</p>
+                        <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                          <span>{weeklyGoalMinutes} min/semana</span>
+                          <span>{activeStudyMethod.name}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={300}
+                          max={2400}
+                          step={30}
+                          value={weeklyGoalMinutes}
+                          onChange={(event) => setWeeklyGoalMinutes(Number(event.target.value))}
+                          className="w-full accent-[var(--color-primary)]"
+                        />
+                      </div>
+                      <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando cronograma...</div>}>
+                        <StudyScheduleCalendar
+                          userId={supabaseUserId}
+                          weeklySchedule={weeklySchedule}
+                          onChangeWeeklySchedule={setWeeklyScheduleRaw}
+                          studyContextForToday={effectiveStudyContextForToday}
+                          weeklyCompletedSessions={weeklyCompletedSessions}
+                          todayCompletedSessions={todayCompletedSessions}
+                          completedWeekdays={completedWeekdays}
+                          requestedEditDay={requestedScheduleEditDay}
+                          requestedEditNonce={requestedScheduleEditNonce}
+                        />
+                      </Suspense>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                        Resumo do plano atual
+                      </p>
+                      <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                        Use este resumo para decidir sem quebrar o ritmo da execucao atual.
+                      </p>
+                      <div className="mt-4">
+                        <ModeSelector currentMode={activeStudyMode} onModeChange={handleStudyModeChange} />
+                      </div>
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                        <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200">
+                          <span>Metodo</span>
+                          <span>{activeStudyMethod.name}</span>
+                        </div>
+                        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                          Meta semanal: {(weeklyGoalMinutes / 60).toFixed(1)} h
+                        </p>
+                        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                          Foco atual: {currentBlockDisplayLabel}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Metodo de estudo</p>
+                        <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                          Escolha o metodo padrao fora da tela de execucao
+                        </h3>
+                      </div>
+                      <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando metodos...</div>}>
+                        <StudyMethodHub
+                          userData={userData}
+                          selectedMethodId={selectedMethodId}
+                          onSelectMethod={(methodId) => {
+                            applyPomodoroMethod(methodId);
+                          }}
+                          onStartMethod={(methodId) => {
+                            applyPomodoroMethod(methodId);
+                            handleStartStudyFlowSafely();
+                          }}
+                        />
+                      </Suspense>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {!isUnifiedStudyFlow && activeTab === 'metodos' && (
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando métodos...</div>}>
-              <StudyMethodHub
+              <div className="space-y-6">
+                <StudyExecutionBanner
+                  eyebrow="Metodo recomendado hoje"
+                  title={`${activeStudyMethod.name} para destravar a execucao do bloco atual`}
+                  description="Metodo deixa de ser catalogo e vira apoio de execucao. Se nada mudou no seu ritmo, use o recomendado e comece."
+                  primaryActionLabel="Usar metodo e iniciar foco"
+                  onPrimaryAction={() => {
+                    setSelectedMethodId(activeStudyMethod.id);
+                    handleStartStudyFlowSafely();
+                  }}
+                  meta={[
+                    { label: 'Metodo ativo', value: activeStudyMethod.name },
+                    { label: 'Bloco atual', value: currentBlockDisplayLabel },
+                    { label: 'Objetivo', value: effectiveStudyExecutionState.currentBlock.objective },
+                  ]}
+                />
+                <StudyMethodHub
                 userData={userData}
                 selectedMethodId={selectedMethodId}
-                onSelectMethod={setSelectedMethodId}
-                onStartMethod={(methodId) => {
-                  setSelectedMethodId(methodId);
-                  setActiveTab('foco');
-                  setActiveStudyMode('pomodoro');
+                onSelectMethod={(methodId) => {
+                  applyPomodoroMethod(methodId);
                 }}
-              />
+                onStartMethod={(methodId) => {
+                  applyPomodoroMethod(methodId);
+                  handleStartStudyFlowSafely();
+                }}
+                />
+              </div>
             </Suspense>
           )}
 
@@ -1436,11 +3730,10 @@ function App() {
                 userData={userData}
                 weeklyGoalMinutes={weeklyGoalMinutes}
                 onGoToFocus={() => {
-                  setActiveTab('foco');
-                  setActiveStudyMode('pomodoro');
+                  handleStartStudyFlowSafely();
                 }}
                 onGoToAcademy={() => {
-                  setActiveTab('departamento');
+                  attemptProtectedNavigation('departamento');
                 }}
               />
             </Suspense>
@@ -1448,7 +3741,16 @@ function App() {
 
           {activeTab === 'mentor-admin' && (
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando dashboard admin...</div>}>
-              <MentorAdminDashboard userEmail={user?.email} />
+              <MentorAdminDashboard
+                userEmail={user?.email}
+                currentDisciplineName={preferredTreeDisciplineName}
+                currentDisciplineSourceLabel={preferredTreeDisciplineSourceLabel}
+                profileDisplayName={resolvedDisplayName}
+                profileAvatar={profileAvatar}
+                profileExamGoal={profileExamGoal}
+                profileExamDate={profileExamDate}
+                profileSyncStatus={profileSyncStatus}
+              />
             </Suspense>
           )}
 
@@ -1467,31 +3769,179 @@ function App() {
                 currentStreak={userData.currentStreak || 0}
                 onStartStudyNow={({ methodId }) => {
                   if (methodId) {
-                    setSelectedMethodId(methodId);
+                    applyPomodoroMethod(methodId);
+                  } else {
+                    setFocusExecutionState();
                   }
-                  setActiveTab('foco');
-                  setActiveStudyMode('pomodoro');
+                  handleStartStudyFlowSafely();
                   setAcademyQuickStartSignal((prev) => prev + 1);
                 }}
                 onApplyMethod={(methodId) => {
-                  setSelectedMethodId(methodId);
-                  setActiveTab('foco');
-                  setActiveStudyMode('pomodoro');
+                  applyPomodoroMethod(methodId);
+                  handleStartStudyFlowSafely();
                 }}
               />
             </Suspense>
           )}
 
-          {/* Página Árvore */}
+          {/* Pagina Arvore */}
           {activeTab === 'arvore' && (
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando árvore...</div>}>
-              <KnowledgeGenealogyTree supabaseUserId={supabaseUserId} />
+              <KnowledgeGenealogyTree
+                supabaseUserId={supabaseUserId}
+                preferredDisciplineName={preferredTreeDisciplineName}
+              />
             </Suspense>
           )}
 
           {/* Página Foco */}
-          {activeTab === 'foco' && (
+          {!isUnifiedStudyFlow && activeTab === 'foco' && (
             <div className="max-w-4xl mx-auto space-y-6">
+              <StudyExecutionBanner
+                eyebrow="Próximo passo recomendado"
+                title={
+                  isStudyFlowBlockedBySchedule
+                    ? effectiveStudyContextForToday.state.type === 'inactive'
+                      ? 'Hoje está livre no seu cronograma'
+                      : 'Defina as disciplinas de hoje antes de começar'
+                    : showQuestionTransitionState
+                      ? questionTransitionTitle
+                      : showPostFocusState
+                        ? 'Sessão concluída'
+                        : 'Iniciar sua sessão de foco'
+                }
+                description={
+                  isStudyFlowBlockedBySchedule
+                    ? effectiveStudyContextForToday.state.type === 'inactive'
+                      ? 'O estudo não sobe uma sessão normal hoje. Reative o dia no cronograma para continuar.'
+                      : 'O dia está ativo, mas sem disciplinas definidas. Ajuste o cronograma antes de entrar na execução.'
+                    : showQuestionTransitionState
+                      ? questionTransitionDescription
+                      : showPostFocusState && lastCompletedFocus
+                        ? `Você focou em ${lastCompletedFocusDisplayLabel}.`
+                        : 'Foco deixa de ser uma ferramenta solta e vira o centro da execução. Método, matéria e objetivo já estão definidos.'
+                }
+                primaryActionLabel={
+                  isStudyFlowBlockedBySchedule
+                    ? effectiveStudyContextForToday.state.type === 'inactive'
+                      ? 'Abrir cronograma'
+                      : 'Definir disciplinas'
+                    : showQuestionTransitionState
+                      ? 'Aguarde'
+                      : showPostFocusState
+                        ? postFocusPrimaryActionLabel
+                        : 'Começar sessão agora'
+                }
+                onPrimaryAction={
+                  isStudyFlowBlockedBySchedule
+                    ? handleOpenTodaySchedule
+                    : showQuestionTransitionState
+                      ? () => {}
+                      : showPostFocusState
+                        ? handleContinueAfterFocus
+                        : scrollToFocusTimer
+                }
+                primaryActionDisabled={showQuestionTransitionState}
+                supportingText={
+                  showPostFocusState
+                    ? [postFocusSecondaryCopy, nextStudySuggestionCopy].filter(Boolean).join(' ')
+                    : !isStudyFlowBlockedBySchedule && currentBlockSuggestedTopicCopy
+                      ? currentBlockSuggestedTopicCopy
+                      : undefined
+                }
+                secondaryActionLabel={showPostFocusState ? 'Ajustar plano' : undefined}
+                onSecondaryAction={showPostFocusState ? handleOpenTodaySchedule : undefined}
+                className={showPostFocusState ? 'transition-all duration-200 ease-out' : undefined}
+                meta={[
+                  showPostFocusState && lastCompletedFocus
+                    ? { label: 'Bloco', value: lastCompletedFocusDisplayLabel }
+                    : { label: 'Método ativo', value: activeStudyMethod.name },
+                  showPostFocusState && lastCompletedFocus
+                    ? { label: 'Hoje', value: postFocusProgressCopy }
+                    : { label: 'Bloco atual', value: currentBlockDisplayLabel },
+                  showPostFocusState && lastCompletedFocus
+                    ? { label: 'Semana', value: weeklyProgressCopy }
+                    : { label: 'Ritmo', value: `${weeklyGoalMinutes} min/semana` },
+                  showPostFocusState && lastCompletedFocus
+                    ? { label: 'Próximo passo', value: canContinueWithQuestions ? 'Continuar com questões' : 'Continuar estudando' }
+                    : { label: 'Objetivo da sessão', value: effectiveStudyExecutionState.currentBlock.objective },
+                ]}
+              />
+              {isStudyFlowBlockedBySchedule ? (
+                <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-900 dark:bg-amber-950/30 sm:p-6">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Execução protegida</p>
+                  <h2 className="mt-2 text-2xl font-bold tracking-tight text-amber-950 dark:text-amber-100">
+                    O foco só abre quando o dia estiver coerente
+                  </h2>
+                  <p className="mt-2 text-sm text-amber-900/80 dark:text-amber-100/80">
+                    Ajuste o cronograma de hoje e depois volte para estudar. Isso evita iniciar sessão fora do plano do dia.
+                  </p>
+                </div>
+              ) : showQuestionTransitionState ? (
+                <div className="rounded-[28px] border border-sky-200 bg-sky-50 p-5 shadow-sm transition-all duration-200 ease-out dark:border-sky-900 dark:bg-sky-950/30 sm:p-6">
+                  <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
+                    <span className="h-2 w-2 rounded-full bg-sky-500 motion-safe:animate-pulse" />
+                    Transição
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold tracking-tight text-sky-950 dark:text-sky-100">
+                    {questionTransitionTitle}
+                  </h2>
+                  <p className="mt-2 text-sm text-sky-900/80 dark:text-sky-100/80">
+                    {questionTransitionDescription}
+                  </p>
+                </div>
+              ) : showPostFocusState && lastCompletedFocus ? (
+                <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 shadow-sm transition-all duration-200 ease-out dark:border-emerald-900 dark:bg-emerald-950/30 sm:p-6">
+                  <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Depois do foco
+                  </p>
+                  <h2 className="mt-2 text-2xl font-bold tracking-tight text-emerald-950 dark:text-emerald-100">
+                    Sessão concluída
+                  </h2>
+                  <p className="mt-2 text-sm font-semibold text-emerald-950 dark:text-emerald-100">
+                    {lastCompletedFocusDisplayLabel}
+                  </p>
+                  <p className="mt-1 text-sm text-emerald-900/80 dark:text-emerald-100/80">
+                    {postFocusProgressCopy}
+                  </p>
+                  <p className="mt-1 text-sm text-emerald-900/70 dark:text-emerald-100/70">
+                    {weeklyProgressCopy}
+                  </p>
+                  <p className="mt-3 text-sm text-emerald-900/80 dark:text-emerald-100/80">
+                    Você focou em {lastCompletedFocusDisplayLabel}.
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-emerald-900 dark:text-emerald-100">
+                    {postFocusPlanConfidenceCopy}
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-emerald-900/80 dark:text-emerald-100/80">
+                    {postFocusSecondaryCopy}
+                  </p>
+                  {nextStudySuggestionCopy ? (
+                    <p className="mt-2 text-xs text-emerald-900/60 dark:text-emerald-100/60">
+                      {nextStudySuggestionCopy}
+                    </p>
+                  ) : null}
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={handleContinueAfterFocus}
+                      className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3.5 text-base font-semibold text-white shadow-sm hover:bg-slate-800 sm:w-auto"
+                    >
+                      {postFocusPrimaryActionLabel}
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenTodaySchedule}
+                      className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100/60 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-100"
+                    >
+                      Ajustar plano
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
               <div className="text-center">
                 <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Zona de Foco</h2>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Escolha o modo e comece a pontuar.</p>
@@ -1597,7 +4047,7 @@ function App() {
                     </p>
                     <div className="flex items-center justify-between text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
                       <span>{weeklyGoalMinutes} min/semana</span>
-                      <span>{(weeklyGoalMinutes / 60).toFixed(1)} h</span>
+                      <span>{activeStudyMethod.name}</span>
                     </div>
                     <input
                       type="range"
@@ -1624,9 +4074,11 @@ function App() {
                   {preferencesSyncStatus === 'local' && (
                     <p className="text-slate-500 dark:text-slate-400 inline-flex items-center gap-1"><Package className="w-3.5 h-3.5" />Preferências salvas localmente neste dispositivo.</p>
                   )}
-                  {lastPreferencesSyncAt && preferencesSyncStatus === 'synced' && (
+                  {lastPreferencesSyncAt !== null && preferencesSyncStatus === 'synced' && (
                     <p className="text-slate-500 dark:text-slate-400 mt-1">
-                      Última sincronização: {new Date(lastPreferencesSyncAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      Última sincronização: {lastPreferencesSyncAt
+                        ? new Date(String(lastPreferencesSyncAt)).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                        : '--:--'}
                     </p>
                   )}
                 </div>
@@ -1675,17 +4127,23 @@ function App() {
                 </p>
               </div>
 
-              <ModeSelector currentMode={activeStudyMode} onModeChange={setActiveStudyMode} />
+              <div ref={focusTimerSectionRef} data-testid="study-focus-container">
+                <ModeSelector currentMode={activeStudyMode} onModeChange={handleStudyModeChange} />
 
               {activeStudyMode === 'pomodoro' ? (
                 <div className="space-y-6">
                   <PomodoroTimer
                     onFinishSession={handleFinishStudySession}
                     selectedMethodId={selectedMethodId}
-                    onSelectMethod={setSelectedMethodId}
+                    onSelectMethod={(methodId) => {
+                      applyPomodoroMethod(methodId);
+                    }}
                     quickStartSignal={academyQuickStartSignal}
+                    initialFocusMinutes={effectiveStudyExecutionState.currentBlock.duration}
                     preferredTrack={preferredStudyTrack}
                     hybridEnemWeight={hybridEnemWeight}
+                    sessionStorageScope={userStorageScope}
+                    userEmail={user?.email}
                   />
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
                     <h3 className="font-semibold text-slate-100 mb-2 flex items-center gap-2">
@@ -1706,9 +4164,14 @@ function App() {
                       onFinishSession={handleFinishStudySession}
                       preferredTrack={preferredStudyTrack}
                       hybridEnemWeight={hybridEnemWeight}
+                      sessionStorageScope={userStorageScope}
+                      userEmail={user?.email}
                     />
                   </Suspense>
                 </div>
+              )}
+              </div>
+                </>
               )}
             </div>
           )}
@@ -1718,20 +4181,13 @@ function App() {
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando dashboard...</div>}>
               {(userData.sessions?.length || userData.studyHistory?.length) ? (
               <div className="space-y-6">
-                <LevelProgress userPoints={userData.totalPoints} />
-                <RankOverview
-                  userPoints={userData.totalPoints}
-                  highlightSignal={rankHighlightSignal}
-                  darkMode={darkMode}
-                />
                 <ErrorBoundary>
                   <Dashboard
                     userData={userData}
                     todayMinutes={todayMinutes}
                     userName={resolvedDisplayName}
                     onStartFocusSession={() => {
-                      setActiveTab('foco');
-                      setActiveStudyMode('pomodoro');
+                      handleStartStudyFlowSafely();
                     }}
                     onStartLongSession={() => {
                       const longestMethod = [...STUDY_METHODS].sort((a, b) => {
@@ -1743,24 +4199,40 @@ function App() {
 
                       if (longestMethod) {
                         setSelectedMethodId(longestMethod.id);
+                        setFocusExecutionState(
+                          { duration: longestMethod.focusMinutes },
+                          'manual',
+                          longestMethod.id,
+                        );
                       }
 
-                      setActiveTab('foco');
-                      setActiveStudyMode('pomodoro');
+                      handleStartStudyFlowSafely();
                     }}
-                    onOpenQuestions={() => setActiveTab('questoes')}
+                    onOpenQuestions={() => {
+                      handleStartQuestionsSafely();
+                    }}
                     onOpenFlashcards={() => setActiveTab('flashcards')}
                   />
                 </ErrorBoundary>
-                <div className="bg-slate-900 rounded-xl border border-slate-700/70 shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] p-6">
-                  <StudyHeatmap sessions={userData.sessions || userData.studyHistory || []} />
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+                  <LevelProgress userPoints={userData.totalPoints} />
+                  <RankOverview
+                    userPoints={userData.totalPoints}
+                    highlightSignal={rankHighlightSignal}
+                    darkMode={darkMode}
+                  />
                 </div>
-                <div className="bg-slate-900 rounded-xl border border-slate-700/70 shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] p-6">
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                  <div className="bg-slate-900 rounded-xl border border-slate-700/70 shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] p-6">
+                    <StudyHeatmap sessions={userData.sessions || userData.studyHistory || []} />
+                  </div>
+                  <div className="bg-slate-900 rounded-xl border border-slate-700/70 shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] p-6">
                   <h3 className="text-xl font-bold text-slate-100 mb-2">Gráfico Semanal</h3>
                   <WeeklyChartReal
                     sessions={userData.sessions || userData.studyHistory || []}
                     dailyGoalMinutes={userData.dailyGoal || 180}
                   />
+                </div>
                 </div>
                 <MethodPerformance sessions={userData.sessions || userData.studyHistory || []} />
                 <WeeklyReport sessions={userData.sessions || userData.studyHistory || []} />
@@ -1771,32 +4243,111 @@ function App() {
                   title="Nenhuma sessão registrada"
                   description="Comece sua primeira sessão de estudo para ver estatísticas, gráficos e progresso detalhado aqui."
                   actionLabel="Começar a Estudar"
-                  onAction={() => { setActiveTab('foco'); setActiveStudyMode('pomodoro'); }}
+                  onAction={handleStartStudyFlowSafely}
                   secondaryLabel="Ver Departamento"
-                  onSecondaryAction={() => setActiveTab('departamento')}
+                  onSecondaryAction={() => attemptProtectedNavigation('departamento')}
                 />
               )}
             </Suspense>
           )}
 
           {/* Página Cronograma */}
-          {activeTab === 'cronograma' && (
+          {!isUnifiedStudyFlow && activeTab === 'cronograma' && (
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando cronograma...</div>}>
-              <StudyScheduleCalendar userId={supabaseUserId} />
+              <div className="space-y-6">
+                <StudyExecutionBanner
+                  eyebrow="Plano base"
+                  title="Seu plano base ja esta definido. Ajuste so se precisar."
+                  description="Cronograma vira origem do estudo, nao primeira tarefa. O caminho dominante continua sendo executar o bloco de hoje."
+                  primaryActionLabel="Executar plano de hoje"
+                  onPrimaryAction={handleStartStudyFlowSafely}
+                  meta={[
+                    { label: 'Bloco atual', value: currentBlockDisplayLabel },
+                    { label: 'Duracao prevista', value: `${effectiveStudyExecutionState.currentBlock.duration || plannedFocusDuration} min` },
+                    { label: 'Origem', value: effectiveStudyExecutionState.source === 'manual' ? 'Manual' : effectiveStudyExecutionState.source === 'plan' ? 'Plano' : 'IA' },
+                  ]}
+                />
+                <StudyScheduleCalendar
+                  userId={supabaseUserId}
+                  weeklySchedule={weeklySchedule}
+                  onChangeWeeklySchedule={setWeeklyScheduleRaw}
+                  studyContextForToday={effectiveStudyContextForToday}
+                  weeklyCompletedSessions={weeklyCompletedSessions}
+                  todayCompletedSessions={todayCompletedSessions}
+                  completedWeekdays={completedWeekdays}
+                  requestedEditDay={requestedScheduleEditDay}
+                  requestedEditNonce={requestedScheduleEditNonce}
+                />
+              </div>
             </Suspense>
           )}
 
           {/* Página Questões */}
-          {activeTab === 'questoes' && (
+          {!isUnifiedStudyFlow && activeTab === 'questoes' && (
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando questões...</div>}>
-              <QuizPage
+              <div className="space-y-6">
+                <StudyExecutionBanner
+                  eyebrow="Pratica recomendada"
+                  title={
+                    isStudyFlowBlockedBySchedule
+                      ? effectiveStudyContextForToday.state.type === 'inactive'
+                        ? 'Hoje esta livre no seu cronograma'
+                        : 'Defina as disciplinas de hoje antes de abrir questoes'
+                      : currentTargetQuestions > 0
+                        ? `${currentTargetQuestions} questoes de ${currentBlockDisplayLabel} para validar o bloco atual`
+                        : `Pratica recomendada de ${currentBlockDisplayLabel}`
+                  }
+                  description={
+                    isStudyFlowBlockedBySchedule
+                      ? effectiveStudyContextForToday.state.type === 'inactive'
+                        ? 'A pratica recomendada nao sobe em dia inativo. Reative o dia no cronograma para continuar.'
+                        : 'O dia esta ativo, mas sem disciplinas definidas. Ajuste o cronograma antes de abrir a pratica.'
+                      : 'Questões deixam de ser caos de filtros e viram validação do que você acabou de estudar. Se quiser explorar, os filtros continuam abaixo.'
+                  }
+                  primaryActionLabel={
+                    isStudyFlowBlockedBySchedule
+                      ? effectiveStudyContextForToday.state.type === 'inactive'
+                        ? 'Abrir cronograma'
+                        : 'Definir disciplinas'
+                      : 'Comecar pratica recomendada'
+                  }
+                  onPrimaryAction={isStudyFlowBlockedBySchedule ? handleOpenTodaySchedule : handleStartQuestionsSafely}
+                  meta={[
+                    { label: 'Bloco', value: currentBlockDisplayLabel },
+                    { label: 'Topico', value: currentBlockContentPath.topicLabel || 'Bloco atual' },
+                    { label: 'Objetivo', value: effectiveStudyExecutionState.currentBlock.objective },
+                  ]}
+                />
+                {isStudyFlowBlockedBySchedule ? (
+                  <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-900 dark:bg-amber-950/30 sm:p-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Pratica protegida</p>
+                    <h2 className="mt-2 text-2xl font-bold tracking-tight text-amber-950 dark:text-amber-100">
+                      Ajuste o dia antes de validar com questoes
+                    </h2>
+                    <p className="mt-2 text-sm text-amber-900/80 dark:text-amber-100/80">
+                      O fluxo de pratica so abre quando o cronograma de hoje estiver coerente com o que pode subir na execucao.
+                    </p>
+                  </div>
+                ) : (
+                  <QuizPage
                 supabaseUserId={supabaseUserId}
                 initialFilter={quizPrefilter || undefined}
+                recommendedContext={
+                  lastCompletedFocus
+                    ? {
+                        title: `Questões de ${lastCompletedFocusDisplayLabel}`,
+                        subtitle: 'Baseado na sua última sessão',
+                      }
+                    : undefined
+                }
                 onEarnXP={(xp) => {
                   setUserData((prev) => xpEngineService.applyXpDelta(prev, xp));
                   toast.success(`+${xp} XP ganhos nas questões!`);
                 }}
-              />
+                onCompleteAttempt={handleCompleteBeginnerAssessment}
+                />
+                )}
+              </div>
             </Suspense>
           )}
 
@@ -1810,6 +4361,7 @@ function App() {
                   setUserData((prev) => xpEngineService.applyXpDelta(prev, xp));
                   toast.success(`+${xp} XP ganhos no simulado!`);
                 }}
+                onCompleteAttempt={handleCompleteBeginnerAssessment}
               />
             </Suspense>
           )}
@@ -1846,6 +4398,10 @@ function App() {
                 userTotalPoints={userData.totalPoints}
                 weeklyGoalMinutes={weeklyGoalMinutes}
                 weeklyStudiedMinutes={weeklyStudiedMinutes}
+                onStartSession={() => {
+                  setActiveTab('foco');
+                  setActiveStudyMode('pomodoro');
+                }}
               />
             </Suspense>
           )}
@@ -1858,11 +4414,15 @@ function App() {
           )}
 
           {/* Página Conquistas */}
-          {activeTab === 'conquistas' && (
-            <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando conquistas...</div>}>
-              <ConquistasPage userData={userData} />
-            </Suspense>
-          )}
+            {activeTab === 'conquistas' && (
+              <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando conquistas...</div>}>
+                <ConquistasPage
+                  userData={{ ...userData, achievements: unlockedAchievements }}
+                  storageScope={userStorageScope}
+                  weeklyGoalMinutes={weeklyGoalMinutes}
+                />
+              </Suspense>
+            )}
 
           {/* Página Configurações */}
           {activeTab === 'configuracoes' && (
@@ -1894,22 +4454,144 @@ function App() {
           {activeTab === 'dados' && (
             <Suspense fallback={<div className="text-center text-sm text-gray-500 dark:text-gray-400 py-6">Carregando dados...</div>}>
               <div className="space-y-6">
-                <LocalStoragePage
-                  userData={userData}
-                  onImportData={handleImportData}
-                  onClearData={handleClearData}
-                />
-                <DataManagement
-                  data={{
-                    sessions: userData.sessions || userData.studyHistory || [],
-                    userLevel: userData.level,
-                    xp: userData.totalPoints,
-                    exportedAt: new Date().toISOString(),
-                  }}
-                  onClear={handleClearData}
-                />
-                <SyncCenter userId={supabaseUserId} />
-                <RetentionAdminPanel />
+                {canAccessInternalTools ? (
+                  <>
+                    <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="max-w-3xl">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                            Central de operacao
+                          </p>
+                          <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                            Admin do produto e leitura operacional em uma unica vista
+                          </h2>
+                          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                            O foco principal aqui e decidir o que ajustar no produto. Sync, retencao e manutencao local continuam disponiveis como ferramentas de suporte.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:min-w-[520px]">
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                            <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Sessões</p>
+                            <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                              {(userData.sessions || userData.studyHistory || []).length}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                            <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Fase detectada</p>
+                            <p className="mt-2 text-lg font-semibold capitalize text-slate-900 dark:text-slate-100">
+                              {effectiveProductPhase}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                            <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Modo interno</p>
+                            <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                              {isAdminMode ? 'Admin ativo' : 'Interno ativo'}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                            <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Disciplina em foco</p>
+                            <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                              {preferredTreeDisciplineName || 'Sem contexto'}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                              {preferredTreeDisciplineSourceLabel || 'Aguardando ultimo foco ou plano do dia'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <ProfileAdminSnapshotCard
+                      displayName={resolvedDisplayName}
+                      email={user?.email}
+                      avatar={profileAvatar}
+                      examGoal={profileExamGoal}
+                      examDate={profileExamDate}
+                      syncStatus={profileSyncStatus}
+                      title="Perfil refletido na operacao"
+                      subtitle="Confere aqui se a area admin interna esta lendo o mesmo perfil salvo em Configuracoes."
+                    />
+
+                    <DataManagement
+                      data={{
+                        sessions: userData.sessions || userData.studyHistory || [],
+                        userLevel: userData.level,
+                        xp: userData.totalPoints,
+                        exportedAt: new Date().toISOString(),
+                      }}
+                      onClear={handleClearData}
+                    />
+
+                    <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminSupportTools((previous) => !previous)}
+                        className="flex w-full items-center justify-between gap-4 text-left"
+                      >
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                            Ferramentas de suporte
+                          </p>
+                          <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                            Sync, retencao e dados locais sem disputar atencao com a operacao
+                          </h3>
+                          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                            Abra esta area quando precisar diagnosticar sincronizacao, retention panel ou manutencao manual dos dados.
+                          </p>
+                        </div>
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          {showAdminSupportTools ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                        </span>
+                      </button>
+
+                      {showAdminSupportTools && (
+                        <div className="mt-6 space-y-6">
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                              Sincronizacao
+                            </p>
+                            <div className="mt-4">
+                              <SyncCenter userId={supabaseUserId} />
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                              Retencao e diagnostico
+                            </p>
+                            <div className="mt-4">
+                              <RetentionAdminPanel />
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                              Dados locais
+                            </p>
+                            <div className="mt-4">
+                              <LocalStoragePage
+                                userData={userData}
+                                onImportData={handleImportData}
+                                onClearData={handleClearData}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-lg font-bold text-slate-800">Modo interno necessario</h3>
+                    <p className="mt-2 text-sm text-slate-600">
+                      Ative o modo admin no switcher interno para liberar analytics, operacao e paineis de produto.
+                    </p>
+                    <p className="mt-3 text-xs text-slate-500">
+                      Para liberar neste navegador em producao, abra a URL com <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-700">?internal=1</span> uma vez.
+                    </p>
+                  </div>
+                )}
               </div>
             </Suspense>
           )}
@@ -1917,6 +4599,72 @@ function App() {
           </section>
         </div>
       </main>
+
+      {canAccessInternalTools && (
+        <DevPhaseSwitcher
+          detectedPhase={detectedProductPhase}
+          effectivePhase={effectiveProductPhase}
+          phaseOverride={phaseOverride}
+          isAdminMode={isAdminMode}
+          onChangePhaseOverride={setPhaseOverride}
+          onToggleAdminMode={() => setIsAdminMode((previous) => !previous)}
+          onResetInternalMode={handleResetInternalMode}
+        />
+      )}
+
+      {showBeginnerWeekSummary && (
+        <BeginnerWeekSummaryModal
+          summary={beginnerWeekSummary}
+          progressStage={beginnerProgressStage}
+          onAction={handleBeginnerWeekSummaryAction}
+          onClose={() => completeBeginnerWeekSummary('dismiss')}
+        />
+      )}
+
+      {(() => {
+        const beginnerResult = lastBeginnerResult;
+        if (!beginnerResult) {
+          return null;
+        }
+
+        return (
+          <BeginnerSessionResult
+            completedMissionLabel={beginnerResult!.completedMissionLabel}
+            nextMissionLabel={beginnerResult!.nextMissionLabel}
+            correctAnswers={beginnerResult!.correctAnswers}
+            totalQuestions={beginnerResult!.totalQuestions}
+            xpGained={beginnerResult!.xpGained}
+            streak={userData.currentStreak || userData.streak || 0}
+            onPrimaryAction={() => {
+              trackBeginnerEvent('beginner_next_step_clicked', {
+                completedMissionId: beginnerResult!.completedMissionId,
+                nextMissionId: beginnerResult!.nextMissionId || null,
+                source: 'post_session_modal',
+              });
+              setLastBeginnerResult(null);
+              setActiveTab('inicio');
+            }}
+            onClose={() => {
+              setLastBeginnerResult(null);
+              setActiveTab('inicio');
+            }}
+          />
+        );
+      })()}
+
+      <ConfirmModal
+        open={Boolean(lockedNavigationTarget)}
+        title="Voce vai desbloquear isso automaticamente apos sua primeira semana"
+        message={`${lockedNavigationTarget?.label || 'Essa ferramenta'} entra logo depois que voce ganhar ritmo. Agora o foco e so completar sua semana guiada. Depois disso, essas ferramentas entram para acelerar sua evolucao.`}
+        confirmLabel="Voltar para a missão"
+        variant="info"
+        alertOnly
+        onConfirm={() => {
+          setLockedNavigationTarget(null);
+          setActiveTab('inicio');
+        }}
+        onCancel={() => setLockedNavigationTarget(null)}
+      />
 
       {/* Feedback Button */}
       <Suspense fallback={null}>

@@ -9,6 +9,7 @@ import {
   summarizeTodayStats,
   summarizeWeekStats,
 } from './specDomain.service';
+import { questionCatalogImportService, type QuestionImportInput } from './questionCatalogImport.service';
 
 const supabaseUrl = process.env.SUPABASE_URL?.trim();
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -40,6 +41,15 @@ interface QuestionFilters {
   subjectId?: string;
   skillId?: string;
   difficulty?: 'facil' | 'medio' | 'dificil';
+  area?: string;
+  subarea?: string;
+  objective?: 'enem' | 'concurso' | 'both';
+  boardId?: string;
+  examId?: string;
+  jobId?: string;
+  year?: number;
+  search?: string;
+  limit?: number;
 }
 
 interface AnswerInput {
@@ -443,9 +453,31 @@ export class StudyPlatformCompatService {
 
     let query = client
       .from('questoes')
-      .select('id, enunciado, nivel, explicacao, topico_id, topicos(nome, disciplina_id, disciplinas(nome))')
+      .select(`
+        id,
+        enunciado,
+        nivel,
+        explicacao,
+        topico_id,
+        disciplina_id,
+        banca_id,
+        concurso_id,
+        cargo_id,
+        area,
+        subarea,
+        ano,
+        question_type,
+        objetivo,
+        metadata,
+        alternativas(letra, texto, correta),
+        topicos(nome, disciplina_id),
+        disciplinas!questoes_disciplina_id_fkey(id, nome),
+        exam_boards!questoes_banca_id_fkey(id, name),
+        exams!questoes_concurso_id_fkey(id, name, organization),
+        jobs!questoes_cargo_id_fkey(id, name)
+      `)
       .eq('ativo', true)
-      .limit(50);
+      .limit(Math.min(200, Math.max(1, filters.limit || 50)));
 
     if (filters.difficulty) {
       query = query.eq('nivel', filters.difficulty);
@@ -456,7 +488,39 @@ export class StudyPlatformCompatService {
     }
 
     if (filters.subjectId) {
-      query = query.eq('topicos.disciplina_id', filters.subjectId);
+      query = query.eq('disciplina_id', filters.subjectId);
+    }
+
+    if (filters.area?.trim()) {
+      query = query.eq('area', filters.area.trim());
+    }
+
+    if (filters.subarea?.trim()) {
+      query = query.eq('subarea', filters.subarea.trim());
+    }
+
+    if (filters.objective) {
+      query = query.eq('objetivo', filters.objective);
+    }
+
+    if (filters.boardId) {
+      query = query.eq('banca_id', filters.boardId);
+    }
+
+    if (filters.examId) {
+      query = query.eq('concurso_id', filters.examId);
+    }
+
+    if (filters.jobId) {
+      query = query.eq('cargo_id', filters.jobId);
+    }
+
+    if (typeof filters.year === 'number') {
+      query = query.eq('ano', filters.year);
+    }
+
+    if (filters.search?.trim()) {
+      query = query.ilike('enunciado', `%${filters.search.trim()}%`);
     }
 
     const { data, error } = await query;
@@ -468,11 +532,21 @@ export class StudyPlatformCompatService {
     return (data || []).map((row) => ({
       ...(function () {
         const topic = firstRelation(row.topicos);
-        const discipline = firstRelation(topic?.disciplinas);
+        const discipline = firstRelation(row.disciplinas);
+        const board = firstRelation(row.exam_boards);
+        const exam = firstRelation(row.exams);
+        const job = firstRelation(row.jobs);
         return {
-          subjectId: topic?.disciplina_id || null,
+          subjectId: row.disciplina_id || discipline?.id || topic?.disciplina_id || null,
           subject: discipline?.nome || null,
           skill: topic?.nome || null,
+          boardId: row.banca_id || board?.id || null,
+          board: board?.name || null,
+          examId: row.concurso_id || exam?.id || null,
+          exam: exam?.name || null,
+          organization: exam?.organization || null,
+          jobId: row.cargo_id || job?.id || null,
+          job: job?.name || null,
         };
       })(),
       id: row.id,
@@ -480,7 +554,22 @@ export class StudyPlatformCompatService {
       difficulty: row.nivel,
       question: row.enunciado,
       explanation: row.explicacao || null,
+      area: row.area || null,
+      subarea: row.subarea || null,
+      objective: row.objetivo || null,
+      questionType: row.question_type || 'multiple_choice',
+      year: row.ano || null,
+      metadata: row.metadata || {},
+      alternatives: (row.alternativas || []).map((option) => ({
+        letter: option.letra,
+        text: option.texto,
+        correct: Boolean(option.correta),
+      })),
     }));
+  }
+
+  async importQuestions(input: QuestionImportInput) {
+    return questionCatalogImportService.importQuestions(input);
   }
 
   async submitAnswer(userId: string, input: AnswerInput) {

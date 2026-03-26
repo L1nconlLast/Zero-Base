@@ -6,8 +6,8 @@ import {
   mergeOnboardingStreak,
   replaceActiveRecommendation,
   upsertUserProfile,
-} from '../_lib/mvp';
-import { resolveAuthUser, sendError, sendJson } from '../_lib/supabase';
+} from '../_lib/mvp.js';
+import { resolveAuthUser, sendError, sendJson } from '../_lib/supabase.js';
 
 const normalizeWeakestDisciplines = (input: unknown): string[] => {
   if (!Array.isArray(input)) {

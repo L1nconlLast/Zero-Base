@@ -3,7 +3,7 @@ import { Hand, Brain, CalendarDays, Target, GraduationCap, Landmark, BookOpen, G
 import { createDefaultSmartProfile, type DifficultyLevel, type SmartScheduleProfile } from '../../utils/smartScheduleEngine';
 import { OFFICIAL_EXAM_MODELS } from '../../data/officialExamModels';
 import { trackEvent } from '../../utils/analytics';
-import { supabase } from '../../services/supabase.client';
+import { mvpApiService } from '../../services/mvpApi.service';
 
 interface OnboardingFlowProps {
   userName?: string;
@@ -985,24 +985,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       }
 
       try {
-        const session = await supabase?.auth.getSession();
-        const accessToken = session?.data?.session?.access_token;
-        if (!accessToken) return;
-
-        const response = await fetch('/api/onboarding/load', {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-
-        if (!response.ok) return;
-
-        const apiData = await response.json() as { streakDays?: number; streakLastDay?: string | null };
-        const cloudDays = Number(apiData?.streakDays ?? 0);
-        const cloudLast = apiData?.streakLastDay
-          ? new Date(apiData.streakLastDay).toISOString().slice(0, 10)
+        const cloudStreak = await mvpApiService.getOnboardingStreak();
+        const cloudDays = Number(cloudStreak.days ?? 0);
+        const cloudLast = cloudStreak.lastDay
+          ? new Date(cloudStreak.lastDay).toISOString().slice(0, 10)
           : null;
 
         const mergedDays = Math.max(local.days || 0, Number.isFinite(cloudDays) ? cloudDays : 0);
@@ -1449,20 +1435,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
   const persistStreakToCloud = React.useCallback(async (streak: { days: number; lastDay: string | null }) => {
     try {
-      const session = await supabase?.auth.getSession();
-      const accessToken = session?.data?.session?.access_token;
-      if (!accessToken) return;
-
-      await fetch('/api/onboarding/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          streakDays: streak.days,
-          streakLastDay: streak.lastDay,
-        }),
+      await mvpApiService.saveOnboardingStreak({
+        days: streak.days,
+        lastDay: streak.lastDay,
       });
     } catch {
       // fallback local permanece ativo

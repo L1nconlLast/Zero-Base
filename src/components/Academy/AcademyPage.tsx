@@ -1,9 +1,13 @@
 import React from 'react';
 import toast from 'react-hot-toast';
-import { Crown, CheckCircle2, Lock, GraduationCap, AlertTriangle, TrendingUp, Flame, PlayCircle, ChevronDown, ChevronUp, Target } from 'lucide-react';
+import { Crown, CheckCircle2, Lock, GraduationCap, PlayCircle, Target } from 'lucide-react';
 import type { AcademyContent, AcademyDepartment, AcademySubDepartment } from '../../types';
 import { ACADEMY_CONTENT } from '../../data/academyContent';
 import { useAcademyProgress } from '../../hooks/useAcademyProgress';
+import {
+  DEPARTMENT_MISSION_HEURISTIC_VERSION,
+  getDepartmentMissionState,
+} from '../../services/departmentMission.service';
 import { trackEvent } from '../../utils/analytics';
 
 interface AcademyPageProps {
@@ -112,10 +116,10 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
   const [selectedContent, setSelectedContent] = React.useState<AcademyContent | null>(null);
   const [activeDepartment, setActiveDepartment] = React.useState<AcademyDepartment>('ENEM');
   const [activeSubDepartment, setActiveSubDepartment] = React.useState<AcademySubDepartment>('Natureza');
-  const [expandedSubDepartment, setExpandedSubDepartment] = React.useState<AcademySubDepartment | null>(null);
   const [checkedItems, setCheckedItems] = React.useState<Record<string, boolean>>({});
   const [isProgressAnimated, setIsProgressAnimated] = React.useState(false);
   const focusViewStartedAtRef = React.useRef<number>(Date.now());
+  const lastRecommendedSignatureRef = React.useRef<string | null>(null);
   const importInputRef = React.useRef<HTMLInputElement | null>(null);
   const notesStorageKey = React.useMemo(
     () => `mdz_academy_notes_${(userEmail || 'default').toLowerCase()}`,
@@ -321,36 +325,6 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
     }));
   }, []);
 
-  const getStatusMeta = React.useCallback(
-    (completionRate: number, daysWithoutStudy: number | null) => {
-      if (completionRate >= 70) {
-        return {
-          label: 'Forte',
-          Icon: Crown,
-          className: 'text-emerald-700 bg-emerald-100 dark:text-emerald-200 dark:bg-emerald-900/30',
-          borderClass: 'border-emerald-300 dark:border-emerald-700',
-        };
-      }
-
-      if (daysWithoutStudy === null || daysWithoutStudy >= 5) {
-        return {
-          label: 'Parada',
-          Icon: AlertTriangle,
-          className: 'text-rose-700 bg-rose-100 dark:text-rose-200 dark:bg-rose-900/30',
-          borderClass: 'border-rose-300 dark:border-rose-700',
-        };
-      }
-
-      return {
-        label: 'Evoluindo',
-        Icon: TrendingUp,
-        className: 'text-sky-700 bg-sky-100 dark:text-sky-200 dark:bg-sky-900/30',
-        borderClass: 'border-sky-300 dark:border-sky-700',
-      };
-    },
-    [],
-  );
-
   const smartSubDepartmentStats = React.useMemo(() => {
     const now = Date.now();
 
@@ -359,8 +333,6 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
       const daysWithoutStudy = lastActivityIso
         ? Math.floor((now - new Date(lastActivityIso).getTime()) / (1000 * 60 * 60 * 24))
         : null;
-
-      const statusMeta = getStatusMeta(stat.completionRate, daysWithoutStudy);
 
       const isStrategicPriority =
         activeDepartment === 'ENEM'
@@ -376,27 +348,102 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
         ...stat,
         lastActivityIso,
         daysWithoutStudy,
-        statusMeta,
         isStrategicPriority,
         score,
       };
     });
-  }, [subDepartmentStats, disciplineActivity, getStatusMeta, activeDepartment]);
+  }, [subDepartmentStats, disciplineActivity, activeDepartment]);
 
-  const recommendedFocus = React.useMemo(() => {
-    if (smartSubDepartmentStats.length === 0) return null;
-    return [...smartSubDepartmentStats].sort((a, b) => b.score - a.score)[0];
-  }, [smartSubDepartmentStats]);
+  const missionState = React.useMemo(
+    () =>
+      getDepartmentMissionState(
+        smartSubDepartmentStats.map((stat) => {
+          const disciplineTracks = departmentContent.filter((content) => content.subDepartment === stat.subDepartment);
+          const nextContent = disciplineTracks.find((content) => !completedContentIds.includes(content.id)) || disciplineTracks[0];
 
-  const strongestDiscipline = React.useMemo(() => {
-    if (smartSubDepartmentStats.length === 0) return null;
-    return [...smartSubDepartmentStats].sort((a, b) => b.completionRate - a.completionRate)[0];
-  }, [smartSubDepartmentStats]);
+          return {
+            subDepartment: stat.subDepartment,
+            disciplineOrder: Math.max(0, SUB_DEPARTMENTS_BY_DEPARTMENT[activeDepartment].indexOf(stat.subDepartment)),
+            totalTracks: stat.totalTracks,
+            completedTracks: stat.completedTracks,
+            completionRate: stat.completionRate,
+            totalXp: stat.totalXp,
+            completedXp: stat.completedXp,
+            daysWithoutStudy: stat.daysWithoutStudy,
+            isStrategicPriority: stat.isStrategicPriority,
+            nextContentTitle: nextContent?.title || null,
+          };
+        }),
+      ),
+    [completedContentIds, departmentContent, smartSubDepartmentStats],
+  );
+  const missionDisciplineBySubDepartment = React.useMemo(
+    () =>
+      missionState.zones.reduce((acc, zone) => {
+        zone.disciplines.forEach((discipline) => {
+          acc[discipline.subDepartment] = discipline;
+        });
+
+        return acc;
+      }, {} as Record<AcademySubDepartment, (typeof missionState.zones)[number]['disciplines'][number]>),
+    [missionState.zones],
+  );
 
   const estimatedDaysToFinish = React.useMemo(() => {
     const remainingTracks = Math.max(0, departmentSummary.totalTracks - departmentSummary.completedTracks);
     return remainingTracks * 4;
   }, [departmentSummary]);
+  const activeDisciplineTracks = React.useMemo(
+    () => departmentContent.filter((content) => content.subDepartment === activeSubDepartment),
+    [activeSubDepartment, departmentContent],
+  );
+  const activeDisciplineMission = missionDisciplineBySubDepartment[activeSubDepartment] || null;
+  const activeDisciplineNextTrack = React.useMemo(
+    () => activeDisciplineTracks.find((content) => !completedContentIds.includes(content.id)) || activeDisciplineTracks[0] || null,
+    [activeDisciplineTracks, completedContentIds],
+  );
+
+  React.useEffect(() => {
+    const recommended = missionState.primaryFocus;
+    if (!recommended) {
+      return;
+    }
+
+    const signature = [
+      activeDepartment,
+      recommended.subDepartment,
+      recommended.zone,
+      recommended.priorityRank,
+      recommended.decisionReasonCode,
+      recommended.decisionReason,
+      recommended.completionRate,
+    ].join('|');
+
+    if (lastRecommendedSignatureRef.current === signature) {
+      return;
+    }
+
+    lastRecommendedSignatureRef.current = signature;
+    focusViewStartedAtRef.current = Date.now();
+
+    trackEvent(
+      'department_focus_recommended',
+      {
+        department: activeDepartment,
+        disciplineId: recommended.subDepartment,
+        zone: recommended.zone,
+        attentionScore: Number(recommended.attentionScore.toFixed(2)),
+        completionRate: recommended.completionRate,
+        isStrategicPriority: recommended.isStrategicPriority,
+        heuristicVersion: DEPARTMENT_MISSION_HEURISTIC_VERSION,
+        decisionReasonCode: recommended.decisionReasonCode,
+        reason: recommended.decisionReason,
+        recommendedRank: recommended.priorityRank,
+        streak: currentStreak,
+      },
+      { userEmail },
+    );
+  }, [activeDepartment, currentStreak, missionState.primaryFocus, userEmail]);
 
   const handleOpenDiscipline = (subDepartment: AcademySubDepartment) => {
     markDisciplineInteraction(subDepartment);
@@ -409,19 +456,12 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
       { userEmail },
     );
     setActiveSubDepartment(subDepartment);
-    setExpandedSubDepartment((prev) => (prev === subDepartment ? null : subDepartment));
   };
 
-  const smartStatsBySubDepartment = React.useMemo(
-    () =>
-      smartSubDepartmentStats.reduce((acc, stat) => {
-        acc[stat.subDepartment] = stat;
-        return acc;
-      }, {} as Record<AcademySubDepartment, (typeof smartSubDepartmentStats)[number]>),
-    [smartSubDepartmentStats],
-  );
-
-  const handleStudyDisciplineNow = (subDepartment: AcademySubDepartment) => {
+  const handleStudyDisciplineNow = (
+    subDepartment: AcademySubDepartment,
+    source: 'hero' | 'zone' | 'discipline_panel' = 'zone',
+  ) => {
     const disciplineTracks = departmentContent.filter((content) => content.subDepartment === subDepartment);
     const nextContent = disciplineTracks.find((content) => !completedContentIds.includes(content.id)) || disciplineTracks[0];
 
@@ -431,23 +471,74 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
     }
 
     markDisciplineInteraction(subDepartment);
-    const stat = smartStatsBySubDepartment[subDepartment];
+    const stat = missionDisciplineBySubDepartment[subDepartment];
+    const recommended = missionState.primaryFocus;
+    const wasRecommended = recommended?.subDepartment === subDepartment;
     const elapsedMs = Date.now() - focusViewStartedAtRef.current;
     setActiveSubDepartment(subDepartment);
-    setExpandedSubDepartment(subDepartment);
 
     trackEvent(
       'department_focus_clicked',
       {
         subject: subDepartment,
-        status: (stat?.statusMeta.label || 'Parada').toLowerCase(),
+        source,
+        status: stat?.zone || 'needs_attention',
         completion: stat?.completionRate || 0,
+        wasRecommended,
+        heuristicVersion: DEPARTMENT_MISSION_HEURISTIC_VERSION,
+        recommendedSubject: recommended?.subDepartment || null,
+        recommendedDecisionReasonCode: recommended?.decisionReasonCode || null,
+        recommendedReason: recommended?.decisionReason || null,
+        decisionReasonCode: stat?.decisionReasonCode || null,
+        decisionReason: stat?.decisionReason || null,
+        attentionScore: stat ? Number(stat.attentionScore.toFixed(2)) : null,
+        recommendedAttentionScore: recommended ? Number(recommended.attentionScore.toFixed(2)) : null,
+        recommendedRank: recommended?.priorityRank || null,
         streak: currentStreak,
         secondsToClick: Math.max(0, Math.round(elapsedMs / 1000)),
         contentId: nextContent.id,
       },
       { userEmail },
     );
+
+    if (recommended) {
+      trackEvent(
+        wasRecommended ? 'department_focus_accepted' : 'department_focus_overridden',
+        wasRecommended
+          ? {
+              department: activeDepartment,
+              source,
+              disciplineId: subDepartment,
+              recommendedDisciplineId: recommended.subDepartment,
+              zone: stat?.zone || recommended.zone,
+              heuristicVersion: DEPARTMENT_MISSION_HEURISTIC_VERSION,
+              attentionScore: Number((stat?.attentionScore || recommended.attentionScore).toFixed(2)),
+              completionRate: stat?.completionRate || recommended.completionRate,
+              decisionReasonCode: stat?.decisionReasonCode || recommended.decisionReasonCode,
+              recommendedRank: recommended.priorityRank,
+              reason: stat?.decisionReason || recommended.decisionReason,
+              secondsToClick: Math.max(0, Math.round(elapsedMs / 1000)),
+            }
+          : {
+              department: activeDepartment,
+              source,
+              recommendedDisciplineId: recommended.subDepartment,
+              chosenDisciplineId: subDepartment,
+              recommendedZone: recommended.zone,
+              chosenZone: stat?.zone || null,
+              heuristicVersion: DEPARTMENT_MISSION_HEURISTIC_VERSION,
+              recommendedAttentionScore: Number(recommended.attentionScore.toFixed(2)),
+              chosenAttentionScore: stat ? Number(stat.attentionScore.toFixed(2)) : null,
+              recommendedDecisionReasonCode: recommended.decisionReasonCode,
+              chosenDecisionReasonCode: stat?.decisionReasonCode || null,
+              recommendedReason: recommended.decisionReason,
+              chosenReason: stat?.decisionReason || null,
+              recommendedRank: recommended.priorityRank,
+              secondsToClick: Math.max(0, Math.round(elapsedMs / 1000)),
+            },
+        { userEmail },
+      );
+    }
 
     toast.success(`Iniciando sessão de ${subDepartment}`);
 
@@ -584,13 +675,16 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 inline-flex items-center gap-2"><GraduationCap className="w-6 h-6" /> Academia de Estudo</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Estrutura por departamentos para escala de grande porte: ENEM e Concursos.
+      <div className="rounded-[28px] border border-slate-200/80 bg-white/90 p-6 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.25)] dark:border-white/10 dark:bg-slate-950/75">
+        <h2 className="inline-flex items-center gap-2 text-2xl font-bold text-slate-900 dark:text-white">
+          <GraduationCap className="h-6 w-6 text-blue-500" />
+          Centro de Missao
+        </h2>
+        <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
+          Abra o Departamento para decidir onde colocar energia hoje e puxar a disciplina certa sem pensar demais.
         </p>
 
-        <div className="mt-4 inline-flex rounded-xl bg-gray-100 dark:bg-gray-900 p-1 border border-gray-200 dark:border-gray-700">
+        <div className="mt-4 inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900">
           {(['ENEM', 'Concursos'] as AcademyDepartment[]).map((department) => (
             <button
               key={department}
@@ -608,166 +702,230 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-700/70 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-4 sm:p-5 space-y-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.12em] text-slate-400">{activeDepartment}</p>
-          <p className="text-lg font-bold text-slate-100 mt-1">
-            Você está {departmentSummary.completionRate}% concluído.
-          </p>
-          <p className="text-xs text-slate-400 mt-1">
-            Se mantiver o ritmo atual, termina em aproximadamente {estimatedDaysToFinish} dias.
-          </p>
-        </div>
+      <div className="space-y-4">
+        <div className="rounded-[30px] border border-slate-200/80 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.96),rgba(248,250,252,0.88)_44%,rgba(241,245,249,0.7)_100%)] p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.3)] dark:border-white/8 dark:bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.18),rgba(15,23,42,0.92)_28%,rgba(2,6,23,0.98)_100%)] sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{activeDepartment}</p>
+              <div>
+                <p className="text-3xl font-semibold tracking-tight text-slate-950 dark:text-white">Seu foco hoje</p>
+                <p className="mt-2 text-lg text-slate-700 dark:text-slate-200">
+                  {missionState.primaryFocus
+                    ? `${missionState.primaryFocus.subDepartment} merece atencao agora`
+                    : 'Escolha um departamento para organizar o foco'}
+                </p>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  {missionState.primaryFocus
+                    ? `${missionState.primaryFocus.headline}. ${missionState.primaryFocus.support}`
+                    : 'Use o Departamento para decidir onde puxar a proxima sessao sem abrir varias telas.'}
+                </p>
+                {missionState.primaryFocus ? (
+                  <p className="mt-3 inline-flex rounded-full bg-white/85 px-3 py-1.5 text-xs font-medium text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">
+                    Motivo: {missionState.primaryFocus.decisionReason}
+                  </p>
+                ) : null}
+              </div>
 
-        <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
-          <div className="flex items-center justify-between text-xs text-slate-300 mb-2">
-            <span>Progresso geral</span>
-            <span>{departmentSummary.completedTracks}/{departmentSummary.totalTracks} trilhas</span>
-          </div>
-          <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${isProgressAnimated ? departmentSummary.completionRate : 0}%`, backgroundColor: 'var(--color-primary)' }}
-            />
-          </div>
-          <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300">
-            <span>Conclusão: <strong className="text-slate-100">{departmentSummary.completionRate}%</strong></span>
-            <span>XP: <strong className="text-slate-100">{departmentSummary.completedXp}</strong></span>
-            <span>Potencial: <strong className="text-slate-100">{departmentSummary.totalXp}</strong></span>
-            <span>
-              Melhor disciplina:{' '}
-              <strong className="text-slate-100">{strongestDiscipline?.subDepartment || 'N/A'}</strong>
-            </span>
-          </div>
-        </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white dark:bg-white/10 dark:text-slate-100">
+                  {departmentSummary.completionRate}% concluido
+                </span>
+                <span className="rounded-full bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 dark:bg-white/[0.05] dark:text-slate-300">
+                  {departmentSummary.completedTracks}/{departmentSummary.totalTracks} trilhas
+                </span>
+                <span className="rounded-full bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 dark:bg-white/[0.05] dark:text-slate-300">
+                  Streak {currentStreak} dia(s)
+                </span>
+                <span className="rounded-full bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 dark:bg-white/[0.05] dark:text-slate-300">
+                  ETA {estimatedDaysToFinish} dias
+                </span>
+              </div>
+            </div>
 
-        {recommendedFocus && (
-          <div className="rounded-xl border border-amber-600/40 bg-amber-950/30 p-4">
-            <p className="text-xs font-semibold text-amber-200 inline-flex items-center gap-2 uppercase tracking-[0.12em]">
-              <Flame className="w-4 h-4" /> Foco recomendado hoje
-            </p>
-            <h4 className="text-base font-bold text-amber-100 mt-2">{recommendedFocus.subDepartment} precisa de atenção</h4>
-            <p className="text-sm text-amber-200/90 mt-1">
-              {recommendedFocus.daysWithoutStudy === null
-                ? 'Você ainda não iniciou essa disciplina.'
-                : `Você está há ${recommendedFocus.daysWithoutStudy} dias sem estudar essa disciplina.`}
-            </p>
-            <button
-              type="button"
-              onClick={() => handleStudyDisciplineNow(recommendedFocus.subDepartment)}
-              className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-slate-950 inline-flex items-center gap-2 hover:bg-amber-400 transition-colors"
-            >
-              <Target className="w-4 h-4" /> Estudar agora
-            </button>
-          </div>
-        )}
-
-        <div className="space-y-3">
-          {smartSubDepartmentStats.map((stat) => {
-            const isExpanded = expandedSubDepartment === stat.subDepartment;
-            const disciplineTracks = departmentContent.filter((content) => content.subDepartment === stat.subDepartment);
-            const nextTrack = disciplineTracks.find((content) => !completedContentIds.includes(content.id)) || disciplineTracks[0];
-
-            return (
-              <div
-                key={stat.subDepartment}
-                className={`rounded-xl border bg-slate-900/80 transition-all ${stat.statusMeta.borderClass} ${
-                  activeSubDepartment === stat.subDepartment ? 'ring-1 ring-white/20' : ''
-                }`}
-              >
+            <div className="flex flex-wrap gap-2">
+              {missionState.primaryFocus ? (
                 <button
                   type="button"
-                  onClick={() => handleOpenDiscipline(stat.subDepartment)}
-                  className="w-full text-left px-4 py-3"
+                  onClick={() => {
+                    if (missionState.primaryFocus) {
+                      handleStudyDisciplineNow(missionState.primaryFocus.subDepartment, 'hero');
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-500"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-bold text-slate-100">{stat.subDepartment}</p>
-                      <p className="text-xs text-slate-300 mt-0.5">
-                        {stat.completedTracks}/{stat.totalTracks} trilhas • {stat.completionRate}%
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${stat.statusMeta.className}`}>
-                        <stat.statusMeta.Icon className="w-3.5 h-3.5" /> {stat.statusMeta.label}
-                      </span>
-                      {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-300" /> : <ChevronDown className="w-4 h-4 text-slate-300" />}
-                    </div>
-                  </div>
-
-                  <div className="mt-3 h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${isProgressAnimated ? stat.completionRate : 0}%`, backgroundColor: 'var(--color-primary)' }}
-                    />
-                  </div>
-
-                  <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
-                    <span>XP: {stat.completedXp}/{stat.totalXp}</span>
-                    <span>
-                      {stat.daysWithoutStudy === null
-                        ? 'sem histórico recente'
-                        : `${stat.daysWithoutStudy} dia(s) sem estudo`}
-                    </span>
-                  </div>
+                  <Target className="h-4 w-4" />
+                  Estudar agora
                 </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => handleOpenDiscipline(activeSubDepartment)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/75 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]"
+              >
+                Ver disciplina
+              </button>
+            </div>
+          </div>
+        </div>
 
-                <div
-                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                    isExpanded ? 'max-h-[1200px] opacity-100' : 'max-h-0 opacity-0'
-                  }`}
-                >
-                  <div className="px-4 pb-4 border-t border-slate-700/80 pt-3 space-y-3">
-                    <div className="space-y-1.5">
-                      {disciplineTracks.map((track) => {
-                        const done = completedContentIds.includes(track.id);
-                        return (
-                          <div
-                            key={track.id}
-                            className="rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 flex items-center justify-between gap-2"
-                          >
-                            <div>
-                              <p className="text-sm text-slate-100 font-semibold">{track.title}</p>
-                              <p className="text-xs text-slate-400">+{track.xpReward} XP • {track.estimatedMinutes} min</p>
-                            </div>
-                            <span className={`text-xs font-semibold ${done ? 'text-emerald-300' : 'text-amber-300'}`}>
-                              {done ? 'Concluído' : 'Pendente'}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+        <div className="grid gap-4 xl:grid-cols-3">
+          {missionState.zones.map((zone) => (
+            <div
+              key={zone.id}
+              className="rounded-[28px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_18px_50px_-38px_rgba(15,23,42,0.22)] dark:border-white/8 dark:bg-slate-950/70"
+            >
+              <div className="border-b border-slate-200/80 pb-4 dark:border-white/8">
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-100">{zone.label}</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{zone.description}</p>
+              </div>
 
-                    <div className="rounded-lg border border-slate-700 bg-slate-800/70 p-3">
-                      <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Recomendação</p>
-                      <p className="text-sm text-slate-200 mt-1">
-                        {nextTrack
-                          ? `Continue por ${nextTrack.title} para avançar nesta disciplina.`
-                          : 'Esta disciplina ainda não possui trilhas disponíveis.'}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
+              <div className="mt-4 space-y-3">
+                {zone.disciplines.length === 0 ? (
+                  <div className="rounded-2xl bg-slate-100/80 px-4 py-3 text-sm text-slate-500 dark:bg-white/[0.04] dark:text-slate-400">
+                    Nada por aqui agora.
+                  </div>
+                ) : (
+                  zone.disciplines.map((discipline) => (
+                    <div
+                      key={discipline.subDepartment}
+                      className={`rounded-2xl border px-4 py-4 transition ${
+                        activeSubDepartment === discipline.subDepartment
+                          ? 'border-blue-500/30 bg-blue-50/80 dark:border-blue-500/25 dark:bg-blue-500/10'
+                          : 'border-transparent bg-slate-100/70 dark:bg-white/[0.03]'
+                      }`}
+                    >
                       <button
                         type="button"
-                        onClick={() => handleStudyDisciplineNow(stat.subDepartment)}
-                        disabled={!nextTrack}
-                        className="px-3 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
-                        style={{ backgroundColor: 'var(--color-primary)' }}
+                        onClick={() => handleOpenDiscipline(discipline.subDepartment)}
+                        className="w-full text-left"
                       >
-                        <span className="inline-flex items-center gap-1.5"><PlayCircle className="w-4 h-4" /> Continuar de onde parou</span>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{discipline.subDepartment}</p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{discipline.headline}</p>
+                          </div>
+                          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                            {discipline.completionRate}%
+                          </span>
+                        </div>
+
+                        <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{discipline.support}</p>
+
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-white/[0.08]">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${isProgressAnimated ? discipline.completionRate : 0}%`, backgroundColor: 'var(--color-primary)' }}
+                          />
+                        </div>
                       </button>
+
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {discipline.completedTracks}/{discipline.totalTracks} trilhas
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleStudyDisciplineNow(discipline.subDepartment, 'zone')}
+                          className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition ${
+                            zone.id === 'needs_attention'
+                              ? 'bg-blue-600 text-white hover:bg-blue-500'
+                              : 'bg-white text-slate-700 hover:bg-slate-50 dark:bg-white/[0.06] dark:text-slate-200 dark:hover:bg-white/[0.1]'
+                          }`}
+                        >
+                          <PlayCircle className="h-3.5 w-3.5" />
+                          {discipline.actionLabel}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-[28px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_18px_50px_-38px_rgba(15,23,42,0.22)] dark:border-white/8 dark:bg-slate-950/70">
+          <div className="flex flex-col gap-4 border-b border-slate-200/80 pb-4 dark:border-white/8 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Disciplina em foco</p>
+              <p className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{activeSubDepartment}</p>
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                {activeDisciplineMission
+                  ? `${activeDisciplineMission.headline}. ${activeDisciplineMission.support}`
+                  : 'Abra uma disciplina para ver as trilhas disponiveis.'}
+              </p>
+              {activeDisciplineMission ? (
+                <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Motivo da prioridade: {activeDisciplineMission.decisionReason}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 dark:bg-white/[0.05]">
+                {activeDisciplineMission?.completedTracks || 0}/{activeDisciplineMission?.totalTracks || 0} trilhas
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 dark:bg-white/[0.05]">
+                XP {activeDisciplineMission?.completedXp || 0}/{activeDisciplineMission?.totalXp || 0}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-2">
+              {activeDisciplineTracks.map((track) => {
+                const done = completedContentIds.includes(track.id);
+                return (
+                  <div
+                    key={track.id}
+                    className={`rounded-2xl border px-4 py-4 ${
+                      activeDisciplineNextTrack?.id === track.id
+                        ? 'border-blue-500/25 bg-blue-50/80 dark:border-blue-500/25 dark:bg-blue-500/10'
+                        : 'border-transparent bg-slate-100/70 dark:bg-white/[0.03]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{track.title}</p>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          {track.estimatedMinutes} min - +{track.xpReward} XP
+                        </p>
+                      </div>
+                      <span className={`text-[11px] font-semibold ${done ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                        {done ? 'Concluido' : activeDisciplineNextTrack?.id === track.id ? 'Proximo' : 'Pendente'}
+                      </span>
                     </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200/80 bg-slate-100/80 p-4 dark:border-white/8 dark:bg-white/[0.03]">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Missao da disciplina</p>
+              <p className="mt-2 text-base font-semibold text-slate-900 dark:text-slate-100">
+                {activeDisciplineNextTrack?.title || 'Sem trilha disponivel'}
+              </p>
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                {activeDisciplineNextTrack
+                  ? `Puxe esta trilha para mover ${activeSubDepartment} sem perder o ritmo geral.`
+                  : 'Ainda nao ha trilhas cadastradas para esta disciplina.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => handleStudyDisciplineNow(activeSubDepartment, 'discipline_panel')}
+                disabled={!activeDisciplineNextTrack}
+                className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-50"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Estudar agora
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="space-y-3">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Trilhas Gratuitas</h3>
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Trilhas Gratuitas de {activeSubDepartment}</h3>
         {freeContent.length === 0 ? (
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 text-sm text-gray-600 dark:text-gray-300">
             Não há trilhas gratuitas para {activeSubDepartment} neste momento.
@@ -788,7 +946,7 @@ const AcademyPage: React.FC<AcademyPageProps> = ({
       </div>
 
       <div className="space-y-3">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><Crown className="w-4 h-4" /> Trilhas PRO</h3>
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><Crown className="w-4 h-4" /> Trilhas PRO de {activeSubDepartment}</h3>
         {proContent.length === 0 ? (
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 text-sm text-gray-600 dark:text-gray-300">
             Não há trilhas PRO para {activeSubDepartment} neste momento.

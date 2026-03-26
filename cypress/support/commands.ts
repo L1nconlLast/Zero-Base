@@ -8,6 +8,8 @@ declare global {
       logout(): Chainable<void>;
       clearAppData(): Chainable<void>;
       navigateTo(tab: string): Chainable<void>;
+      closeOptionalOverlays(): Chainable<void>;
+      finishFocusSession(): Chainable<void>;
     }
   }
 }
@@ -89,6 +91,45 @@ Cypress.Commands.add('navigateTo', (tab: string) => {
     }
 
     clickLabel(tab);
+  });
+});
+
+Cypress.Commands.add('closeOptionalOverlays', () => {
+  cy.get('body').then(($body) => {
+    const bodyText = $body.text();
+
+    const notificationDismiss = $body
+      .find('button')
+      .toArray()
+      .find((button) => /agora n[aã]o/i.test(button.textContent || ''));
+
+    if (notificationDismiss) {
+      cy.wrap(notificationDismiss).click({ force: true, waitForAnimations: false });
+    }
+
+    const shouldCloseInternalMode = /modo interno/i.test(bodyText);
+    if (!shouldCloseInternalMode) {
+      return;
+    }
+
+    const internalClose = $body
+      .find('button')
+      .toArray()
+      .find((button) => /^fechar$/i.test((button.textContent || '').trim()));
+
+    if (internalClose) {
+      cy.wrap(internalClose).click({ force: true, waitForAnimations: false });
+    }
+  });
+});
+
+Cypress.Commands.add('finishFocusSession', () => {
+  cy.clock(Date.now(), ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']);
+  cy.get('[data-testid="study-focus-start-button"]').should('be.visible').click();
+  cy.tick(61_000);
+  cy.get('[data-testid="finish-focus-button"]').should('be.visible').click();
+  cy.get('[role="dialog"]').should('be.visible').within(() => {
+    cy.contains('button', /^Finalizar$/i).click();
   });
 });
 

@@ -13,9 +13,11 @@ import {
 import { questionsCloudService } from '../../services/questionsCloud.service';
 import { getDisplayDiscipline } from '../../utils/disciplineLabels';
 import { shuffleArray, shuffleQuestionOptions } from '../../utils/questionRandomization';
+import ExamResults, { type ExamResultsSnapshot } from './ExamResults';
 
 interface MockExamProps {
   onEarnXP?: (xp: number) => void;
+  onCompleteAttempt?: (result: { correctAnswers: number; totalQuestions: number; xpGained: number }) => void;
   supabaseUserId?: string | null;
   initialFilter?: {
     nonce: number;
@@ -37,6 +39,9 @@ interface MockExamHistoryEntry {
 }
 
 type ExamState = 'setup' | 'running' | 'finished';
+
+const EMPTY_ERROR_HISTORY_BY_TOPIC: Record<string, number> = {};
+const EMPTY_MOCK_EXAM_HISTORY: MockExamHistoryEntry[] = [];
 
 const TRACK_LABEL: Record<QuestionTrack | 'ambos', string> = {
   enem: 'ENEM',
@@ -196,7 +201,49 @@ const EXAM_CONFIGS_BY_TRACK: Record<QuestionTrack | 'ambos', Array<{ label: stri
 
 const ENEM_PRESET_QUESTION_COUNTS = [20, 45, 90] as const;
 
-const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFilter }) => {
+const TRACK_THEME = {
+  enem: {
+    hero: 'from-blue-500 via-cyan-500 to-sky-600',
+    glow: 'bg-blue-500/15 text-blue-700 dark:text-blue-200 border-blue-200/80 dark:border-blue-800/60',
+    soft: 'bg-blue-50/80 dark:bg-blue-950/30 border-blue-200/80 dark:border-blue-800/60',
+    text: 'text-blue-700 dark:text-blue-200',
+  },
+  concurso: {
+    hero: 'from-emerald-500 via-teal-500 to-cyan-600',
+    glow: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-200 border-emerald-200/80 dark:border-emerald-800/60',
+    soft: 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200/80 dark:border-emerald-800/60',
+    text: 'text-emerald-700 dark:text-emerald-200',
+  },
+  ambos: {
+    hero: 'from-amber-400 via-orange-500 to-rose-500',
+    glow: 'bg-orange-500/15 text-orange-700 dark:text-orange-200 border-orange-200/80 dark:border-orange-800/60',
+    soft: 'bg-orange-50/80 dark:bg-orange-950/30 border-orange-200/80 dark:border-orange-800/60',
+    text: 'text-orange-700 dark:text-orange-200',
+  },
+} as const;
+
+const EXAM_MODE_PROFILES = [
+  {
+    title: 'Entrada rapida',
+    description: 'Baixa friccao para sair do zero, aquecer e ganhar XP sem desgaste longo.',
+    impact: 'Bom para ritmo e constancia semanal.',
+    level: 'Leve',
+  },
+  {
+    title: 'Sessao principal',
+    description: 'Equilibrio entre volume, foco e pressao de prova para medir desempenho real.',
+    impact: 'Bom para ranking e progresso de verdade.',
+    level: 'Medio',
+  },
+  {
+    title: 'Carga maxima',
+    description: 'Mais proximo de prova pesada, com profundidade maior e mais tempo sob pressao.',
+    impact: 'Melhor para resistencia e salto perceptivel.',
+    level: 'Alto',
+  },
+] as const;
+
+const MockExam: React.FC<MockExamProps> = ({ onEarnXP, onCompleteAttempt, supabaseUserId, initialFilter }) => {
   const [examState, setExamState] = useState<ExamState>('setup');
   const [selectedConfig, setSelectedConfig] = useState(0);
   const [selectedTrack, setSelectedTrack] = useState<QuestionTrack | 'ambos'>('ambos');
@@ -206,14 +253,17 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
   const [selectedOfficialModelId, setSelectedOfficialModelId] = useState<string>('none');
   const [adaptiveMode, setAdaptiveMode] = useLocalStorage<boolean>('mock_exam_adaptive_mode', true);
   const [daysToExam, setDaysToExam] = useLocalStorage<number>('mock_exam_days_to_exam', 120);
-  const [errorHistoryByTopic, setErrorHistoryByTopic] = useLocalStorage<Record<string, number>>('mock_exam_error_history_by_topic', {});
-  const [, setExamHistory] = useLocalStorage<MockExamHistoryEntry[]>('mock_exam_history', []);
+  const [errorHistoryByTopic, setErrorHistoryByTopic] = useLocalStorage<Record<string, number>>('mock_exam_error_history_by_topic', EMPTY_ERROR_HISTORY_BY_TOPIC);
+  const [, setExamHistory] = useLocalStorage<MockExamHistoryEntry[]>('mock_exam_history', EMPTY_MOCK_EXAM_HISTORY);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showAllTopics, setShowAllTopics] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [currentIdx, setCurrentIdx] = useState(0);
   const [timeLeftSec, setTimeLeftSec] = useState(0);
   const [timerStarted, setTimerStarted] = useState(false);
   const [examStartedAt, setExamStartedAt] = useState<number>(0);
+  const [resultSnapshot, setResultSnapshot] = useState<ExamResultsSnapshot | null>(null);
 
   const configsForTrack = EXAM_CONFIGS_BY_TRACK[selectedTrack];
   const config = configsForTrack[selectedConfig] ?? configsForTrack[0];
@@ -269,6 +319,10 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
     setSelectedOfficialModelId('none');
   }, [selectedTrack]);
 
+  useEffect(() => {
+    setShowAllTopics(false);
+  }, [selectedSubject, selectedTrack]);
+
   const availablePool = useMemo(() => {
     const base = QUESTIONS_BANK.filter(
       (q) =>
@@ -296,6 +350,10 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
   const plannedMinutes = selectedModel?.duracaoMinutos ?? config.minutes;
   const uniqueAvailableCount = availablePool.length;
   const repeatedQuestionsCount = Math.max(0, plannedQuestionCount - uniqueAvailableCount);
+  const theme = TRACK_THEME[selectedTrack];
+  const configProfile = EXAM_MODE_PROFILES[selectedConfig] ?? EXAM_MODE_PROFILES[0];
+  const visibleTopics = showAllTopics ? topicsBySelection : topicsBySelection.slice(0, 12);
+  const hiddenTopicsCount = Math.max(0, topicsBySelection.length - 12);
 
   const frequencyByTopic = useMemo(() => {
     const map: Record<string, number> = {};
@@ -350,15 +408,31 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
     ].filter((item) => item.count > 0);
   }, [availablePool, officialDistribution, plannedQuestionCount, selectedSubject, selectedTrack, selectedModel]);
 
-  useEffect(() => {
-    if (!timerStarted || examState !== 'running') return;
-    if (timeLeftSec <= 0) {
-      setExamState('finished');
-      return;
-    }
-    const id = setInterval(() => setTimeLeftSec((previous) => previous - 1), 1000);
-    return () => clearInterval(id);
-  }, [timerStarted, examState, timeLeftSec]);
+  const highlightedSubjects = useMemo(
+    () => plannedDistribution.filter((item) => item.subject !== 'Aleatório').slice(0, 4),
+    [plannedDistribution],
+  );
+
+  const adaptiveHighlights = useMemo(
+    () =>
+      adaptivePriorityTopics.slice(0, 3).map((topicKey) => {
+        const [subject, topic] = topicKey.split('::');
+        return {
+          key: topicKey,
+          subject,
+          topic: topic || subject,
+        };
+      }),
+    [adaptivePriorityTopics],
+  );
+
+  const setupCtaLabel = selectedModel ? `Começar ${selectedModel.nome}` : `Iniciar ${config.label}`;
+  const setupCtaMeta = `${plannedQuestionCount} questões · ${plannedMinutes} min${selectedModel?.banca ? ` · ${selectedModel.banca}` : ''}`;
+  const progressSignals = [
+    '+XP ao concluir',
+    supabaseUserId ? 'Resultado salvo no histórico' : 'Resultado salvo localmente',
+    selectedModel?.category ? `Reforça ranking de ${selectedModel.category}` : 'Reflete no ranking por pontuação',
+  ];
 
   const startExam = () => {
     const adaptiveSet = new Set(adaptivePriorityTopics);
@@ -408,6 +482,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
     setTimeLeftSec(plannedMinutes * 60);
     setTimerStarted(false);
     setExamStartedAt(Date.now());
+    setResultSnapshot(null);
     setExamState('running');
   };
 
@@ -425,7 +500,12 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
     if (currentIdx > 0) setCurrentIdx((previous) => previous - 1);
   };
 
-  const handleFinish = useCallback(() => {
+  const handleFinish = useCallback((options?: { finishedByTimeout?: boolean }) => {
+    if (questions.length === 0) {
+      setExamState('setup');
+      return;
+    }
+
     let xp = 0;
     const wrongTopics: string[] = [];
     let correctAnswersCount = 0;
@@ -444,8 +524,10 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
       acc[topicKey] = (acc[topicKey] || 0) + 1;
       return acc;
     }, {});
+    const answered = Object.keys(answers).length;
+    const shouldCommitResult = Boolean(options?.finishedByTimeout) || answered === questions.length;
 
-    if (wrongTopics.length > 0) {
+    if (shouldCommitResult && wrongTopics.length > 0) {
       setErrorHistoryByTopic((previous) => {
         const next = { ...previous };
         wrongTopics.forEach((topicKey) => {
@@ -455,9 +537,19 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
       });
     }
 
-    const answered = Object.keys(answers).length;
     const elapsedSec = Math.max(0, examStartedAt ? Math.round((Date.now() - examStartedAt) / 1000) : 0);
     const avgTimePerQuestionSec = answered > 0 ? Number((elapsedSec / answered).toFixed(1)) : 0;
+    const snapshot: ExamResultsSnapshot = {
+      answeredCount: answered,
+      avgTimePerQuestionSec,
+      correctCount: correctAnswersCount,
+      elapsedSec,
+      finishedByTimeout: Boolean(options?.finishedByTimeout),
+      mistakesByTopic: sessionMistakes,
+      remainingTimeSec: options?.finishedByTimeout ? 0 : Math.max(0, timeLeftSec),
+      totalQuestions: questions.length,
+      xpEarned: shouldCommitResult ? xp : 0,
+    };
 
     const historyEntry: MockExamHistoryEntry = {
       date: new Date().toISOString(),
@@ -470,28 +562,90 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
       avgTimePerQuestionSec,
     };
 
-    setExamHistory((previous) => [...previous, historyEntry].slice(-40));
+    if (shouldCommitResult) {
+      setExamHistory((previous) => [...previous, historyEntry].slice(-40));
 
-    if (supabaseUserId) {
-      void questionsCloudService.saveMockExamSession(supabaseUserId, {
-        id: crypto.randomUUID(),
-        date: historyEntry.date,
-        track: selectedTrack,
-        modelId: selectedModel?.id,
-        modelName: selectedModel?.nome,
-        banca: selectedModel?.banca,
-        category: selectedModel?.category,
-        totalQuestions: historyEntry.totalQuestions,
-        correctCount: historyEntry.correctCount,
-        xpEarned: xp,
-        avgTimePerQuestionSec,
-        mistakesByTopic: sessionMistakes,
-      }).catch(() => undefined);
+      if (supabaseUserId) {
+        void questionsCloudService.saveMockExamSession(supabaseUserId, {
+          id: crypto.randomUUID(),
+          date: historyEntry.date,
+          track: selectedTrack,
+          modelId: selectedModel?.id,
+          modelName: selectedModel?.nome,
+          banca: selectedModel?.banca,
+          category: selectedModel?.category,
+          totalQuestions: historyEntry.totalQuestions,
+          correctCount: historyEntry.correctCount,
+          xpEarned: xp,
+          avgTimePerQuestionSec,
+          mistakesByTopic: sessionMistakes,
+        }).catch(() => undefined);
+      }
     }
 
-    onEarnXP?.(xp);
+    if (shouldCommitResult) {
+      onEarnXP?.(xp);
+      onCompleteAttempt?.({
+        correctAnswers: correctAnswersCount,
+        totalQuestions: questions.length,
+        xpGained: xp,
+      });
+    }
+    setResultSnapshot(snapshot);
+    setTimerStarted(false);
     setExamState('finished');
-  }, [answers, examStartedAt, onEarnXP, questions, selectedModel, selectedTrack, setErrorHistoryByTopic, setExamHistory, supabaseUserId]);
+  }, [answers, examStartedAt, onCompleteAttempt, onEarnXP, questions, selectedModel, selectedTrack, setErrorHistoryByTopic, setExamHistory, supabaseUserId, timeLeftSec]);
+
+  useEffect(() => {
+    if (!timerStarted || examState !== 'running') return;
+    if (timeLeftSec <= 0) {
+      setTimeLeftSec(0);
+      handleFinish({ finishedByTimeout: true });
+      return;
+    }
+    const id = setInterval(() => setTimeLeftSec((previous) => previous - 1), 1000);
+    return () => clearInterval(id);
+  }, [examState, handleFinish, timeLeftSec, timerStarted]);
+
+  const handleRetryExam = useCallback(() => {
+    if (questions.length === 0) {
+      setExamState('setup');
+      return;
+    }
+
+    setQuestions((previous) => previous.map(shuffleQuestionOptions));
+    setAnswers({});
+    setCurrentIdx(0);
+    setTimeLeftSec(plannedMinutes * 60);
+    setTimerStarted(false);
+    setExamStartedAt(Date.now());
+    setResultSnapshot(null);
+    setExamState('running');
+  }, [plannedMinutes, questions.length]);
+
+  const handleContinueExam = useCallback(() => {
+    if (!resultSnapshot || resultSnapshot.remainingTimeSec <= 0) return;
+
+    const firstUnansweredIndex = questions.findIndex((question) => !answers[question.id]);
+
+    setCurrentIdx(firstUnansweredIndex >= 0 ? firstUnansweredIndex : 0);
+    setTimeLeftSec(resultSnapshot.remainingTimeSec);
+    setTimerStarted(resultSnapshot.answeredCount > 0 || resultSnapshot.elapsedSec > 0);
+    setExamStartedAt(Date.now() - resultSnapshot.elapsedSec * 1000);
+    setResultSnapshot(null);
+    setExamState('running');
+  }, [answers, questions, resultSnapshot]);
+
+  const handleNewExam = useCallback(() => {
+    setExamState('setup');
+    setCurrentIdx(0);
+    setAnswers({});
+    setQuestions([]);
+    setTimeLeftSec(0);
+    setTimerStarted(false);
+    setExamStartedAt(0);
+    setResultSnapshot(null);
+  }, []);
 
   const { correctCount, pct } = useMemo(() => {
     if (examState !== 'finished') return { correctCount: 0, pct: 0 };
@@ -510,13 +664,173 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
 
   if (examState === 'setup') {
     return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2"><BookOpen className="w-6 h-6" />Simulado Cronometrado</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Simule uma prova real por trilha, banca e edital.</p>
-        </div>
+      <div className="max-w-5xl mx-auto space-y-6">
+        <section className={`relative overflow-hidden rounded-[28px] border ${theme.soft} p-6 sm:p-7 shadow-[0_20px_60px_rgba(15,23,42,0.08)]`}>
+          <div className={`absolute inset-x-0 top-0 h-40 bg-gradient-to-br ${theme.hero} opacity-95`} />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.28),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(15,23,42,0.12),transparent_38%)]" />
+          <div className="relative space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Simulado recomendado</p>
+                <h2 className="mt-2 inline-flex items-center gap-2 text-3xl font-semibold text-white sm:text-[2rem]">
+                  <BookOpen className="h-7 w-7" />
+                  {selectedModel ? selectedModel.nome : config.label}
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm text-white/80 sm:text-[15px]">
+                  {selectedModel
+                    ? `Modelo oficial com ${selectedModel.questoes} questoes para treinar no formato ${selectedModel.banca}.`
+                    : `${configProfile.description} ${adaptiveMode ? 'A IA prioriza os temas em que voce mais vacila.' : 'Voce entra direto em uma prova limpa e objetiva.'}`}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(['enem', 'concurso', 'ambos'] as const).map((track) => (
+                  <button
+                    key={track}
+                    onClick={() => setSelectedTrack(track)}
+                    className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${selectedTrack === track
+                      ? 'border-white/50 bg-white text-slate-900 shadow-lg'
+                      : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+                      }`}
+                  >
+                    {TRACK_LABEL[track]}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4 shadow-sm">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Questoes</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{plannedQuestionCount || config.questions}</p>
+              </div>
+              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Tempo</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{plannedMinutes} min</p>
+              </div>
+              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Nivel</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{configProfile.level}</p>
+              </div>
+              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Impacto</p>
+                <p className="mt-2 text-sm font-semibold text-white">{selectedModel?.category || 'XP + ranking'}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {highlightedSubjects.length > 0 ? highlightedSubjects.map((item) => {
+                const discipline = getDisplayDiscipline(item.subject);
+                const DisciplineIcon = discipline.Icon;
+
+                return (
+                  <span key={item.subject} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur">
+                    <DisciplineIcon className="h-3.5 w-3.5" />
+                    {discipline.label} · {item.count}
+                  </span>
+                );
+              }) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur">
+                  <Sigma className="h-3.5 w-3.5" />
+                  Distribuicao livre para {TRACK_LABEL[selectedTrack]}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                onClick={startExam}
+                disabled={availablePool.length === 0}
+                className="inline-flex flex-1 items-center justify-center gap-3 rounded-2xl bg-slate-950 px-5 py-4 text-left text-white shadow-xl transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
+              >
+                <Play className="h-5 w-5 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block truncate text-base font-semibold">{setupCtaLabel}</span>
+                  <span className="block text-xs font-medium text-white/70 dark:text-slate-500">{setupCtaMeta}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters((previous) => !previous)}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-5 py-4 text-sm font-semibold text-white transition hover:bg-white/20"
+              >
+                <Filter className="h-4 w-4" />
+                {showAdvancedFilters ? 'Ocultar personalizacao' : 'Personalizar simulado'}
+              </button>
+            </div>
+
+            {availablePool.length === 0 && (
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-amber-300/40 bg-amber-400/15 px-4 py-3 text-sm text-white">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                Nenhuma questao encontrada com os filtros atuais. Abra a personalizacao e alivie os filtros para liberar o simulado.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-3">
+          {configsForTrack.map((cfg, i) => {
+            const ConfigIcon = cfg.icon;
+            const profile = EXAM_MODE_PROFILES[i] ?? EXAM_MODE_PROFILES[0];
+            const isSelected = selectedConfig === i;
+
+            return (
+              <button
+                key={cfg.label}
+                type="button"
+                disabled={Boolean(selectedModel)}
+                onClick={() => setSelectedConfig(i)}
+                className={`group rounded-[24px] border p-5 text-left transition ${isSelected
+                  ? `${theme.soft} shadow-[0_18px_40px_rgba(15,23,42,0.08)]`
+                  : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
+                  } ${selectedModel ? 'cursor-not-allowed opacity-60' : ''}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl ${isSelected ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'}`}>
+                    <ConfigIcon className="h-5 w-5" />
+                  </div>
+                  {isSelected ? <CheckCircle className={`h-5 w-5 shrink-0 ${theme.text}`} /> : <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition group-hover:text-slate-500 dark:text-slate-600 dark:group-hover:text-slate-400" />}
+                </div>
+                <div className="mt-4 space-y-2">
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{cfg.label}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{profile.description}</p>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {cfg.questions} questoes
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {cfg.minutes} min
+                  </span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${isSelected ? theme.glow : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'}`}>
+                    {profile.level}
+                  </span>
+                </div>
+                <p className="mt-4 text-xs font-medium text-slate-500 dark:text-slate-400">{profile.impact}</p>
+              </button>
+            );
+          })}
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-6">
+
+            {showAdvancedFilters && (
+              <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+                <div className="mb-5 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Modo avancado</p>
+                    <h3 className="mt-2 text-xl font-semibold text-slate-900 dark:text-slate-100">Personalizar simulado</h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Ajuste banca, disciplina, topicos e distribuicao so se precisar afinar a prova.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedFilters(false)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    <ChevronRight className="h-5 w-5 rotate-90" />
+                  </button>
+                </div>
+                <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             <Filter className="inline w-3.5 h-3.5 mr-1" />Trilha
           </p>
@@ -592,7 +906,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
 
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tópico</p>
           <div className="flex flex-wrap gap-2">
-            {['Todos', ...topicsBySelection].map((topic) => (
+            {['Todos', ...visibleTopics].map((topic) => (
               <button
                 key={topic}
                 onClick={() => setSelectedTopic(topic)}
@@ -605,6 +919,15 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
               </button>
             ))}
           </div>
+          {hiddenTopicsCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAllTopics((previous) => !previous)}
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
+            >
+              {showAllTopics ? 'Mostrar menos topicos' : `Ver mais ${hiddenTopicsCount} topicos`}
+            </button>
+          )}
 
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
             <input
@@ -644,9 +967,11 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
               />
             </div>
           )}
-        </div>
+                </div>
+              </div>
+            )}
 
-        {!selectedModel && (
+        {false && !selectedModel && (
           <div className="space-y-3">
             {configsForTrack.map((cfg, i) => {
               const ConfigIcon = cfg.icon;
@@ -675,13 +1000,13 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
         <button
           onClick={startExam}
           disabled={availablePool.length === 0}
-          className="w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50"
+          className="hidden"
           style={{ backgroundColor: 'var(--color-primary)' }}
         >
           <Play className="w-5 h-5" /> Iniciar Simulado
         </button>
 
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+        <div className="hidden">
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
             Distribuição planejada ({plannedQuestionCount} questões{plannedQuestionCount > 0 ? ` · ${uniqueAvailableCount} únicas` : ''})
           </p>
@@ -707,11 +1032,147 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
             </p>
           )}
         </div>
+          </div>
+
+          <aside className="space-y-6">
+            <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Preview da prova</p>
+                  <h3 className="mt-2 text-xl font-semibold text-slate-900 dark:text-slate-100">O que voce vai enfrentar</h3>
+                </div>
+                <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${theme.glow}`}>
+                  <Clock className="h-3.5 w-3.5" />
+                  {plannedMinutes} min
+                </span>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-slate-100 p-4 dark:bg-slate-800/80">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Questoes</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{plannedQuestionCount}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-100 p-4 dark:bg-slate-800/80">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Banco disponivel</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{uniqueAvailableCount}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{configProfile.title}</p>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{selectedModel ? `Formato ${selectedModel.banca}${selectedModel.category ? ` · ${selectedModel.category}` : ''}` : configProfile.impact}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Materias incluidas</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {highlightedSubjects.length > 0 ? highlightedSubjects.map((item) => {
+                      const discipline = getDisplayDiscipline(item.subject);
+                      const DisciplineIcon = discipline.Icon;
+
+                      return (
+                        <span key={item.subject} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                          <DisciplineIcon className="h-3.5 w-3.5" />
+                          {discipline.label} · {item.count}
+                        </span>
+                      );
+                    }) : (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">A distribuicao aparece assim que houver questoes disponiveis para os filtros atuais.</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Impacto da sessao</p>
+              <h3 className="mt-2 text-xl font-semibold text-slate-900 dark:text-slate-100">Esse simulado gera progresso visivel</h3>
+              <div className="mt-5 space-y-3">
+                {progressSignals.map((signal) => (
+                  <div key={signal} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                    <div className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${theme.glow}`}>
+                      <Trophy className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{signal}</p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {signal.includes('ranking')
+                          ? 'Seu resultado ajuda a transformar estudo em posicao percebida no produto.'
+                          : signal.includes('historico')
+                            ? 'O desempenho fica guardado para leitura futura e novas recomendacoes.'
+                            : 'Quanto melhor o desempenho, maior o ganho de pontos e feedback imediato.'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {adaptiveMode && adaptiveHighlights.length > 0 && (
+                <div className={`mt-5 rounded-[22px] border p-4 ${theme.soft}`}>
+                  <p className={`text-xs font-semibold uppercase tracking-[0.24em] ${theme.text}`}>A IA deve puxar voce para</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {adaptiveHighlights.map((item) => (
+                      <span key={item.key} className="rounded-full border border-white/50 bg-white/70 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-200">
+                        {item.subject} · {item.topic}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+                Distribuicao planejada ({plannedQuestionCount} questoes{plannedQuestionCount > 0 ? ` · ${uniqueAvailableCount} unicas` : ''})
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {plannedDistribution.length > 0 ? (
+                  plannedDistribution.map((item) => {
+                    const discipline = getDisplayDiscipline(item.subject);
+                    const DisciplineIcon = discipline.Icon;
+
+                    return (
+                      <span key={item.subject} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        {item.subject.toLowerCase().startsWith('aleat') ? <span className="inline-flex items-center gap-1.5"><Sigma className="h-3.5 w-3.5" />Aleatorio</span> : <span className="inline-flex items-center gap-1.5"><DisciplineIcon className="h-3.5 w-3.5" />{discipline.label}</span>} · {item.count}
+                      </span>
+                    );
+                  })
+                ) : (
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Sem questoes disponiveis para os filtros atuais.</span>
+                )}
+              </div>
+              {plannedQuestionCount > 0 && repeatedQuestionsCount > 0 && (
+                <p className="mt-3 text-[11px] text-amber-600 dark:text-amber-400">
+                  Banco atual menor que o alvo: repeticao controlada de {repeatedQuestionsCount} questao(oes) para completar o simulado.
+                </p>
+              )}
+            </section>
+          </aside>
+        </section>
       </div>
     );
   }
 
   if (examState === 'finished') {
+    if (!resultSnapshot) {
+      return null;
+    }
+
+    return (
+      <ExamResults
+        answers={answers}
+        banca={selectedModel?.banca}
+        modelCategory={selectedModel?.category}
+        modelName={selectedModel?.nome}
+        onContinueExam={handleContinueExam}
+        onNewExam={handleNewExam}
+        onRetryExam={handleRetryExam}
+        questions={questions}
+        snapshot={resultSnapshot}
+        track={selectedTrack}
+      />
+    );
+
     const grade = pct >= 70 ? 'Aprovado' : pct >= 50 ? 'Regular' : 'Reprovado';
     return (
       <div className="max-w-2xl mx-auto space-y-5">
@@ -837,7 +1298,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, supabaseUserId, initialFi
           </button>
         ) : (
           <button
-            onClick={handleFinish}
+            onClick={() => handleFinish()}
             className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-green-600 hover:bg-green-700 transition flex items-center justify-center gap-1"
           >
             <Trophy className="w-4 h-4" /> Entregar

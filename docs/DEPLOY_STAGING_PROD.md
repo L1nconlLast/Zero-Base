@@ -37,6 +37,17 @@
 - Fluxo /api/planner/week autenticado.
 - Fluxo /api/sessions/start -> finish.
 
+## Pos-deploy web/admin
+
+- Para deploy manual da web em prod, usar `npm run deploy:prod`.
+- Depois do deploy, rodar o checklist de validacao em `docs/CHECKLIST_POS_DEPLOY_VERCEL.md`.
+- Esse checklist cobre:
+  - produto publicado
+  - fluxo `Estudo`
+  - area `Dados`/admin
+  - liberacao via `?internal=1`
+  - reset do modo interno
+
 ## Observacao
 
 O workflow .github/workflows/deploy-staging-prod.yml usa secrets opcionais; sem credenciais configuradas, o deploy deve ser executado manualmente conforme este guia.

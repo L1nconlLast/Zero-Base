@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { logger } from '../utils/logger';
 
 function readLocalStorageValue<T>(key: string, initialValue: T, legacyKeys?: string[]): T {
@@ -28,29 +28,52 @@ interface UseLocalStorageOptions {
   legacyKeys?: string[];
 }
 
+function getValueSignature<T>(value: T): string {
+  try {
+    return JSON.stringify(value) ?? 'undefined';
+  } catch {
+    return String(value);
+  }
+}
+
 export function useLocalStorage<T>(key: string, initialValue: T, options?: UseLocalStorageOptions) {
-  const shouldSkipNextSaveRef = useRef(false);
   const legacyKeys = options?.legacyKeys;
+  const legacyKeysSignature = (legacyKeys || []).join('||');
+  const initialValueSignature = getValueSignature(initialValue);
   const [storedValue, setStoredValue] = useState<T>(() => readLocalStorageValue(key, initialValue, legacyKeys));
+  const storedValueRef = useRef(storedValue);
 
   useEffect(() => {
-    shouldSkipNextSaveRef.current = true;
-    setStoredValue(readLocalStorageValue(key, initialValue, legacyKeys));
-  }, [initialValue, key, legacyKeys]);
+    const nextValue = readLocalStorageValue(key, initialValue, legacyKeys);
+    storedValueRef.current = nextValue;
+    setStoredValue(nextValue);
+  }, [initialValueSignature, key, legacyKeysSignature]);
 
-  // Salvar no localStorage quando o valor mudar
   useEffect(() => {
-    if (shouldSkipNextSaveRef.current) {
-      shouldSkipNextSaveRef.current = false;
-      return;
-    }
+    storedValueRef.current = storedValue;
+  }, [storedValue]);
 
-    try {
-      window.localStorage.setItem(key, JSON.stringify(storedValue));
-    } catch (error) {
-      logger.error(`Erro ao salvar ${key}`, 'LocalStorage', error);
-    }
-  }, [key, storedValue]);
+  const persistValue = useCallback(
+    (value: T) => {
+      try {
+        window.localStorage.setItem(key, JSON.stringify(value));
+      } catch (error) {
+        logger.error(`Erro ao salvar ${key}`, 'LocalStorage', error);
+      }
+    },
+    [key],
+  );
 
-  return [storedValue, setStoredValue] as const;
+  const setValue = useCallback(
+    (value: T | ((current: T) => T)) => {
+      const currentValue = storedValueRef.current;
+      const nextValue = value instanceof Function ? value(currentValue) : value;
+      storedValueRef.current = nextValue;
+      persistValue(nextValue);
+      setStoredValue(nextValue);
+    },
+    [persistValue],
+  );
+
+  return [storedValue, setValue] as const;
 }

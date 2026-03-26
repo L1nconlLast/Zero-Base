@@ -1,11 +1,13 @@
 import { Sparkles } from 'lucide-react';
 import type { CSSProperties } from 'react';
+import { getProfileSettingsCopy, type ProfileSettingsLocale } from './profileSettingsCopy';
 
 interface ProfileHeroProps {
   displayName: string;
   email: string;
   avatarIcon: string;
   avatarUrl: string;
+  locale?: ProfileSettingsLocale;
 }
 
 const iconEmojiMap: Record<string, string> = {
@@ -23,7 +25,8 @@ const iconEmojiMap: Record<string, string> = {
   trophy: '🏆',
 };
 
-export default function ProfileHero({ displayName, email, avatarIcon, avatarUrl }: ProfileHeroProps) {
+export default function ProfileHero({ displayName, email, avatarIcon, avatarUrl, locale = 'pt' }: ProfileHeroProps) {
+  const copy = getProfileSettingsCopy(locale);
   const emoji = iconEmojiMap[avatarIcon] || iconEmojiMap.brain;
 
   return (
@@ -39,10 +42,10 @@ export default function ProfileHero({ displayName, email, avatarIcon, avatarUrl 
       <div style={{ minWidth: 0 }}>
         <div style={badgeStyle}>
           <Sparkles size={13} />
-          Perfil 2.0
+          {copy.hero.badge}
         </div>
-        <h2 style={titleStyle}>{displayName || 'Estudante'}</h2>
-        <p style={subtitleStyle}>{email || 'conta@zero-base.app'}</p>
+        <h2 style={titleStyle}>{displayName || copy.profile.fallbackName}</h2>
+        <p style={subtitleStyle}>{email || copy.common.fallbackEmail}</p>
       </div>
     </section>
   );
@@ -87,9 +90,9 @@ const badgeStyle: CSSProperties = {
   gap: 6,
   padding: '4px 10px',
   borderRadius: 999,
-  border: '1px solid #bfdbfe',
-  background: '#eff6ff',
-  color: '#1d4ed8',
+  border: '1px solid rgba(37, 99, 235, 0.22)',
+  background: 'rgba(37, 99, 235, 0.08)',
+  color: 'var(--color-primary, #2563eb)',
   fontSize: 11,
   fontWeight: 700,
   marginBottom: 6,

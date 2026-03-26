@@ -3,8 +3,8 @@ import {
   getRecommendationMeta,
   getUserProfile,
   refreshRecommendationFromRecentAttempts,
-} from './mvp';
-import { adminSupabase } from './supabase';
+} from './mvp.js';
+import { adminSupabase } from './supabase.js';
 
 type RecommendationContext = {
   subject: string;

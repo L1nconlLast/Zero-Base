@@ -11,6 +11,10 @@ export interface MentorChatPayload {
     weakArea: string;
     weeklyPct: number;
     streak: number;
+    previousFocus?: string;
+    lastRecommendation?: string;
+    sessionsLast7Days?: number;
+    completedMockExams?: number;
     trigger: MentorTrigger;
   };
 }

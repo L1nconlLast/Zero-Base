@@ -1,12 +1,12 @@
 ﻿/**
  * Tipos de UI - Zero Base v2.1
- * Tipos reutilizÃ¡veis para componentes de interface
+ * Tipos reutilizáveis para componentes de interface
  */
 
 import { LucideIcon } from 'lucide-react';
 
 /**
- * Abas da navegaÃ§Ã£o
+ * Abas da navegação
  */
 export type TabName = 'home' | 'timer' | 'methods' | 'dashboard' | 'settings';
 
@@ -28,7 +28,7 @@ export interface LoadingStatus {
 }
 
 /**
- * Resposta de notificaÃ§Ã£o
+ * Resposta de notificação
  */
 export type NotificationType = 'success' | 'error' | 'warning' | 'info';
 
@@ -58,7 +58,7 @@ export interface ModalConfig {
 }
 
 /**
- * Resposta genÃ©rica da API
+ * Resposta genérica da API
  */
 export interface ApiResponse<T> {
   success: boolean;
@@ -68,7 +68,7 @@ export interface ApiResponse<T> {
 }
 
 /**
- * PaginaÃ§Ã£o
+ * Paginação
  */
 export interface PaginationState {
   page: number;
@@ -91,7 +91,7 @@ export interface FilterState {
 }
 
 /**
- * Props de componente reutilizÃ¡vel
+ * Props de componente reutilizável
  */
 export interface BaseComponentProps {
   className?: string;

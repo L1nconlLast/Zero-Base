@@ -1,382 +1,583 @@
 import React from 'react';
-import { UserData, MATERIAS_CONFIG, MateriaTipo } from '../../types';
-import { Trophy, TrendingUp, Target, Calendar, Flame, Hand, BookOpen, Zap, Brain, Clock3, Layers } from 'lucide-react';
-import { predictNextLevel } from '../../utils/levelPrediction';
+import {
+  ArrowDownRight,
+  ArrowRight,
+  ArrowUpRight,
+  BookOpen,
+  Brain,
+  Clock3,
+  Flame,
+  Sparkles,
+  Target,
+  Trophy,
+  Zap,
+} from 'lucide-react';
+import type { StudySession, UserData } from '../../types';
 import { STUDY_METHODS } from '../../data/studyMethods';
 import { getDisplayDiscipline } from '../../utils/disciplineLabels';
-
-const DashboardWeeklyProgressChart = React.lazy(() => import('./DashboardWeeklyProgressChart'));
-
-const BASE_WEEK_DATA = [
-  { name: 'Seg', horas: 0 },
-  { name: 'Ter', horas: 0 },
-  { name: 'Qua', horas: 0 },
-  { name: 'Qui', horas: 0 },
-  { name: 'Sex', horas: 0 },
-  { name: 'Sáb', horas: 0 },
-  { name: 'Dom', horas: 0 },
-];
-
-const DAYS_MAP: Record<string, number> = {
-  segunda: 0,
-  terca: 1,
-  quarta: 2,
-  quinta: 3,
-  sexta: 4,
-  sabado: 5,
-  domingo: 6,
-};
+import { predictNextLevel } from '../../utils/levelPrediction';
 
 interface DashboardProps {
   userData: UserData;
   todayMinutes: number;
-  userName?: string;
-  onStartFocusSession?: () => void;
-  onStartLongSession?: () => void;
-  onOpenQuestions?: () => void;
-  onOpenFlashcards?: () => void;
+  userName: string;
+  onStartFocusSession: () => void;
+  onStartLongSession: () => void;
+  onOpenQuestions: () => void;
+  onOpenFlashcards: () => void;
 }
+
+interface DailyPulse {
+  key: string;
+  label: string;
+  minutes: number;
+  isToday: boolean;
+}
+
+interface SubjectBreakdown {
+  subject: string;
+  minutes: number;
+  sessions: number;
+  share: number;
+}
+
+type TrendDirection = 'up' | 'down' | 'flat';
+
+const DAY_FORMATTER = new Intl.DateTimeFormat('pt-BR', { weekday: 'short' });
+
+const startOfDay = (date: Date): Date => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const toDateKey = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseSessionDate = (session: StudySession): Date => {
+  if (session.timestamp) {
+    const parsedTimestamp = new Date(session.timestamp);
+    if (!Number.isNaN(parsedTimestamp.getTime())) {
+      return parsedTimestamp;
+    }
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(session.date)) {
+    const [year, month, day] = session.date.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  const parsedDate = new Date(session.date);
+  if (!Number.isNaN(parsedDate.getTime())) {
+    return parsedDate;
+  }
+
+  return new Date();
+};
+
+const formatMinutes = (minutes: number): string => {
+  if (!minutes) {
+    return '0 min';
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (!hours) {
+    return `${minutes} min`;
+  }
+
+  if (!remainingMinutes) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${remainingMinutes}min`;
+};
+
+const formatChange = (
+  currentMinutes: number,
+  previousMinutes: number,
+): { label: string; helper: string; direction: TrendDirection } => {
+  if (currentMinutes <= 0 && previousMinutes <= 0) {
+    return {
+      label: 'Sem mudanca',
+      helper: 'Sua semana ainda nao tem sessoes suficientes para comparar.',
+      direction: 'flat',
+    };
+  }
+
+  if (previousMinutes <= 0 && currentMinutes > 0) {
+    return {
+      label: '+100%',
+      helper: 'Primeira semana com ritmo claro registrado.',
+      direction: 'up',
+    };
+  }
+
+  const delta = currentMinutes - previousMinutes;
+  if (delta === 0) {
+    return {
+      label: '0%',
+      helper: 'Seu volume ficou estavel em relacao a semana passada.',
+      direction: 'flat',
+    };
+  }
+
+  const percentage = Math.round((delta / previousMinutes) * 100);
+
+  if (percentage > 0) {
+    return {
+      label: `+${percentage}%`,
+      helper: `Voce estudou ${formatMinutes(delta)} a mais do que na semana passada.`,
+      direction: 'up',
+    };
+  }
+
+  return {
+    label: `${percentage}%`,
+    helper: `Seu ritmo caiu ${formatMinutes(Math.abs(delta))} em relacao a semana passada.`,
+    direction: 'down',
+  };
+};
+
+const getRecommendedMethod = (averageSessionMinutes: number) => {
+  if (averageSessionMinutes >= 80) {
+    return STUDY_METHODS.find((method) => method.id === 'deep-work') || STUDY_METHODS[0];
+  }
+
+  if (averageSessionMinutes >= 45) {
+    return STUDY_METHODS.find((method) => method.id === '52-17') || STUDY_METHODS[0];
+  }
+
+  return STUDY_METHODS.find((method) => method.id === 'pomodoro') || STUDY_METHODS[0];
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({
   userData,
   todayMinutes,
-  userName = 'Estudante',
+  userName,
   onStartFocusSession,
   onStartLongSession,
   onOpenQuestions,
   onOpenFlashcards,
 }) => {
-  const weekData = React.useMemo(() => {
-    const data = BASE_WEEK_DATA.map(d => ({ ...d }));
-    Object.entries(userData.weekProgress || {}).forEach(([day, info]) => {
-      const idx = DAYS_MAP[day];
-      if (idx !== undefined && info.minutes) {
-        data[idx].horas = info.minutes / 60;
-      }
-    });
-    return data;
-  }, [userData.weekProgress]);
-
-  const subjectDistribution = React.useMemo(() => {
-    return userData.sessions?.reduce((acc, session) => {
-      const subject = session.subject || 'Outra';
-      acc[subject] = (acc[subject] || 0) + session.minutes;
-      return acc;
-    }, {} as Record<string, number>) || {};
-  }, [userData.sessions]);
-
-  const totalMinutesAllTime = React.useMemo(() => {
-    return Object.values(subjectDistribution).reduce((sum, m) => sum + m, 0);
-  }, [subjectDistribution]);
-
-  const smartPlan = React.useMemo(() => {
-    const sessions = userData.sessions || userData.studyHistory || [];
-    const fallbackSubject: MateriaTipo = 'Anatomia';
-
-    const sortedSubjects = Object.entries(subjectDistribution)
-      .sort(([, a], [, b]) => a - b)
-      .map(([subject]) => subject as MateriaTipo)
-      .filter((subject) => subject !== 'Outra');
-
-    const weakestSubject = sortedSubjects[0] || fallbackSubject;
-    const lastSession = sessions[sessions.length - 1];
-    const reviewSubject = (lastSession?.subject && lastSession.subject !== 'Outra'
-      ? lastSession.subject
-      : weakestSubject) as MateriaTipo;
-
-    const focusMinutes = Math.min(Math.max(25, Math.round(Math.max(0, userData.dailyGoal - todayMinutes))), 90);
-
-    return {
-      focusMinutes,
-      weakestSubject,
-      reviewSubject,
-      progressLabel:
-        todayMinutes >= userData.dailyGoal
-          ? 'Meta diária atingida. Foque em revisão e retenção.'
-          : `Faltam ${Math.max(0, userData.dailyGoal - todayMinutes)} min para fechar a meta de hoje.`,
-    };
-  }, [userData.sessions, userData.studyHistory, userData.dailyGoal, todayMinutes, subjectDistribution]);
-
-  const maxLongBreakMinutes = React.useMemo(
-    () => Math.max(...STUDY_METHODS.map((method) => method.longBreakMinutes)),
-    []
+  const sessions = React.useMemo(
+    () => (userData.sessions?.length ? userData.sessions : userData.studyHistory || []),
+    [userData.sessions, userData.studyHistory],
   );
 
-  // Meta diária
-  const dailyGoalProgress = (todayMinutes / userData.dailyGoal) * 100;
-  const remainingMinutes = Math.max(0, userData.dailyGoal - todayMinutes);
+  const {
+    weekMinutes,
+    previousWeekMinutes,
+    totalMinutes,
+    totalSessions,
+    averageSessionMinutes,
+    activeDaysThisWeek,
+    bestDay,
+    dailyPulse,
+    subjectBreakdown,
+  } = React.useMemo(() => {
+    const today = startOfDay(new Date());
+    const thisWeekStart = new Date(today);
+    thisWeekStart.setDate(today.getDate() - 6);
 
-  // Previsão de nível
-  const levelPrediction = React.useMemo(() => {
-    const sessions = userData.sessions || userData.studyHistory || [];
-    return predictNextLevel(userData.totalPoints, sessions);
-  }, [userData.totalPoints, userData.sessions, userData.studyHistory]);
+    const previousWeekStart = new Date(thisWeekStart);
+    previousWeekStart.setDate(thisWeekStart.getDate() - 7);
+
+    const previousWeekEnd = new Date(thisWeekStart);
+    previousWeekEnd.setMilliseconds(previousWeekEnd.getMilliseconds() - 1);
+
+    let weekTotal = 0;
+    let previousWeekTotal = 0;
+    let minutesAllTime = 0;
+    const minutesByDate = new Map<string, number>();
+    const sessionsByDate = new Map<string, number>();
+    const weeklyMinutesBySubject = new Map<string, number>();
+    const weeklySessionsBySubject = new Map<string, number>();
+
+    sessions.forEach((session) => {
+      const sessionDate = startOfDay(parseSessionDate(session));
+      const sessionKey = toDateKey(sessionDate);
+      minutesAllTime += session.minutes;
+
+      minutesByDate.set(sessionKey, (minutesByDate.get(sessionKey) || 0) + session.minutes);
+      sessionsByDate.set(sessionKey, (sessionsByDate.get(sessionKey) || 0) + 1);
+
+      if (sessionDate >= thisWeekStart && sessionDate <= today) {
+        weekTotal += session.minutes;
+        weeklyMinutesBySubject.set(session.subject, (weeklyMinutesBySubject.get(session.subject) || 0) + session.minutes);
+        weeklySessionsBySubject.set(session.subject, (weeklySessionsBySubject.get(session.subject) || 0) + 1);
+      } else if (sessionDate >= previousWeekStart && sessionDate <= previousWeekEnd) {
+        previousWeekTotal += session.minutes;
+      }
+    });
+
+    const nextDailyPulse: DailyPulse[] = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(thisWeekStart);
+      date.setDate(thisWeekStart.getDate() + index);
+      const key = toDateKey(date);
+      return {
+        key,
+        label: DAY_FORMATTER.format(date).replace('.', '').slice(0, 3),
+        minutes: minutesByDate.get(key) || 0,
+        isToday: key === toDateKey(today),
+      };
+    });
+
+    const topDayEntry = Array.from(minutesByDate.entries()).sort((a, b) => b[1] - a[1])[0];
+    const parsedBestDay = topDayEntry
+      ? {
+          key: topDayEntry[0],
+          minutes: topDayEntry[1],
+          label: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' })
+            .format(new Date(`${topDayEntry[0]}T12:00:00`))
+            .replace('.', ''),
+        }
+      : null;
+
+    const weeklySubjectTotal = Array.from(weeklyMinutesBySubject.values()).reduce((sum, value) => sum + value, 0);
+    const nextSubjectBreakdown: SubjectBreakdown[] = Array.from(weeklyMinutesBySubject.entries())
+      .map(([subject, minutes]) => ({
+        subject,
+        minutes,
+        sessions: weeklySessionsBySubject.get(subject) || 0,
+        share: weeklySubjectTotal > 0 ? Math.round((minutes / weeklySubjectTotal) * 100) : 0,
+      }))
+      .sort((a, b) => b.minutes - a.minutes)
+      .slice(0, 5);
+
+    return {
+      weekMinutes: weekTotal,
+      previousWeekMinutes: previousWeekTotal,
+      totalMinutes: minutesAllTime,
+      totalSessions: sessions.length,
+      averageSessionMinutes: sessions.length ? Math.round(minutesAllTime / sessions.length) : 0,
+      activeDaysThisWeek: nextDailyPulse.filter((entry) => entry.minutes > 0).length,
+      bestDay: parsedBestDay,
+      dailyPulse: nextDailyPulse,
+      subjectBreakdown: nextSubjectBreakdown,
+    };
+  }, [sessions]);
+
+  const streakDays = Math.max(userData.currentStreak || 0, userData.streak || 0);
+  const dailyGoalMinutes = userData.dailyGoal || 180;
+  const weeklyGoalMinutes = dailyGoalMinutes * 7;
+  const weeklyGoalProgress = weeklyGoalMinutes > 0 ? Math.min(100, Math.round((weekMinutes / weeklyGoalMinutes) * 100)) : 0;
+  const weeklyChange = React.useMemo(
+    () => formatChange(weekMinutes, previousWeekMinutes),
+    [previousWeekMinutes, weekMinutes],
+  );
+  const nextLevelPrediction = React.useMemo(
+    () => predictNextLevel(userData.totalPoints, sessions),
+    [sessions, userData.totalPoints],
+  );
+  const recommendedMethod = React.useMemo(
+    () => getRecommendedMethod(averageSessionMinutes),
+    [averageSessionMinutes],
+  );
+  const topSubject = subjectBreakdown[0];
+  const topSubjectDisplay = topSubject ? getDisplayDiscipline(topSubject.subject) : null;
+  const strongestPulse = Math.max(...dailyPulse.map((entry) => entry.minutes), 1);
+  const weeklyAverageMinutes = Math.round(weekMinutes / 7);
+  const weeklySignalCopy =
+    weekMinutes >= weeklyGoalMinutes
+      ? 'Meta semanal batida. Este e o melhor momento para transformar volume em consistencia.'
+      : `Faltam ${formatMinutes(Math.max(weeklyGoalMinutes - weekMinutes, 0))} para bater sua meta semanal.`;
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
-      
-      {/* Header com Boas-vindas e Streak */}
-      <header
-        className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 rounded-2xl shadow-lg text-white"
-        style={{ backgroundImage: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}
-      >
-        <div>
-          <h1 className="text-3xl font-bold mb-1 inline-flex items-center gap-2"><Hand className="w-6 h-6" />Olá, {userName}!</h1>
-          <p className="text-white/90">Pronto para avançar no Zero Base hoje?</p>
-        </div>
-        <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm px-5 py-3 rounded-xl border border-white/20 mt-4 md:mt-0">
-          <Flame className="w-8 h-8 text-orange-400" />
+    <div className="space-y-6">
+      <section className="overflow-hidden rounded-[28px] border border-slate-700/70 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_35%),radial-gradient(circle_at_right,rgba(14,165,233,0.16),transparent_30%),linear-gradient(145deg,#020617,#0f172a_55%,#111827)] shadow-[0_24px_60px_-30px_rgba(2,6,23,0.98)]">
+        <div className="grid gap-8 px-6 py-7 lg:px-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
           <div>
-            <p className="font-bold text-2xl">{userData.currentStreak || 0} Dias</p>
-            <p className="text-xs text-white/85">Sequência atual</p>
-          </div>
-        </div>
-      </header>
-
-      {/* Grid Principal (KPIs) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
-        
-        {/* Card de Pontos */}
-        <div className="motion-card motion-enter bg-slate-900 p-5 sm:p-6 rounded-2xl shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] border border-slate-700/70 hover:shadow-[0_14px_30px_-18px_rgba(2,6,23,1)] transition-shadow">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-3 bg-slate-800 rounded-xl border border-slate-700" style={{ color: 'var(--color-primary)' }}>
-              <Trophy className="w-6 h-6" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-200">
+              <Sparkles className="h-3.5 w-3.5" />
+              Painel de progresso
             </div>
-            <span className="text-xs font-bold bg-emerald-950/40 text-emerald-300 border border-emerald-700/40 px-3 py-1 rounded-full">
-              +{Math.floor(todayMinutes * 10)} hoje
-            </span>
-          </div>
-          <h3 className="text-4xl font-bold text-slate-100 mb-1">
-            {userData.totalPoints.toLocaleString()}
-          </h3>
-          <p className="text-slate-400 text-sm">Pontos Totais</p>
-        </div>
 
-        {/* Card de Nível */}
-        <div className="motion-card motion-enter bg-slate-900 p-5 sm:p-6 rounded-2xl shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] border border-slate-700/70 hover:shadow-[0_14px_30px_-18px_rgba(2,6,23,1)] transition-shadow">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-3 bg-slate-800 rounded-xl border border-slate-700" style={{ color: 'var(--color-secondary)' }}>
-              <TrendingUp className="w-6 h-6" />
+            <div className="mt-5 max-w-3xl">
+              <p className="text-sm font-medium text-sky-200/80">Ola, {userName.split(' ')[0] || 'estudante'}</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
+                Seu esforco esta ficando visivel.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+                Hoje voce soma {formatMinutes(todayMinutes)}. Na semana, ja acumulou {formatMinutes(weekMinutes)} em{' '}
+                {activeDaysThisWeek} dias ativos, com um ritmo {weeklyChange.direction === 'down' ? 'mais baixo' : weeklyChange.direction === 'up' ? 'melhor' : 'estavel'} do que na semana passada.
+              </p>
             </div>
-            <span className="text-xs font-bold text-slate-400">
-              Nível {userData.level}
-            </span>
-          </div>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-slate-200 text-lg">
-                {userData.level === 1 ? 'Calouro' : userData.level === 2 ? 'Iniciante' : 'Estudante'}
-              </span>
-              <span className="text-sm text-slate-400">
-                {userData.totalPoints}/1000 XP
-              </span>
-            </div>
-            {/* Barra de Progresso Visual */}
-            <div className="h-3 w-full bg-slate-700/80 rounded-full overflow-hidden">
-              <div 
-                className="h-full rounded-full transition-all duration-700 ease-out"
-                style={{
-                  backgroundImage: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))',
-                  boxShadow: '0 0 10px color-mix(in srgb, var(--color-primary) 35%, transparent)',
-                  width: `${Math.min((userData.totalPoints / 1000) * 100, 100)}%`,
-                }}
-              />
-            </div>
-          </div>
-        </div>
 
-        {/* Card de Meta Diária */}
-        <div className="motion-card motion-enter bg-slate-900 p-5 sm:p-6 rounded-2xl shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] border border-slate-700/70 hover:shadow-[0_14px_30px_-18px_rgba(2,6,23,1)] transition-shadow">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-3 bg-slate-800 rounded-xl border border-slate-700 text-teal-400">
-              <Target className="w-6 h-6" />
-            </div>
-            <span className="text-xs font-bold bg-amber-950/35 text-amber-300 border border-amber-700/40 px-3 py-1 rounded-full">
-              Faltam {remainingMinutes}m
-            </span>
-          </div>
-          <h3 className="text-4xl font-bold text-slate-100 mb-1">
-            {Math.round(dailyGoalProgress)}%
-          </h3>
-          <p className="text-slate-400 text-sm">
-            Da meta diária ({userData.dailyGoal}min)
-          </p>
-          {/* Mini barra de progresso */}
-          <div className="mt-3 h-2 w-full bg-slate-700/80 rounded-full overflow-hidden">
-            <div 
-              className="h-full rounded-full transition-all duration-700 ease-out"
-              style={{
-                width: `${Math.min(dailyGoalProgress, 100)}%`,
-                backgroundImage: 'linear-gradient(to right, #14b8a6, #2dd4bf)',
-                boxShadow: '0 0 10px rgba(45,212,191,0.35)',
-              }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Previsão de Nível */}
-      <div className="motion-card motion-enter bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl border border-slate-700/70 p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-        <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20">
-          <Zap className="w-6 h-6 text-blue-400" />
-        </div>
-        <div className="flex-1">
-          <p className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Previsão de Evolução</p>
-          <p className="text-slate-100 font-semibold">{levelPrediction.label}</p>
-          {levelPrediction.avgPointsPerDay > 0 && (
-            <p className="text-xs text-slate-400 mt-0.5">
-              Média dos últimos 7 dias: <span className="text-blue-400 font-bold">{levelPrediction.avgPointsPerDay} XP/dia</span>
-              {levelPrediction.pointsToNext > 0 && (
-                <> · Faltam <span className="text-amber-400 font-bold">{levelPrediction.pointsToNext.toLocaleString()} XP</span> para o Nível {levelPrediction.nextLevel}</>
-              )}
-            </p>
-          )}
-        </div>
-        {levelPrediction.daysToNextLevel !== null && levelPrediction.daysToNextLevel <= 7 && (
-          <span className="shrink-0 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold px-3 py-1.5 rounded-full inline-flex items-center gap-1">
-            <Zap className="w-3.5 h-3.5" /> {levelPrediction.daysToNextLevel}d
-          </span>
-        )}
-      </div>
-
-      {/* Plano Diário Inteligente */}
-      <div className="motion-card motion-enter bg-slate-900 rounded-2xl border border-slate-700/70 p-6 shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)]">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div>
-            <p className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Plano Diário Inteligente</p>
-            <h3 className="text-xl font-bold text-slate-100">Próximos passos para hoje</h3>
-            <p className="text-sm text-slate-400 mt-1">{smartPlan.progressLabel}</p>
-          </div>
-          <span className="bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold px-3 py-1.5 rounded-full">
-            MVP
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          <button
-            type="button"
-            onClick={onStartFocusSession}
-            className="text-left rounded-xl border border-slate-700 bg-slate-800/60 hover:bg-slate-800 transition-colors p-4"
-          >
-            <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 mb-3">
-              <Clock3 className="w-4 h-4" />
-            </div>
-            <p className="text-sm font-semibold text-slate-100">Foco Guiado</p>
-            <p className="text-xs text-slate-400 mt-1">{smartPlan.focusMinutes} min em {getDisplayDiscipline(smartPlan.weakestSubject).label}</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={onStartLongSession}
-            className="text-left rounded-xl border border-slate-700 bg-slate-800/60 hover:bg-slate-800 transition-colors p-4"
-          >
-            <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-400 mb-3">
-              <Zap className="w-4 h-4" />
-            </div>
-            <p className="text-sm font-semibold text-slate-100">Sessão Longa</p>
-            <p className="text-xs text-slate-400 mt-1">Long break até {maxLongBreakMinutes} min</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenQuestions}
-            className="text-left rounded-xl border border-slate-700 bg-slate-800/60 hover:bg-slate-800 transition-colors p-4"
-          >
-            <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-400 mb-3">
-              <Brain className="w-4 h-4" />
-            </div>
-            <p className="text-sm font-semibold text-slate-100">Bloco de Questões</p>
-            <p className="text-xs text-slate-400 mt-1">Treinar raciocínio em {getDisplayDiscipline(smartPlan.reviewSubject).label}</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenFlashcards}
-            className="text-left rounded-xl border border-slate-700 bg-slate-800/60 hover:bg-slate-800 transition-colors p-4"
-          >
-            <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/25 text-purple-400 mb-3">
-              <Layers className="w-4 h-4" />
-            </div>
-            <p className="text-sm font-semibold text-slate-100">Revisão Ativa</p>
-            <p className="text-xs text-slate-400 mt-1">Flashcards para consolidar memória</p>
-          </button>
-        </div>
-      </div>
-
-      {/* Área Principal (Gráfico e Matérias) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Gráfico Semanal */}
-        <div className="motion-card motion-enter lg:col-span-2 bg-slate-900 p-6 rounded-2xl shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] border border-slate-700/70">
-          <div className="flex items-center gap-2 mb-6">
-            <Calendar className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
-            <h3 className="font-bold text-slate-100 text-lg">
-              Progresso Semanal
-            </h3>
-          </div>
-          <div className="h-64">
-            <React.Suspense
-              fallback={
-                <div className="h-full w-full rounded-lg border border-slate-700 bg-slate-800/50 animate-pulse" />
-              }
-            >
-              <DashboardWeeklyProgressChart weekData={weekData} />
-            </React.Suspense>
-          </div>
-        </div>
-
-        {/* Distribuição por Matéria */}
-        <div className="motion-card motion-enter bg-slate-900 p-6 rounded-2xl shadow-[0_10px_28px_-18px_rgba(2,6,23,0.95)] border border-slate-700/70">
-          <h3 className="font-bold text-slate-100 mb-4 text-lg">
-            <span className="inline-flex items-center gap-2 text-slate-100"><BookOpen className="w-5 h-5" />Distribuição por Matéria</span>
-          </h3>
-          <div className="space-y-3 max-h-64 overflow-y-auto">
-            {Object.entries(subjectDistribution).length > 0 ? (
-              Object.entries(subjectDistribution)
-                .sort(([, a], [, b]) => b - a)
-                .map(([subject, minutes]) => {
-                  const percentage = totalMinutesAllTime > 0 
-                    ? (minutes / totalMinutesAllTime) * 100 
-                    : 0;
-                  const materiaConfig = MATERIAS_CONFIG[subject as MateriaTipo] || MATERIAS_CONFIG['Outra'];
-                  const discipline = getDisplayDiscipline(subject);
-                  const DisciplineIcon = discipline.Icon;
-                  
-                  return (
-                    <div key={subject} className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                          <DisciplineIcon className="w-4 h-4 text-slate-300" />
-                          <span className="text-sm font-medium text-slate-200">
-                            {discipline.label}
-                          </span>
-                        </div>
-                        <span className="text-xs font-bold text-slate-400">
-                          {Math.round(percentage)}%
-                        </span>
-                      </div>
-                      <div className="h-2 w-full bg-slate-700/80 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-500 ${materiaConfig.bgColor.replace('50', '500')}`}
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-slate-400">
-                        {Math.round(minutes)} minutos
-                      </p>
-                    </div>
-                  );
-                })
-            ) : (
-              <div className="text-center py-8 text-slate-400">
-                <p className="text-sm">Nenhum estudo registrado ainda</p>
-                <p className="text-xs mt-1">Comece a estudar para ver suas estatísticas!</p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Hoje</span>
+                  <Clock3 className="h-4 w-4 text-sky-300" />
+                </div>
+                <p className="mt-3 text-3xl font-semibold text-slate-50">{formatMinutes(todayMinutes)}</p>
+                <p className="mt-2 text-sm text-slate-400">Meta diaria: {formatMinutes(dailyGoalMinutes)}</p>
               </div>
-            )}
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Semana</span>
+                  <Target className="h-4 w-4 text-cyan-300" />
+                </div>
+                <p className="mt-3 text-3xl font-semibold text-slate-50">{formatMinutes(weekMinutes)}</p>
+                <p className="mt-2 text-sm text-slate-400">{weeklyGoalProgress}% da meta semanal</p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Evolucao</span>
+                  {weeklyChange.direction === 'down' ? (
+                    <ArrowDownRight className="h-4 w-4 text-rose-300" />
+                  ) : weeklyChange.direction === 'up' ? (
+                    <ArrowUpRight className="h-4 w-4 text-emerald-300" />
+                  ) : (
+                    <ArrowRight className="h-4 w-4 text-slate-300" />
+                  )}
+                </div>
+                <p className="mt-3 text-3xl font-semibold text-slate-50">{weeklyChange.label}</p>
+                <p className="mt-2 text-sm text-slate-400">{weeklyChange.helper}</p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Streak</span>
+                  <Flame className="h-4 w-4 text-amber-300" />
+                </div>
+                <p className="mt-3 text-3xl font-semibold text-slate-50">{streakDays} dias</p>
+                <p className="mt-2 text-sm text-slate-400">
+                  {streakDays > 0 ? 'Voce esta mantendo o habito ativo.' : 'A primeira sessao ja libera sua sequencia.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[26px] border border-slate-700/80 bg-slate-950/60 p-5 shadow-[0_18px_36px_-24px_rgba(14,165,233,0.7)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Pulso da semana</p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-50">Horas que viram progresso</h3>
+              </div>
+              <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+                {activeDaysThisWeek}/7 dias ativos
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-end gap-2">
+              {dailyPulse.map((entry) => (
+                <div key={entry.key} className="flex flex-1 flex-col items-center gap-2">
+                  <div className="flex h-32 w-full items-end rounded-2xl bg-slate-900/80 px-1.5 pb-1.5">
+                    <div
+                      className={`w-full rounded-xl transition-all duration-500 ${entry.isToday ? 'bg-gradient-to-t from-cyan-400 to-sky-300 shadow-[0_0_24px_rgba(56,189,248,0.45)]' : 'bg-gradient-to-t from-slate-600 to-slate-300/90'}`}
+                      style={{
+                        height: `${Math.max(14, Math.round((entry.minutes / strongestPulse) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="text-center">
+                    <p className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${entry.isToday ? 'text-sky-200' : 'text-slate-500'}`}>
+                      {entry.label}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">{entry.minutes ? formatMinutes(entry.minutes) : '0 min'}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium text-slate-200">Meta semanal</span>
+                <span className="text-slate-400">{formatMinutes(weekMinutes)} / {formatMinutes(weeklyGoalMinutes)}</span>
+              </div>
+              <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-cyan-300 transition-all duration-700"
+                  style={{ width: `${Math.max(6, weeklyGoalProgress)}%` }}
+                />
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-400">{weeklySignalCopy}</p>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.95fr)_minmax(280px,0.8fr)]">
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900 p-6 shadow-[0_12px_28px_-18px_rgba(2,6,23,0.92)]">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Distribuicao da semana</p>
+              <h3 className="mt-2 text-xl font-semibold text-slate-50">Horas por materia</h3>
+            </div>
+            {topSubjectDisplay ? (
+              <div className="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-300">
+                Lider: {topSubjectDisplay.label}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {subjectBreakdown.map((entry) => {
+              const discipline = getDisplayDiscipline(entry.subject);
+              const Icon = discipline.Icon;
+
+              return (
+                <div key={entry.subject} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-2.5 text-sky-200">
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-100">{discipline.label}</p>
+                        <p className="text-sm text-slate-400">{entry.sessions} sessoes registradas</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-semibold text-slate-50">{formatMinutes(entry.minutes)}</p>
+                      <p className="text-xs text-slate-400">{entry.share}% da sua semana</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-sky-400 to-cyan-300"
+                      style={{ width: `${Math.max(8, entry.share)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900 p-6 shadow-[0_12px_28px_-18px_rgba(2,6,23,0.92)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Insights</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-50">O que esse ritmo esta mostrando</h3>
+
+          <div className="mt-6 grid gap-3">
+            <div className="rounded-2xl border border-emerald-700/30 bg-emerald-950/20 p-4">
+              <div className="flex items-center gap-2 text-emerald-300">
+                <Trophy className="h-4 w-4" />
+                <span className="text-sm font-semibold">Melhor dia</span>
+              </div>
+              <p className="mt-3 text-lg font-semibold text-slate-50">
+                {bestDay ? `${bestDay.label} · ${formatMinutes(bestDay.minutes)}` : 'Seu melhor dia vai aparecer aqui'}
+              </p>
+              <p className="mt-1 text-sm text-emerald-200/80">Seu pico atual de volume ja esta claro no historico.</p>
+            </div>
+
+            <div className="rounded-2xl border border-sky-700/30 bg-sky-950/20 p-4">
+              <div className="flex items-center gap-2 text-sky-300">
+                <Brain className="h-4 w-4" />
+                <span className="text-sm font-semibold">Materia dominante</span>
+              </div>
+              <p className="mt-3 text-lg font-semibold text-slate-50">
+                {topSubjectDisplay ? `${topSubjectDisplay.label} lidera sua semana` : 'Sua materia dominante aparece apos ganhar volume'}
+              </p>
+              <p className="mt-1 text-sm text-sky-100/75">
+                {topSubject ? `${formatMinutes(topSubject.minutes)} acumulados em ${topSubject.sessions} sessoes.` : 'Continue estudando para revelar sua distribuicao.'}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-amber-700/30 bg-amber-950/20 p-4">
+              <div className="flex items-center gap-2 text-amber-300">
+                <Zap className="h-4 w-4" />
+                <span className="text-sm font-semibold">Proximo nivel</span>
+              </div>
+              <p className="mt-3 text-lg font-semibold text-slate-50">{nextLevelPrediction.label}</p>
+              <p className="mt-1 text-sm text-amber-100/75">
+                Faltam {nextLevelPrediction.pointsToNext.toLocaleString()} pontos para o nivel {nextLevelPrediction.nextLevel}.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Clock3 className="h-4 w-4" />
+                <span className="text-sm font-semibold">Acumulado</span>
+              </div>
+              <p className="mt-3 text-lg font-semibold text-slate-50">{formatMinutes(totalMinutes)} registrados</p>
+              <p className="mt-1 text-sm text-slate-400">
+                {totalSessions} sessoes concluidas com media de {formatMinutes(averageSessionMinutes)} por sessao.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900 p-6 shadow-[0_12px_28px_-18px_rgba(2,6,23,0.92)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Proxima melhor acao</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-50">Mantenha o ritmo alto hoje</h3>
+
+          <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-2.5 text-cyan-200">
+                <Clock3 className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-100">Sessao recomendada</p>
+                <p className="text-sm text-slate-400">
+                  {recommendedMethod.name} · {recommendedMethod.focusMinutes} min de foco
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-400">{recommendedMethod.description}</p>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <button
+              onClick={onStartFocusSession}
+              className="flex w-full items-center justify-between rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3.5 text-left text-sm font-semibold text-cyan-100 transition hover:border-cyan-400/50 hover:bg-cyan-500/15"
+            >
+              <span>Comecar sessao de foco agora</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+
+            <button
+              onClick={onStartLongSession}
+              className="flex w-full items-center justify-between rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3.5 text-left text-sm font-semibold text-slate-100 transition hover:border-slate-500 hover:bg-slate-900"
+            >
+              <span>Reservar bloco longo de estudo</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-6 grid gap-3">
+            <button
+              onClick={onOpenQuestions}
+              className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-950"
+            >
+              <span className="inline-flex items-center gap-2 font-medium">
+                <Target className="h-4 w-4 text-emerald-300" />
+                Fazer bloco de questoes
+              </span>
+              <ArrowRight className="h-4 w-4 text-slate-500" />
+            </button>
+
+            <button
+              onClick={onOpenFlashcards}
+              className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-950"
+            >
+              <span className="inline-flex items-center gap-2 font-medium">
+                <BookOpen className="h-4 w-4 text-amber-300" />
+                Revisar com flashcards
+              </span>
+              <ArrowRight className="h-4 w-4 text-slate-500" />
+            </button>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Ritmo medio</p>
+            <p className="mt-2 text-lg font-semibold text-slate-50">{formatMinutes(weeklyAverageMinutes)} por dia nesta semana</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Continue assim para manter o streak ativo e empurrar ranking, progresso semanal e feed social ao mesmo tempo.
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
   );
 };
+
+export default Dashboard;

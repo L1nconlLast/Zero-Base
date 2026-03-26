@@ -1,8 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
 import ModalidadeSelect from './ModalidadeSelect';
 import DisciplinaSelect from './DisciplinaSelect';
+import CronogramaHeader from './CronogramaHeader';
+import CronogramaSummary from './CronogramaSummary';
+import WeeklyGrid from './WeeklyGrid';
+import TodayScheduleStatus from './TodayScheduleStatus';
+import DayPlanEditorModal from './DayPlanEditorModal';
 import {
-  CalendarDays,
   Plus,
   Trash2,
   CheckCircle,
@@ -21,11 +26,34 @@ import {
   AlertOctagon,
   HelpCircle,
 } from 'lucide-react';
-import type { MateriaTipo, ScheduleEntry } from '../../types';
+import type {
+  MateriaTipo,
+  ScheduleEntry,
+  StudyContextForToday,
+  Weekday,
+  WeeklyStudySchedule,
+} from '../../types';
 import { MATERIAS_CONFIG } from '../../types';
 import { useStudySchedule } from '../../hooks/useStudySchedule';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { saasPlanningService } from '../../services/saasPlanning.service';
+import {
+  autoDistributeSubjects,
+  buildStudyContextForToday,
+  createDefaultWeeklyStudySchedule,
+  getActiveDaysCount,
+  getPaceCopy,
+  getSuggestedAdjustment,
+  getTodayCompletedSessions,
+  getPlannedSubjectsCount,
+  getRecentPaceState,
+  getWeeklyPlanConfidenceState,
+  getWeeklyCompletedSessions,
+  getWeekdayFromDate,
+  sanitizeWeeklyStudySchedule,
+  toggleWeeklyDayAvailability,
+  updateWeeklyDayPlan,
+} from '../../services/studySchedule.service';
 import {
   adjustPlanWithAi,
   createDefaultSmartProfile,
@@ -34,6 +62,11 @@ import {
   type AiAdjustmentOutput,
   type SmartScheduleProfile,
 } from '../../utils/smartScheduleEngine.ts';
+import {
+  getSuggestedContentPathBySubjectLabel,
+  getSuggestedNextTopicAligned,
+  getSuggestedTopicCopy,
+} from '../../utils/contentTree';
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -111,6 +144,14 @@ const addDays = (date: Date, days: number): Date => {
 
 interface StudyScheduleCalendarProps {
   userId?: string | null;
+  weeklySchedule?: WeeklyStudySchedule;
+  onChangeWeeklySchedule?: (schedule: WeeklyStudySchedule) => void;
+  studyContextForToday?: StudyContextForToday;
+  weeklyCompletedSessions?: number;
+  todayCompletedSessions?: number;
+  completedWeekdays?: Partial<Record<Weekday, boolean>>;
+  requestedEditDay?: Weekday | null;
+  requestedEditNonce?: number;
 }
 
 interface EditableWeeklyRow {
@@ -118,13 +159,29 @@ interface EditableWeeklyRow {
   cells: string[];
 }
 
-const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId }) => {
+const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
+  userId,
+  weeklySchedule,
+  onChangeWeeklySchedule,
+  studyContextForToday,
+  weeklyCompletedSessions,
+  todayCompletedSessions,
+  completedWeekdays,
+  requestedEditDay,
+  requestedEditNonce,
+}) => {
   const today = new Date();
   const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate());
   const userScope = userId || 'default';
   const profileStorageKey = `smartScheduleProfile_${userScope}`;
   const autoGenerateKey = `smartScheduleAutoGenerate_${userScope}`;
+  const weeklyScheduleStorageKey = `weeklyStudySchedule_${userScope}`;
   const initialSmartProfile = useMemo(() => createDefaultSmartProfile(), []);
+  const defaultWeeklySchedule = useMemo(() => createDefaultWeeklyStudySchedule(), []);
+  const [localWeeklySchedule, setLocalWeeklySchedule] = useLocalStorage<WeeklyStudySchedule>(
+    weeklyScheduleStorageKey,
+    defaultWeeklySchedule,
+  );
   // Estados para o calendário
   const [viewYear, setViewYear] = useState<number>(today.getFullYear());
   const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
@@ -140,7 +197,10 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
   const [isPomodoroHelpOpen, setIsPomodoroHelpOpen] = useState(false);
   const [aiSummary, setAiSummary] = useState<string[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [editingDay, setEditingDay] = useState<Weekday | null>(null);
   const [swapSubjectInput, setSwapSubjectInput] = useState('Matemática');
+  const smartProfileSectionRef = useRef<HTMLDivElement | null>(null);
+  const weeklyGridSectionRef = useRef<HTMLDivElement | null>(null);
   const [smartProfile, setSmartProfile] = useLocalStorage<SmartScheduleProfile>(
     profileStorageKey,
     initialSmartProfile,
@@ -156,7 +216,44 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     getEntriesForDate,
   } = useStudySchedule(userId);
 
+  useEffect(() => {
+    const sanitized = sanitizeWeeklyStudySchedule(localWeeklySchedule);
+    if (JSON.stringify(sanitized) !== JSON.stringify(localWeeklySchedule)) {
+      setLocalWeeklySchedule(sanitized);
+    }
+  }, [localWeeklySchedule, setLocalWeeklySchedule]);
+
+  const effectiveWeeklySchedule = useMemo(
+    () => sanitizeWeeklyStudySchedule(weeklySchedule ?? localWeeklySchedule),
+    [localWeeklySchedule, weeklySchedule],
+  );
+
+  const handleWeeklyScheduleChange = useCallback(
+    (nextSchedule: WeeklyStudySchedule) => {
+      if (onChangeWeeklySchedule) {
+        onChangeWeeklySchedule(nextSchedule);
+        return;
+      }
+
+      setLocalWeeklySchedule(nextSchedule);
+    },
+    [onChangeWeeklySchedule, setLocalWeeklySchedule],
+  );
+
+  const effectiveStudyContextForToday = useMemo(
+    () => studyContextForToday ?? buildStudyContextForToday(effectiveWeeklySchedule, today),
+    [effectiveWeeklySchedule, studyContextForToday, today],
+  );
+
   const selectedEntry = entries.find((entry) => entry.id === selectedEntryId) || null;
+
+  useEffect(() => {
+    if (!requestedEditDay) {
+      return;
+    }
+
+    setEditingDay(requestedEditDay);
+  }, [requestedEditDay, requestedEditNonce]);
 
   useEffect(() => {
     setSmartProfile((current: SmartScheduleProfile) => {
@@ -503,40 +600,300 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
     return [...values].sort((a, b) => a.localeCompare(b));
   }, [disciplinas]);
 
-  // Stats
-  const totalScheduled = entries.length;
-  const totalDone = entries.filter((e) => e.done).length;
-  const completionPct = totalScheduled > 0 ? Math.round((totalDone / totalScheduled) * 100) : 0;
+  const weekdayOrder: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+  const weekdayLabels: Record<Weekday, string> = {
+    monday: 'Segunda',
+    tuesday: 'Terça',
+    wednesday: 'Quarta',
+    thursday: 'Quinta',
+    friday: 'Sexta',
+    saturday: 'Sábado',
+    sunday: 'Domingo',
+  };
+
+  const todayWeekday = useMemo(() => getWeekdayFromDate(today), [today]);
+  const activeDaysCount = useMemo(
+    () => getActiveDaysCount(effectiveWeeklySchedule.availability),
+    [effectiveWeeklySchedule.availability],
+  );
+  const plannedSubjectsCount = useMemo(
+    () => getPlannedSubjectsCount(effectiveWeeklySchedule.weekPlan),
+    [effectiveWeeklySchedule.weekPlan],
+  );
+  const currentWeekStart = useMemo(() => getWeekStart(today), [today]);
+  const currentWeekEnd = useMemo(() => addDays(currentWeekStart, 6), [currentWeekStart]);
+  const fallbackWeeklyCompletedSessions = useMemo(
+    () => getWeeklyCompletedSessions(entries, currentWeekStart, currentWeekEnd),
+    [currentWeekEnd, currentWeekStart, entries],
+  );
+  const fallbackTodayCompletedSessions = useMemo(
+    () => getTodayCompletedSessions(entries, today),
+    [entries, today],
+  );
+  const fallbackCompletedWeekdays = useMemo(
+    () =>
+      weekdayOrder.reduce((acc, day, index) => {
+        const dayDate = addDays(currentWeekStart, index);
+        const dayKey = toDateStr(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate());
+        acc[day] = entries.some((entry) => entry.done && entry.date === dayKey);
+        return acc;
+      }, {} as Partial<Record<Weekday, boolean>>),
+    [currentWeekStart, entries, weekdayOrder],
+  );
+  const effectiveWeeklyCompletedSessions = weeklyCompletedSessions ?? fallbackWeeklyCompletedSessions;
+  const effectiveTodayCompletedSessions = todayCompletedSessions ?? fallbackTodayCompletedSessions;
+  const effectiveCompletedWeekdays = completedWeekdays ?? fallbackCompletedWeekdays;
+  const completedEntryDateKeys = useMemo(
+    () =>
+      entries
+        .filter((entry) => entry.done)
+        .map((entry) => entry.date),
+    [entries],
+  );
+  const weeklyPlanConfidenceState = useMemo(
+    () =>
+      getWeeklyPlanConfidenceState(
+        effectiveWeeklyCompletedSessions,
+        effectiveWeeklySchedule.preferences.weeklyGoalSessions,
+      ),
+    [effectiveWeeklyCompletedSessions, effectiveWeeklySchedule.preferences.weeklyGoalSessions],
+  );
+  const recentPaceState = useMemo(
+    () => getRecentPaceState(effectiveWeeklySchedule, completedEntryDateKeys, today),
+    [completedEntryDateKeys, effectiveWeeklySchedule, today],
+  );
+  const recentTopicLabelsBySubject = useMemo(
+    () =>
+      entries.reduce((acc, entry) => {
+        const subjectLabel = typeof entry.subject === 'string' ? entry.subject.trim() : '';
+        const topicLabel = typeof entry.topic === 'string' ? entry.topic.trim() : '';
+
+        if (!subjectLabel || !topicLabel) {
+          return acc;
+        }
+
+        acc[subjectLabel] = acc[subjectLabel] ?? [];
+        if (!acc[subjectLabel].includes(topicLabel)) {
+          acc[subjectLabel].push(topicLabel);
+        }
+
+        return acc;
+      }, {} as Record<string, string[]>),
+    [entries],
+  );
+  const enrichedTodaySubjectLabels = useMemo(() => {
+    if (effectiveStudyContextForToday.state.type !== 'planned') {
+      return [];
+    }
+
+    return effectiveStudyContextForToday.state.subjectLabels.map((subjectLabel) =>
+      getSuggestedContentPathBySubjectLabel(
+        subjectLabel,
+        undefined,
+        recentTopicLabelsBySubject[subjectLabel] ?? [],
+      ).shortLabel,
+    );
+  }, [effectiveStudyContextForToday.state, recentTopicLabelsBySubject]);
+  const todaySuggestedTopic = useMemo(() => {
+    if (effectiveStudyContextForToday.state.type !== 'planned') {
+      return null;
+    }
+
+    const preferredFrontLabelBySubject = effectiveStudyContextForToday.state.subjectLabels.reduce((acc, subjectLabel) => {
+      acc[subjectLabel] = getSuggestedContentPathBySubjectLabel(
+        subjectLabel,
+        undefined,
+        recentTopicLabelsBySubject[subjectLabel] ?? [],
+      ).frontLabel;
+      return acc;
+    }, {} as Record<string, string | undefined>);
+
+    return getSuggestedNextTopicAligned({
+      todaySubjectLabels: effectiveStudyContextForToday.state.subjectLabels,
+      preferredFrontLabelBySubject,
+      recentTopicLabelsBySubject,
+    });
+  }, [effectiveStudyContextForToday.state, recentTopicLabelsBySubject]);
+  const todaySuggestedTopicCopy = useMemo(
+    () =>
+      todaySuggestedTopic
+        ? getSuggestedTopicCopy({
+            source: todaySuggestedTopic.source,
+            topicLabel: todaySuggestedTopic.topicLabel,
+            frontLabel: todaySuggestedTopic.frontLabel,
+            subjectLabel: todaySuggestedTopic.subjectLabel,
+            variant: 'today',
+          })
+        : undefined,
+    [todaySuggestedTopic],
+  );
+  const todaySummaryContextLabel = useMemo(() => {
+    if (enrichedTodaySubjectLabels.length === 0) {
+      return undefined;
+    }
+
+    if (enrichedTodaySubjectLabels.length === 1) {
+      return `Hoje: ${enrichedTodaySubjectLabels[0]}`;
+    }
+
+    return `Hoje: ${enrichedTodaySubjectLabels[0]} +${enrichedTodaySubjectLabels.length - 1}`;
+  }, [enrichedTodaySubjectLabels]);
+  const todayGridContextLabel = useMemo(() => {
+    if (enrichedTodaySubjectLabels.length === 0) {
+      return undefined;
+    }
+
+    if (enrichedTodaySubjectLabels.length === 1) {
+      return enrichedTodaySubjectLabels[0];
+    }
+
+    return `${enrichedTodaySubjectLabels[0]} +${enrichedTodaySubjectLabels.length - 1}`;
+  }, [enrichedTodaySubjectLabels]);
+  const todayPlanConfidenceHint = useMemo(() => {
+    if (effectiveStudyContextForToday.state.type !== 'planned') {
+      return undefined;
+    }
+
+    const paceCopy = getPaceCopy({
+      state: recentPaceState,
+      date: today,
+    });
+
+    if (recentPaceState !== 'on_track' && paceCopy?.today) {
+      return paceCopy.today;
+    }
+
+    if (
+      weeklyPlanConfidenceState === 'below_pace'
+    ) {
+      return 'Hoje e um bom dia para retomar o plano';
+    }
+
+    return undefined;
+  }, [effectiveStudyContextForToday.state.type, recentPaceState, today, weeklyPlanConfidenceState]);
+  const continuityLabels = useMemo(
+    () =>
+      weekdayOrder.reduce((acc, day, index) => {
+        if (index === 0) {
+          return acc;
+        }
+
+        const previousDay = weekdayOrder[index - 1];
+        if (
+          effectiveCompletedWeekdays[previousDay]
+          && effectiveWeeklySchedule.availability[day]
+        ) {
+          acc[day] = 'Em sequencia';
+        }
+
+        return acc;
+      }, {} as Partial<Record<Weekday, string>>),
+    [effectiveCompletedWeekdays, effectiveWeeklySchedule.availability, weekdayOrder],
+  );
+  const suggestedAdjustment = useMemo(
+    () => getSuggestedAdjustment(recentPaceState),
+    [recentPaceState],
+  );
+
+  const handleToggleWeeklyDay = useCallback(
+    (day: Weekday, nextActive: boolean) => {
+      handleWeeklyScheduleChange(toggleWeeklyDayAvailability(effectiveWeeklySchedule, day, nextActive));
+    },
+    [effectiveWeeklySchedule, handleWeeklyScheduleChange],
+  );
+
+  const handleSaveWeeklyDay = useCallback(
+    ({ day, plan, active }: { day: Weekday; plan: { subjectLabels: string[] }; active: boolean }) => {
+      let nextSchedule = updateWeeklyDayPlan(effectiveWeeklySchedule, day, plan.subjectLabels);
+      nextSchedule = toggleWeeklyDayAvailability(nextSchedule, day, active);
+      handleWeeklyScheduleChange(nextSchedule);
+      setEditingDay(null);
+    },
+    [effectiveWeeklySchedule, handleWeeklyScheduleChange],
+  );
+
+  const handleAutoAdjustWeeklySchedule = useCallback(() => {
+    if (allDisciplineLabels.length === 0) {
+      setAiSummary([
+        'Nenhuma disciplina disponível ainda para reorganizar a semana.',
+      ]);
+      toast('Nenhuma disciplina disponível ainda para reorganizar a semana.', { icon: 'ℹ️' });
+      smartProfileSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    const nextSchedule = autoDistributeSubjects(effectiveWeeklySchedule, allDisciplineLabels);
+    handleWeeklyScheduleChange(nextSchedule);
+    setAiSummary([
+      'Redistribuí a semana usando apenas os dias ativos e respeitando o limite de sessões por dia.',
+      'Você ainda pode editar qualquer dia manualmente depois do ajuste.',
+    ]);
+    toast.success('Seu cronograma foi reorganizado com base nas suas disciplinas.');
+  }, [allDisciplineLabels, effectiveWeeklySchedule, handleWeeklyScheduleChange]);
+
+  const handleSuggestedAdjustment = useCallback(
+    (suggestion: NonNullable<typeof suggestedAdjustment>) => {
+      if (suggestion.type === 'reduce_load') {
+        setEditingDay(todayWeekday);
+        return;
+      }
+
+      weeklyGridSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    [suggestedAdjustment, todayWeekday],
+  );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 flex items-center justify-center gap-2">
-          <CalendarDays className="w-6 h-6" /> Cronograma de Estudos
-        </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Selecione uma data, escolha a disciplina e organize sua rotina de estudos.
-        </p>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <CronogramaHeader
+        onAutoAdjust={handleAutoAdjustWeeklySchedule}
+        onEditPreferences={() => smartProfileSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+      />
+
+      <CronogramaSummary
+        activeDaysCount={activeDaysCount}
+        plannedSubjectsCount={plannedSubjectsCount}
+        defaultSessionDuration={effectiveWeeklySchedule.preferences.defaultSessionDurationMinutes}
+        todayState={effectiveStudyContextForToday.state}
+        todayContextLabel={todaySummaryContextLabel}
+        weeklyCompletedSessions={effectiveWeeklyCompletedSessions}
+        weeklyGoalSessions={effectiveWeeklySchedule.preferences.weeklyGoalSessions}
+        weeklyPlanConfidenceState={weeklyPlanConfidenceState}
+        recentPaceState={recentPaceState}
+        onAutoAdjust={handleAutoAdjustWeeklySchedule}
+      />
+
+      <TodayScheduleStatus
+        todayState={effectiveStudyContextForToday.state}
+        todayCompletedSessions={effectiveTodayCompletedSessions}
+        enrichedSubjectLabels={enrichedTodaySubjectLabels}
+        suggestedTopicCopy={todaySuggestedTopicCopy}
+        planConfidenceHint={todayPlanConfidenceHint}
+        recentPaceState={recentPaceState}
+        suggestedAdjustment={suggestedAdjustment}
+        onAdjustSchedule={() => setEditingDay(todayWeekday)}
+        onDefineSubjects={() => setEditingDay(todayWeekday)}
+        onSuggestedAdjustment={handleSuggestedAdjustment}
+      />
+
+      <div ref={weeklyGridSectionRef}>
+        <WeeklyGrid
+          weekPlan={effectiveWeeklySchedule.weekPlan}
+          availability={effectiveWeeklySchedule.availability}
+          today={todayWeekday}
+          completedDays={effectiveCompletedWeekdays}
+          continuityLabels={continuityLabels}
+          todayContextLabel={todayGridContextLabel}
+          onEditDay={setEditingDay}
+          onToggleDay={handleToggleWeeklyDay}
+        />
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 text-center shadow-sm">
-          <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">{totalScheduled}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Agendados</p>
-        </div>
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 text-center shadow-sm">
-          <p className="text-2xl font-extrabold text-emerald-600">{totalDone}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Concluídos</p>
-        </div>
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 text-center shadow-sm">
-          <p className="text-2xl font-extrabold" style={{ color: 'var(--color-primary)' }}>{completionPct}%</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Progresso</p>
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
+      <div
+        ref={smartProfileSectionRef}
+        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4"
+      >
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500" /> Cronograma Inteligente
@@ -871,6 +1228,19 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({ userId })
             </div>
           )}
         </div>
+      )}
+
+      {editingDay && (
+        <DayPlanEditorModal
+          open={Boolean(editingDay)}
+          day={editingDay}
+          dayLabel={weekdayLabels[editingDay]}
+          initialPlan={effectiveWeeklySchedule.weekPlan[editingDay]}
+          initialActive={effectiveWeeklySchedule.availability[editingDay]}
+          allSubjects={allDisciplineLabels}
+          onSave={handleSaveWeeklyDay}
+          onClose={() => setEditingDay(null)}
+        />
       )}
 
       {selectedEntry && (

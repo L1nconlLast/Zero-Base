@@ -1,6 +1,14 @@
 export type GroupRole = 'admin' | 'member';
 export type ChallengeStatus = 'draft' | 'active' | 'completed' | 'cancelled';
 export type RankingPeriod = 'global' | 'weekly' | 'monthly';
+export type GroupActivityType =
+  | 'review_completed'
+  | 'study_started'
+  | 'session_finished'
+  | 'quiz_completed'
+  | 'challenge_progress'
+  | 'message_posted';
+export type GroupAttachmentType = 'image' | 'file';
 
 export interface StudyGroup {
   id: string;
@@ -23,13 +31,54 @@ export interface GroupMember {
   joinedAt: string;
 }
 
+export interface GroupMessageMention {
+  id: string;
+  messageId: string;
+  mentionedUserId: string;
+  createdAt: string;
+}
+
+export interface GroupMessageAttachment {
+  id: string;
+  messageId: string;
+  type: GroupAttachmentType;
+  url: string;
+  fileName: string;
+  mimeType: string;
+  sizeInBytes: number;
+  createdAt: string;
+}
+
 export interface GroupMessage {
   id: string;
   groupId: string;
   userId: string;
   content: string;
+  replyToMessageId?: string | null;
+  mentions?: GroupMessageMention[];
+  attachments?: GroupMessageAttachment[];
   attachmentUrl?: string | null;
   createdAt: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+}
+
+export interface GroupActivity {
+  id: string;
+  groupId: string;
+  userId: string;
+  type: GroupActivityType;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface DerivedGroupRankingRow {
+  userId: string;
+  groupId: string;
+  totalScore: number;
+  activityCount: number;
+  lastActivityAt: string | null;
+  rankPosition: number;
 }
 
 export interface GroupChallenge {

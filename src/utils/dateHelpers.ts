@@ -1,32 +1,32 @@
 ﻿/**
- * UtilitÃ¡rios de Data - Zero Base v2.1
+ * Utilitários de Data - Zero Base v2.1
  */
 
 import { SessaoEstudo } from '../types';
 
 /**
- * Verifica se duas datas sÃ£o do mesmo dia
+ * Verifica se duas datas são do mesmo dia
  */
 export const isSameDay = (date1: Date, date2: Date): boolean => {
   return date1.toLocaleDateString() === date2.toLocaleDateString();
 };
 
 /**
- * Verifica se uma data Ã© hoje
+ * Verifica se uma data é hoje
  */
 export const isToday = (date: Date): boolean => {
   return isSameDay(date, new Date());
 };
 
 /**
- * ObtÃ©m todas as sessÃµes de hoje
+ * Obtém todas as sessões de hoje
  */
 export const getTodaysSessions = (sessions: SessaoEstudo[]): SessaoEstudo[] => {
   return sessions.filter(s => isToday(new Date(s.data)));
 };
 
 /**
- * ObtÃ©m total de minutos de um dia especÃ­fico
+ * Obtém total de minutos de um dia específico
  */
 export const getMinutesForDate = (sessions: SessaoEstudo[], date: Date): number => {
   return sessions
@@ -35,14 +35,14 @@ export const getMinutesForDate = (sessions: SessaoEstudo[], date: Date): number 
 };
 
 /**
- * ObtÃ©m total de minutos de hoje
+ * Obtém total de minutos de hoje
  */
 export const getTodaysMinutes = (sessions: SessaoEstudo[]): number => {
   return getMinutesForDate(sessions, new Date());
 };
 
 /**
- * ObtÃ©m array de dias da semana atual (segunda a domingo)
+ * Obtém array de dias da semana atual (segunda a domingo)
  */
 export const getWeekDays = (): { day: string; date: Date; dateStr: string }[] => {
   const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
@@ -62,7 +62,7 @@ export const getWeekDays = (): { day: string; date: Date; dateStr: string }[] =>
 };
 
 /**
- * ObtÃ©m minutos estudados por dia da semana
+ * Obtém minutos estudados por dia da semana
  */
 export const getWeeklyMinutes = (sessions: SessaoEstudo[]) => {
   const weekDays = getWeekDays();
@@ -86,7 +86,7 @@ export const getWeeklyTotal = (sessions: SessaoEstudo[]): number => {
 };
 
 /**
- * Formata duraÃ§Ãµes para display (ex: "2h 30m")
+ * Formata durações para display (ex: "2h 30m")
  */
 export const formatDuration = (minutes: number): string => {
   const hours = Math.floor(minutes / 60);
@@ -99,7 +99,7 @@ export const formatDuration = (minutes: number): string => {
 };
 
 /**
- * Converte data em formato legÃ­vel (pt-BR)
+ * Converte data em formato legível (pt-BR)
  */
 export const formatDateBR = (date: Date): string => {
   return date.toLocaleDateString('pt-BR', {
@@ -111,7 +111,7 @@ export const formatDateBR = (date: Date): string => {
 };
 
 /**
- * ObtÃ©m data no inÃ­cio do dia (00:00:00)
+ * Obtém data no início do dia (00:00:00)
  */
 export const getStartOfDay = (date: Date): Date => {
   const start = new Date(date);
@@ -120,7 +120,7 @@ export const getStartOfDay = (date: Date): Date => {
 };
 
 /**
- * ObtÃ©m data no inÃ­cio da semana
+ * Obtém data no início da semana
  */
 export const getStartOfWeek = (date: Date = new Date()): Date => {
   const start = new Date(date);
@@ -130,7 +130,7 @@ export const getStartOfWeek = (date: Date = new Date()): Date => {
 };
 
 /**
- * ObtÃ©m data no inÃ­cio do mÃªs
+ * Obtém data no início do mês
  */
 export const getStartOfMonth = (date: Date = new Date()): Date => {
   const start = new Date(date);

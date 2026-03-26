@@ -12,10 +12,18 @@ import {
 } from 'recharts';
 import { Download } from 'lucide-react';
 import { mentorAdminApiService, type MentorAdminMetricsResponse } from '../services/mentorAdminApi.service';
+import { ProfileAdminSnapshotCard } from '../components/profile/ProfileAdminSnapshotCard';
 import toast from 'react-hot-toast';
 
 interface MentorAdminDashboardProps {
   userEmail?: string;
+  currentDisciplineName?: string;
+  currentDisciplineSourceLabel?: string;
+  profileDisplayName?: string;
+  profileAvatar?: string;
+  profileExamGoal?: string;
+  profileExamDate?: string;
+  profileSyncStatus?: 'local' | 'syncing' | 'synced' | 'error';
 }
 
 const formatNumber = (value: number): string => new Intl.NumberFormat('pt-BR').format(value || 0);
@@ -36,7 +44,16 @@ const DashboardSkeleton: React.FC = () => (
   </div>
 );
 
-const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }) => {
+const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({
+  userEmail,
+  currentDisciplineName,
+  currentDisciplineSourceLabel,
+  profileDisplayName,
+  profileAvatar,
+  profileExamGoal,
+  profileExamDate,
+  profileSyncStatus,
+}) => {
   const [data, setData] = useState<MentorAdminMetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,13 +121,31 @@ const MentorAdminDashboard: React.FC<MentorAdminDashboardProps> = ({ userEmail }
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
         <div>
           <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 font-semibold">Admin</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="inline-flex rounded-full border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+              Disciplina em foco: {currentDisciplineName || 'Sem contexto'}
+            </span>
+            <span className="inline-flex rounded-full border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+              Origem: {currentDisciplineSourceLabel || 'Aguardando contexto'}
+            </span>
+          </div>
           <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">Dashboard Financeiro Mentor IA</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Monitoramento de consumo de tokens e custo estimado da operacao.</p>
           {userEmail ? <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Sessão: {userEmail}</p> : null}
         </div>
+        <ProfileAdminSnapshotCard
+          displayName={profileDisplayName}
+          email={userEmail}
+          avatar={profileAvatar}
+          examGoal={profileExamGoal}
+          examDate={profileExamDate}
+          syncStatus={profileSyncStatus}
+          title="Perfil carregado no admin"
+          subtitle="Resumo do perfil atualmente refletido neste painel."
+        />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">

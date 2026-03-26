@@ -1,6 +1,6 @@
-import { ensureCoreUserRecords } from './_lib/mvp';
-import { finishStudySession, getStudySession, submitStudySessionAnswer } from './_lib/studySessions';
-import { resolveAuthUser, sendError, sendJson } from './_lib/supabase';
+import { ensureCoreUserRecords } from './_lib/mvp.js';
+import { finishStudySession, getStudySession, submitStudySessionAnswer } from './_lib/studySessions.js';
+import { resolveAuthUser, sendError, sendJson } from './_lib/supabase.js';
 
 const getQueryValue = (raw: unknown): string => {
   if (Array.isArray(raw)) {

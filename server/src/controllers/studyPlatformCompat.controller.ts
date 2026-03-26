@@ -50,6 +50,27 @@ const QuestionsQuerySchema = z.object({
   subjectId: z.string().uuid().optional(),
   skillId: z.string().uuid().optional(),
   difficulty: z.enum(['facil', 'medio', 'dificil']).optional(),
+  area: z.string().min(1).max(120).optional(),
+  subarea: z.string().min(1).max(120).optional(),
+  objective: z.enum(['enem', 'concurso', 'both']).optional(),
+  boardId: z.string().uuid().optional(),
+  examId: z.string().uuid().optional(),
+  jobId: z.string().uuid().optional(),
+  year: z.coerce.number().int().min(1900).max(2100).optional(),
+  search: z.string().min(1).max(160).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+const ImportQuestionsSchema = z.object({
+  batchName: z.string().min(3).max(120),
+  format: z.enum(['json', 'csv']),
+  payload: z.union([
+    z.string().min(2),
+    z.array(z.record(z.string(), z.unknown())).min(1),
+  ]),
+  sourceId: z.string().uuid().optional(),
+  sourceName: z.string().min(2).max(160).optional(),
+  dryRun: z.boolean().optional(),
 });
 
 const AnswerSchema = z.object({
@@ -316,6 +337,21 @@ export class StudyPlatformCompatController {
       res.status(200).json({ questions });
     } catch (error) {
       handleControllerError(req, res, error, 'Erro ao listar questoes');
+    }
+  }
+
+  async importQuestions(req: Request, res: Response): Promise<void> {
+    const parsed = ImportQuestionsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendValidationError(req, res, parsed.error);
+      return;
+    }
+
+    try {
+      const result = await studyPlatformCompatService.importQuestions(parsed.data);
+      res.status(201).json(result);
+    } catch (error) {
+      handleControllerError(req, res, error, 'Erro ao importar questoes');
     }
   }
 

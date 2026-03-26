@@ -39,3 +39,46 @@ export interface MentorBriefingResult {
   output: MentorOutput;
   source: 'llm' | 'fallback';
 }
+
+export interface MentorMemory {
+  version: 1;
+  lastAnalysisAt: number;
+  lastUpdatedAt: number;
+  lastFocus: string;
+  previousFocus: string | null;
+  focusShiftReason: string | null;
+  weakAreas: string[];
+  strongArea: string;
+  weeklyGoalMinutes: number;
+  weeklyMinutesDone: number;
+  weeklyProgressPct: number;
+  totalStudyMinutes: number;
+  sessionsLast7Days: number;
+  sessionCount: number;
+  currentStreak: number;
+  completedMockExams: number;
+  daysToExam: number;
+  lastTrigger: MentorTrigger;
+  lastRecommendations: string[];
+  lastBriefing: MentorOutput | null;
+  lastBriefingSource: 'llm' | 'fallback' | null;
+  lastActionFollowed: string | null;
+  lastActionFollowedAt: number | null;
+  subjectMinutes: Record<string, number>;
+}
+
+export interface MentorMemoryRuntime {
+  memory: MentorMemory;
+  recommendedFocus: string;
+  secondaryFocus: string;
+  strongArea: string;
+  focusShiftReason: string;
+  weeklyPct: number;
+  weeklyMinutesDone: number;
+  totalStudyMinutes: number;
+  sessionsLast7Days: number;
+  currentStreak: number;
+  completedMockExams: number;
+  hasMeaningfulChange: boolean;
+  shouldRefreshBriefing: boolean;
+}

@@ -5,11 +5,14 @@ import { app } from '../app';
 import { studyPlatformCompatService } from '../services/studyPlatformCompat.service';
 import { queueJobsService } from '../services/queueJobs.service';
 
-const createAuthToken = async (userId = '11111111-1111-4111-8111-111111111111'): Promise<string> => {
+const createAuthToken = async (
+  userId = '11111111-1111-4111-8111-111111111111',
+  claims: Record<string, unknown> = {},
+): Promise<string> => {
   const supabaseUrl = process.env.SUPABASE_URL || 'https://example.supabase.co';
   const jwtSecret = process.env.SUPABASE_JWT_SECRET || 'test-secret';
   const issuer = `${supabaseUrl}/auth/v1`;
-  return await new SignJWT({ role: 'authenticated', email: 'test@zerobase.com' })
+  return await new SignJWT({ role: 'authenticated', email: 'test@zerobase.com', ...claims })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(userId)
     .setAudience('authenticated')
@@ -192,6 +195,68 @@ describe('SPEC contract snapshots', () => {
             "totalAnswers": 10,
           },
         ],
+      }
+    `);
+  });
+
+  it('POST /api/questions/import', async () => {
+    const token = await createAuthToken(undefined, { role: 'admin' });
+    vi.spyOn(studyPlatformCompatService, 'importQuestions').mockResolvedValue({
+      batchId: 'batch-1',
+      totalRows: 1,
+      processedRows: 1,
+      importedRows: 1,
+      duplicateRows: 0,
+      errorRows: 0,
+      preview: [
+        {
+          statement: 'Questao exemplo',
+          subjectName: 'Matematica',
+          topicName: 'Estatistica',
+          questionType: 'multiple_choice',
+          objective: 'enem',
+        },
+      ],
+    });
+
+    const response = await request(app)
+      .post('/api/questions/import')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        batchName: 'seed-enem',
+        format: 'json',
+        payload: [
+          {
+            enunciado: 'Questao exemplo',
+            disciplina: 'Matematica',
+            topico: 'Estatistica',
+            objetivo: 'enem',
+            tipo: 'multiple_choice',
+            option_a: '1',
+            option_b: '2',
+            gabarito: 'B',
+          },
+        ],
+      })
+      .expect(201);
+
+    expect(response.body).toMatchInlineSnapshot(`
+      {
+        "batchId": "batch-1",
+        "duplicateRows": 0,
+        "errorRows": 0,
+        "importedRows": 1,
+        "preview": [
+          {
+            "objective": "enem",
+            "questionType": "multiple_choice",
+            "statement": "Questao exemplo",
+            "subjectName": "Matematica",
+            "topicName": "Estatistica",
+          },
+        ],
+        "processedRows": 1,
+        "totalRows": 1,
       }
     `);
   });

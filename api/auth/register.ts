@@ -1,5 +1,5 @@
-import { publicSupabase, adminSupabase, sendError, sendJson, serializeSession } from '../_lib/supabase';
-import { ensureCoreUserRecords } from '../_lib/mvp';
+import { publicSupabase, adminSupabase, sendError, sendJson, serializeSession } from '../_lib/supabase.js';
+import { ensureCoreUserRecords } from '../_lib/mvp.js';
 
 export default async function handler(req: any, res: any): Promise<void> {
   if (req.method !== 'POST') {

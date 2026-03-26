@@ -1,6 +1,7 @@
 import { Award, BookOpen, Brain, Crown, Flame, GraduationCap, Lightbulb, Rocket, Star, Target, Trophy, Upload, Zap, type LucideIcon } from 'lucide-react';
 import { useRef } from 'react';
 import type { CSSProperties } from 'react';
+import { getProfileSettingsCopy, type ProfileSettingsLocale } from './profileSettingsCopy';
 
 type AvatarOption = {
   id: string;
@@ -28,22 +29,30 @@ interface ProfileAvatarCardProps {
   avatarUrl: string;
   onSelectAvatar: (avatarIcon: string) => void;
   onUploadAvatar: (file: File) => Promise<void>;
+  locale?: ProfileSettingsLocale;
 }
 
-export default function ProfileAvatarCard({ avatarIcon, avatarUrl, onSelectAvatar, onUploadAvatar }: ProfileAvatarCardProps) {
+export default function ProfileAvatarCard({
+  avatarIcon,
+  avatarUrl,
+  onSelectAvatar,
+  onUploadAvatar,
+  locale = 'pt',
+}: ProfileAvatarCardProps) {
+  const copy = getProfileSettingsCopy(locale);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
     <article style={cardStyle}>
       <header style={headerStyle}>
-        <h3 style={titleStyle}>Avatar</h3>
+        <h3 style={titleStyle}>{copy.profile.avatarTitle}</h3>
       </header>
 
       <div style={previewStyle}>
         {avatarUrl ? <img src={avatarUrl} alt="avatar" style={{ width: 48, height: 48, borderRadius: 14, objectFit: 'cover' }} /> : <span style={{ fontSize: 28 }}>🧠</span>}
         <div>
           <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 700, textTransform: 'capitalize' }}>{avatarIcon}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Escolha um ícone ou envie uma foto.</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{copy.profile.avatarDescription}</div>
         </div>
       </div>
 
@@ -83,7 +92,7 @@ export default function ProfileAvatarCard({ avatarIcon, avatarUrl, onSelectAvata
 
       <button type="button" onClick={() => fileInputRef.current?.click()} style={uploadButtonStyle}>
         <Upload size={14} />
-        Enviar foto (máx. 2MB)
+        {copy.profile.uploadAvatar}
       </button>
     </article>
   );

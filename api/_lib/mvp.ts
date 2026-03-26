@@ -1,4 +1,4 @@
-import { adminSupabase } from './supabase';
+import { adminSupabase } from './supabase.js';
 
 const DISCIPLINE_RECOMMENDATION_MAP: Record<string, {
   subject: string;

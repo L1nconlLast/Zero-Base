@@ -10,12 +10,17 @@ import QuizErrorReview from './QuizErrorReview';
 
 interface QuizPageProps {
   onEarnXP?: (xp: number) => void;
+  onCompleteAttempt?: (result: { correctAnswers: number; totalQuestions: number; xpGained: number }) => void;
   supabaseUserId?: string | null;
   initialFilter?: {
     nonce: number;
     subject?: string;
     topicName?: string;
     track?: QuestionTrack | 'ambos';
+  };
+  recommendedContext?: {
+    title: string;
+    subtitle: string;
   };
 }
 
@@ -129,7 +134,13 @@ const getSubjectChipClass = (subject: string, selected: boolean) => {
   return 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
 };
 
-const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFilter }) => {
+const QuizPage: React.FC<QuizPageProps> = ({
+  onEarnXP,
+  onCompleteAttempt,
+  supabaseUserId,
+  initialFilter,
+  recommendedContext,
+}) => {
   const userPreferenceScope = supabaseUserId || 'default';
   const [state, setState] = useState<QuizState>('select');
   const [selectedSubject, setSelectedSubject] = useState<string>('Todas');
@@ -330,14 +341,19 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
 
     if (isLastQuestion) {
       const totalXP = newAnswers.reduce((sum, a) => sum + a.xp, 0);
+      const correctTotal = newAnswers.filter((answer) => answer.correct).length;
       onEarnXP?.(totalXP);
+      onCompleteAttempt?.({
+        correctAnswers: correctTotal,
+        totalQuestions: questions.length,
+        xpGained: totalXP,
+      });
 
       // Track answered IDs (Fix #5)
       setAnsweredIds((prev) => [...new Set([...prev, ...questions.map((q) => q.id)])].slice(-200));
 
       if (dailyMode) {
         const todayKey = getTodayKey();
-        const correctTotal = newAnswers.filter((answer) => answer.correct).length;
         const weakTopics = questions
           .filter((question, index) => !newAnswers[index]?.correct)
           .map((question) => `${question.subject}::${question.tags[0] || question.subject}`);
@@ -411,6 +427,20 @@ const QuizPage: React.FC<QuizPageProps> = ({ onEarnXP, supabaseUserId, initialFi
             {QUESTIONS_BANK.length} questões com correção automática e XP por acerto
           </p>
         </div>
+
+        {recommendedContext && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/30">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+              Continuacao do estudo
+            </p>
+            <h3 className="mt-2 text-xl font-bold tracking-tight text-emerald-950 dark:text-emerald-100">
+              {recommendedContext.title}
+            </h3>
+            <p className="mt-2 text-sm text-emerald-900/80 dark:text-emerald-100/80">
+              {recommendedContext.subtitle}
+            </p>
+          </div>
+        )}
 
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4 shadow-sm">
           <div>

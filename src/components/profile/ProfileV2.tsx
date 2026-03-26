@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import ProfileAvatarCard from './ProfileAvatarCard';
 import ProfileHero from './ProfileHero';
 import ProfileIdentityCard from './ProfileIdentityCard';
+import { getProfileSettingsCopy, type ProfileSettingsLocale } from './profileSettingsCopy';
 
 interface ProfileV2Props {
   displayName: string;
@@ -13,6 +14,7 @@ interface ProfileV2Props {
   onUploadAvatar: (file: File) => Promise<void>;
   onSave: () => Promise<void>;
   saving: boolean;
+  locale?: ProfileSettingsLocale;
 }
 
 export default function ProfileV2({
@@ -25,18 +27,22 @@ export default function ProfileV2({
   onUploadAvatar,
   onSave,
   saving,
+  locale = 'pt',
 }: ProfileV2Props) {
+  const copy = getProfileSettingsCopy(locale);
+
   return (
     <section style={{ display: 'grid', gap: 14, animation: 'fadeUp .3s ease' }}>
-      <ProfileHero displayName={displayName} email={email} avatarIcon={avatarIcon} avatarUrl={avatarUrl} />
+      <ProfileHero displayName={displayName} email={email} avatarIcon={avatarIcon} avatarUrl={avatarUrl} locale={locale} />
 
       <div style={gridStyle} className="two-col">
-        <ProfileIdentityCard displayName={displayName} email={email} onChangeDisplayName={onChangeDisplayName} />
+        <ProfileIdentityCard displayName={displayName} email={email} onChangeDisplayName={onChangeDisplayName} locale={locale} />
         <ProfileAvatarCard
           avatarIcon={avatarIcon}
           avatarUrl={avatarUrl}
           onSelectAvatar={onSelectAvatar}
           onUploadAvatar={onUploadAvatar}
+          locale={locale}
         />
       </div>
 
@@ -53,7 +59,7 @@ export default function ProfileV2({
             cursor: saving ? 'default' : 'pointer',
           }}
         >
-          {saving ? 'Salvando...' : 'Salvar perfil'}
+          {saving ? copy.profile.saving : copy.profile.save}
         </button>
       </div>
     </section>

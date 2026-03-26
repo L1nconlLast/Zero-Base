@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middlewares/auth.middleware';
+import { adminAuthMiddleware } from '../middlewares/adminAuth.middleware';
 import { studyPlatformCompatController } from '../controllers/studyPlatformCompat.controller';
 import { aiRateLimitMiddleware, plannerGenerateRateLimitMiddleware } from '../middlewares/rateLimit.middleware';
 
@@ -47,6 +48,10 @@ router.patch('/planner/:id/status', authMiddleware, (req, res) => {
 
 router.get('/questions', (req, res) => {
   void studyPlatformCompatController.getQuestions(req, res);
+});
+
+router.post('/questions/import', authMiddleware, adminAuthMiddleware, (req, res) => {
+  void studyPlatformCompatController.importQuestions(req, res);
 });
 
 router.post('/answers', authMiddleware, (req, res) => {

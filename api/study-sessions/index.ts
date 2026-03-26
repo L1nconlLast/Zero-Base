@@ -1,6 +1,6 @@
-import { ensureCoreUserRecords } from '../_lib/mvp';
-import { createOrResumeStudySession } from '../_lib/studySessions';
-import { resolveAuthUser, sendError, sendJson } from '../_lib/supabase';
+import { ensureCoreUserRecords } from '../_lib/mvp.js';
+import { createOrResumeStudySession } from '../_lib/studySessions.js';
+import { resolveAuthUser, sendError, sendJson } from '../_lib/supabase.js';
 
 export default async function handler(req: any, res: any): Promise<void> {
   if (req.method !== 'POST') {

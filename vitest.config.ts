@@ -1,10 +1,11 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',       // simula o browser (localStorage, DOM)
+    exclude: [...configDefaults.exclude, 'server/src/tests/**', 'tests/**', 'cypress/**'],
     environmentMatchGlobs: [['server/src/tests/**', 'node']],
     globals: true,              // describe/it/expect sem import
     setupFiles: ['./src/tests/setup.ts'],

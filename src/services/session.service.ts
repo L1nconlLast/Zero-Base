@@ -29,6 +29,16 @@ interface StudySessionRow {
 }
 
 const TABLE_NAME = 'study_sessions';
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const normalizeMethodIdForPersistence = (methodId?: string): string | undefined => {
+  if (!methodId) {
+    return undefined;
+  }
+
+  return UUID_PATTERN.test(methodId) ? methodId : undefined;
+};
 
 const assertClient = () => {
   if (!isSupabaseConfigured || !supabase) {
@@ -44,7 +54,7 @@ const toRow = (userId: string, session: StudySession): StudySessionInsert => ({
   points: session.points,
   subject: session.subject,
   duration: session.duration,
-  method_id: session.methodId,
+  method_id: normalizeMethodIdForPersistence(session.methodId),
   goal_met: session.goalMet,
   timestamp: session.timestamp,
 });
@@ -78,13 +88,14 @@ class SessionService {
   }
 
   async create(userId: string, session: StudySession): Promise<StudySession> {
+    const persistedMethodId = normalizeMethodIdForPersistence(session.methodId);
     const offlinePayload = {
       date: session.date,
       minutes: session.minutes,
       points: session.points,
       subject: session.subject,
       duration: session.duration,
-      method_id: session.methodId || null,
+      method_id: persistedMethodId || null,
       goal_met: typeof session.goalMet === 'boolean' ? session.goalMet : null,
       timestamp: session.timestamp || null,
       local_updated_at: new Date().toISOString(),

@@ -122,7 +122,7 @@ export const validateImportData = (data: unknown): ValidationResult<ImportedData
 
   // Validar nível
   if (typeof userLevel !== 'number' || userLevel < 1) {
-    return { success: false, error: 'Level deve ser um nÃºmero maior que 0' };
+    return { success: false, error: 'Level deve ser um número maior que 0' };
   }
 
   // Validar XP

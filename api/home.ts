@@ -3,9 +3,9 @@ import {
   ensureRecommendationForUser,
   getRecommendationMeta,
   getUserProfile,
-} from './_lib/mvp';
-import { getHomeStudySummary } from './_lib/studySessions';
-import { resolveAuthUser, sendError, sendJson } from './_lib/supabase';
+} from './_lib/mvp.js';
+import { getHomeStudySummary } from './_lib/studySessions.js';
+import { resolveAuthUser, sendError, sendJson } from './_lib/supabase.js';
 
 export default async function handler(req: any, res: any): Promise<void> {
   if (req.method !== 'GET') {

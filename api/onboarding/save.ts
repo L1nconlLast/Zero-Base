@@ -1,5 +1,5 @@
-import { ensureCoreUserRecords, mergeOnboardingStreak } from '../_lib/mvp';
-import { resolveAuthUser, sendError, sendJson } from '../_lib/supabase';
+import { ensureCoreUserRecords, mergeOnboardingStreak } from '../_lib/mvp.js';
+import { resolveAuthUser, sendError, sendJson } from '../_lib/supabase.js';
 
 // Legacy compatibility wrapper. Prefer /api/onboarding.
 export default async function handler(req: any, res: any): Promise<void> {
