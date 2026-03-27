@@ -53,6 +53,7 @@ import {
   getRecentPaceState,
   moveSubjectInWeeklyPlan,
   prioritizeSubjectInWeeklyPlan,
+  reorderSubjectInWeeklyPlan,
   resolveScheduledStudyFocus,
   type OperationalScheduleWindowItem,
   getWeeklyPlanConfidenceState,
@@ -259,6 +260,9 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     moveEntry,
     postponeEntry,
     prioritizeEntry,
+    reorderEntry,
+    updateEntryDuration,
+    createManualEntry,
     removeEntry,
     toggleDone,
     applyAdaptiveSchedule,
@@ -787,6 +791,77 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     toast.success(`${item.subject} foi priorizado no dia.`);
   }, [effectiveWeeklySchedule, entries, handleWeeklyScheduleChange, isSubjectPlannedForDate, prioritizeEntry]);
 
+  const handleOperationalReorder = useCallback((
+    item: OperationalScheduleWindowItem,
+    date: string,
+    direction: 'up' | 'down',
+  ) => {
+    const targetEntry = entries.find((entry) => entry.id === item.id) || null;
+    if (targetEntry) {
+      reorderEntry(targetEntry.id, direction);
+    }
+
+    if (item.source === 'weekly_plan' || isSubjectPlannedForDate(date, item.subject)) {
+      const nextSchedule = reorderSubjectInWeeklyPlan(effectiveWeeklySchedule, {
+        subject: item.subject,
+        date,
+        direction,
+      });
+      if (nextSchedule !== effectiveWeeklySchedule) {
+        handleWeeklyScheduleChange(nextSchedule);
+      }
+    }
+
+    toast.success(`Ordem de ${item.subject} ajustada no dia.`);
+  }, [
+    effectiveWeeklySchedule,
+    entries,
+    handleWeeklyScheduleChange,
+    isSubjectPlannedForDate,
+    reorderEntry,
+  ]);
+
+  const handleOperationalUpdateDuration = useCallback((
+    item: OperationalScheduleWindowItem,
+    date: string,
+    durationMinutes: number,
+  ) => {
+    const targetEntry = entries.find((entry) => entry.id === item.id) || null;
+    if (targetEntry) {
+      updateEntryDuration(targetEntry.id, durationMinutes);
+      toast.success(`Duracao de ${item.subject} ajustada para ${durationMinutes} min.`);
+      return;
+    }
+
+    createManualEntry({
+      date,
+      subject: item.subject,
+      topic: item.topic ?? undefined,
+      note: item.note,
+      durationMinutes,
+    });
+    toast.success(`Criei um bloco real de ${item.subject} com ${durationMinutes} min.`);
+  }, [createManualEntry, entries, updateEntryDuration]);
+
+  const handleOperationalCreateManualEntry = useCallback((
+    date: string,
+    input: {
+      subject: string;
+      durationMinutes: number;
+      topic?: string;
+      note?: string;
+    },
+  ) => {
+    createManualEntry({
+      date,
+      subject: input.subject,
+      durationMinutes: input.durationMinutes,
+      topic: input.topic,
+      note: input.note,
+    });
+    toast.success(`Sessao de ${input.subject} adicionada ao cronograma.`);
+  }, [createManualEntry]);
+
   const handleOperationalRebalanceDay = useCallback((date: string) => {
     const suggestion = suggestRebalanceDay(
       upcomingOperationalDays,
@@ -1228,6 +1303,8 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
       <UpcomingOperationalSchedule
         days={upcomingOperationalDays}
         weeklyLoadSummary={operationalWeeklyLoadSummary}
+        availableSubjectOptions={allDisciplineLabels}
+        defaultSessionDurationMinutes={effectiveWeeklySchedule.preferences.defaultSessionDurationMinutes}
         itemActionLabel={operationalActionLabels.item}
         emptyActionLabel={operationalActionLabels.empty}
         onStartOfficialStudy={operationalLoopAction}
@@ -1235,6 +1312,9 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
         onMoveItem={handleOperationalMove}
         onPostponeItem={handleOperationalPostpone}
         onPrioritizeItem={handleOperationalPrioritize}
+        onReorderItem={handleOperationalReorder}
+        onUpdateItemDuration={handleOperationalUpdateDuration}
+        onCreateManualEntry={handleOperationalCreateManualEntry}
         onRebalanceDay={handleOperationalRebalanceDay}
         onReinforceDay={handleOperationalReinforceDay}
       />

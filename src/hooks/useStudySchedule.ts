@@ -1,13 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ScheduleEntry } from '../types';
 import {
+  createManualScheduleEntry,
   moveScheduleEntry,
   postponeScheduleEntry,
   persistScheduleEntriesSnapshot,
   prioritizeScheduleEntry,
   readPersistedScheduleEntries,
+  reorderScheduleEntry,
   sortScheduleEntries,
   studyScheduleService,
+  updateScheduleEntryDuration,
 } from '../services/studySchedule.service.ts';
 import { isSupabaseConfigured } from '../services/supabase.client';
 import { adaptSchedule, type StudyBlock } from '../engine/adaptiveScheduleAdapter.ts';
@@ -35,6 +38,8 @@ const mergeEntryMetadata = (local: ScheduleEntry, cloud: ScheduleEntry): Schedul
   manualPriority: cloud.manualPriority ?? local.manualPriority,
   lastManualEditAt: cloud.lastManualEditAt ?? local.lastManualEditAt,
   lastManualTargetDate: cloud.lastManualTargetDate ?? local.lastManualTargetDate,
+  durationMinutes: cloud.durationMinutes ?? local.durationMinutes,
+  orderIndex: cloud.orderIndex ?? local.orderIndex,
   createdAt: cloud.createdAt ?? local.createdAt,
   updatedAt: cloud.updatedAt ?? local.updatedAt,
   priority:
@@ -151,7 +156,7 @@ export function useStudySchedule(userId?: string | null) {
   const addEntry = useCallback(
     (date: string, subject: string, note?: string, extras?: Partial<ScheduleEntry>) => {
       const now = new Date().toISOString();
-      const entry: ScheduleEntry = {
+      let entry: ScheduleEntry = {
         id: generateId(),
         date,
         subject,
@@ -161,12 +166,20 @@ export function useStudySchedule(userId?: string | null) {
         updatedAt: now,
         lastManualEditAt: extras?.source === 'manual' ? now : extras?.lastManualEditAt,
         lastManualTargetDate: extras?.source === 'manual' ? date : extras?.lastManualTargetDate,
+        orderIndex: extras?.orderIndex ?? 0,
         ...extras,
       };
-      setEntries((prev) => sortScheduleEntries([...prev, entry]));
+      setEntries((prev) => {
+        const nextEntry: ScheduleEntry = {
+          ...entry,
+          orderIndex: extras?.orderIndex ?? prev.filter((candidate) => candidate.date === date).length,
+        };
+        entry = nextEntry;
+        return sortScheduleEntries([...prev, nextEntry]);
+      });
 
       // Push to cloud (fire-and-forget)
-      if (userId && isSupabaseConfigured) {
+      if (entry && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntry(userId, entry).catch(() => {});
       }
 
@@ -254,6 +267,83 @@ export function useStudySchedule(userId?: string | null) {
 
       return next;
     });
+  }, [userId]);
+
+  const reorderEntry = useCallback((id: string, direction: 'up' | 'down') => {
+    setEntries((prev) => {
+      const next = reorderScheduleEntry(prev, id, direction);
+      if (next === prev) {
+        return prev;
+      }
+
+      const sameDayTargets = prev
+        .filter((entry) => entry.date === prev.find((candidate) => candidate.id === id)?.date)
+        .map((entry) => next.find((candidate) => candidate.id === entry.id))
+        .filter(Boolean) as ScheduleEntry[];
+      if (sameDayTargets.length > 0 && userId && isSupabaseConfigured) {
+        void studyScheduleService.upsertEntries(userId, sameDayTargets).catch(() => {});
+      }
+
+      return next;
+    });
+  }, [userId]);
+
+  const updateEntryDuration = useCallback((id: string, durationMinutes: number) => {
+    setEntries((prev) => {
+      const next = updateScheduleEntryDuration(prev, id, durationMinutes);
+      if (next === prev) {
+        return prev;
+      }
+
+      const target = next.find((entry) => entry.id === id);
+      if (target && userId && isSupabaseConfigured) {
+        void studyScheduleService.upsertEntry(userId, target).catch(() => {});
+      }
+
+      return next;
+    });
+  }, [userId]);
+
+  const createManualEntry = useCallback((input: {
+    date: string;
+    subject: string;
+    durationMinutes?: number;
+    topic?: string;
+    note?: string;
+  }) => {
+    const now = new Date().toISOString();
+    const nextId = generateId();
+    setEntries((prev) => {
+      const next = createManualScheduleEntry(prev, {
+        id: nextId,
+        date: input.date,
+        subject: input.subject,
+        durationMinutes: input.durationMinutes,
+        topic: input.topic,
+        note: input.note,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return next;
+    });
+
+    if (userId && isSupabaseConfigured) {
+      const createdEntry = createManualScheduleEntry([], {
+        id: nextId,
+        date: input.date,
+        subject: input.subject,
+        durationMinutes: input.durationMinutes,
+        topic: input.topic,
+        note: input.note,
+        createdAt: now,
+        updatedAt: now,
+      })[0];
+      if (createdEntry) {
+        void studyScheduleService.upsertEntry(userId, createdEntry).catch(() => {});
+      }
+    }
+
+    return nextId;
   }, [userId]);
 
   /** Remove uma entrada */
@@ -361,6 +451,9 @@ export function useStudySchedule(userId?: string | null) {
     moveEntry,
     postponeEntry,
     prioritizeEntry,
+    reorderEntry,
+    updateEntryDuration,
+    createManualEntry,
     removeEntry,
     toggleDone,
     updateNote,

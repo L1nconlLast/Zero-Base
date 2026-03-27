@@ -25,6 +25,8 @@ import {
 interface UpcomingOperationalScheduleProps {
   days: OperationalScheduleWindowDay[];
   weeklyLoadSummary: WeeklyLoadSummary;
+  availableSubjectOptions: string[];
+  defaultSessionDurationMinutes: number;
   itemActionLabel: string;
   emptyActionLabel: string;
   onStartOfficialStudy?: (() => void) | null;
@@ -32,6 +34,23 @@ interface UpcomingOperationalScheduleProps {
   onMoveItem: (item: OperationalScheduleWindowItem, fromDate: string, toDate: string) => void;
   onPostponeItem: (item: OperationalScheduleWindowItem, fromDate: string) => void;
   onPrioritizeItem: (item: OperationalScheduleWindowItem, date: string) => void;
+  onReorderItem: (
+    item: OperationalScheduleWindowItem,
+    date: string,
+    direction: 'up' | 'down',
+  ) => void;
+  onUpdateItemDuration: (
+    item: OperationalScheduleWindowItem,
+    date: string,
+    durationMinutes: number,
+  ) => void;
+  onCreateManualEntry: (
+    date: string,
+    input: {
+      subject: string;
+      durationMinutes: number;
+    },
+  ) => void;
   onRebalanceDay: (date: string) => void;
   onReinforceDay: (date: string) => void;
 }
@@ -110,9 +129,18 @@ const LOAD_LEVEL_META: Record<
   },
 };
 
+const QUICK_DURATION_OPTIONS = [15, 25, 40] as const;
+
+interface ManualEntryDraft {
+  subject: string;
+  durationMinutes: number;
+}
+
 const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = ({
   days,
   weeklyLoadSummary,
+  availableSubjectOptions,
+  defaultSessionDurationMinutes,
   itemActionLabel,
   emptyActionLabel,
   onStartOfficialStudy,
@@ -120,10 +148,15 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
   onMoveItem,
   onPostponeItem,
   onPrioritizeItem,
+  onReorderItem,
+  onUpdateItemDuration,
+  onCreateManualEntry,
   onRebalanceDay,
   onReinforceDay,
 }) => {
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({});
+  const [manualComposerByDate, setManualComposerByDate] = useState<Record<string, boolean>>({});
+  const [manualDraftsByDate, setManualDraftsByDate] = useState<Record<string, ManualEntryDraft>>({});
   const moveOptionsByDay = useMemo(
     () =>
       days.reduce((acc, day) => {
@@ -152,6 +185,31 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
       }, {} as Record<string, ReturnType<typeof suggestReinforceDay>>),
     [days],
   );
+  const getManualDraft = (date: string): ManualEntryDraft =>
+    manualDraftsByDate[date] ?? {
+      subject: '',
+      durationMinutes: defaultSessionDurationMinutes,
+    };
+
+  const toggleManualComposer = (date: string) => {
+    setManualComposerByDate((current) => ({
+      ...current,
+      [date]: !current[date],
+    }));
+  };
+
+  const updateManualDraft = (date: string, patch: Partial<ManualEntryDraft>) => {
+    setManualDraftsByDate((current) => ({
+      ...current,
+      [date]: {
+        ...(current[date] ?? {
+          subject: '',
+          durationMinutes: defaultSessionDurationMinutes,
+        }),
+        ...patch,
+      },
+    }));
+  };
 
   return (
     <section
@@ -287,6 +345,93 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
                   </div>
                 ) : null}
 
+                <div className="mt-3">
+                  <button
+                    data-testid="schedule-day-add-manual-cta"
+                    type="button"
+                    onClick={() => toggleManualComposer(day.date)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Adicionar sessao
+                  </button>
+                </div>
+
+                {manualComposerByDate[day.date] ? (
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-white/80 p-3 dark:border-slate-800 dark:bg-slate-900/80">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                      Nova sessao manual
+                    </p>
+                    <div className="mt-3 flex flex-col gap-2">
+                      <input
+                        data-testid="schedule-day-manual-subject-input"
+                        value={getManualDraft(day.date).subject}
+                        onChange={(event) => updateManualDraft(day.date, { subject: event.target.value })}
+                        list="schedule-manual-subject-options"
+                        placeholder="Disciplina"
+                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        {QUICK_DURATION_OPTIONS.map((durationOption) => (
+                          <button
+                            key={`${day.date}-manual-${durationOption}`}
+                            data-testid={`schedule-day-manual-duration-${durationOption}-cta`}
+                            type="button"
+                            onClick={() => updateManualDraft(day.date, { durationMinutes: durationOption })}
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                              getManualDraft(day.date).durationMinutes === durationOption
+                                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            {durationOption} min
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          data-testid="schedule-day-manual-submit-cta"
+                          type="button"
+                          disabled={!getManualDraft(day.date).subject.trim()}
+                          onClick={() => {
+                            const draft = getManualDraft(day.date);
+                            if (!draft.subject.trim()) {
+                              return;
+                            }
+
+                            onCreateManualEntry(day.date, {
+                              subject: draft.subject.trim(),
+                              durationMinutes: draft.durationMinutes,
+                            });
+                            setManualDraftsByDate((current) => ({
+                              ...current,
+                              [day.date]: {
+                                subject: '',
+                                durationMinutes: defaultSessionDurationMinutes,
+                              },
+                            }));
+                            setManualComposerByDate((current) => ({
+                              ...current,
+                              [day.date]: false,
+                            }));
+                          }}
+                          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+                        >
+                          <PlayCircle className="h-3.5 w-3.5" />
+                          Salvar sessao
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleManualComposer(day.date)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          Fechar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
             {day.items.length === 0 ? (
               <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
                 <p>Nenhum item planejado para esse dia ainda.</p>
@@ -311,6 +456,7 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
                   const selectedMoveTarget = moveTargets[item.id] ?? '';
                   const moveOptions = moveOptionsByDay[day.date] ?? [];
                   const reasonCopy = item.reason ? mapReasonSummaryToCopy(item.reason) : null;
+                  const currentDurationMinutes = item.durationMinutes ?? defaultSessionDurationMinutes;
 
                   return (
                     <div
@@ -376,6 +522,30 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
                         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{item.note}</p>
                       ) : null}
 
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span
+                          data-testid="schedule-item-duration-label"
+                          className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                        >
+                          {currentDurationMinutes} min
+                        </span>
+                        {QUICK_DURATION_OPTIONS.map((durationOption) => (
+                          <button
+                            key={`${item.id}-duration-${durationOption}`}
+                            data-testid={`schedule-item-duration-${durationOption}-cta`}
+                            type="button"
+                            onClick={() => onUpdateItemDuration(item, day.date, durationOption)}
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                              currentDurationMinutes === durationOption
+                                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            {durationOption} min
+                          </button>
+                        ))}
+                      </div>
+
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button
                           data-testid="schedule-item-prioritize-cta"
@@ -394,6 +564,22 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
                         >
                           <SkipForward className="h-3.5 w-3.5" />
                           Adiar
+                        </button>
+                        <button
+                          data-testid="schedule-item-move-up-cta"
+                          type="button"
+                          onClick={() => onReorderItem(item, day.date, 'up')}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          ↑ Subir
+                        </button>
+                        <button
+                          data-testid="schedule-item-move-down-cta"
+                          type="button"
+                          onClick={() => onReorderItem(item, day.date, 'down')}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          ↓ Descer
                         </button>
                       </div>
 
@@ -448,6 +634,12 @@ const UpcomingOperationalSchedule: React.FC<UpcomingOperationalScheduleProps> = 
           })()
         ))}
       </div>
+
+      <datalist id="schedule-manual-subject-options">
+        {availableSubjectOptions.map((label) => (
+          <option key={label} value={label} />
+        ))}
+      </datalist>
     </section>
   );
 };

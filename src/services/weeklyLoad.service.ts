@@ -54,6 +54,10 @@ const getItemDurationMinutes = (
   item: OperationalScheduleWindowItem,
   defaultSessionDurationMinutes: number,
 ): number => {
+  if (typeof item.durationMinutes === 'number' && Number.isFinite(item.durationMinutes)) {
+    return clamp(Math.round(item.durationMinutes), 5, 180);
+  }
+
   const startMinutes = parseClockToMinutes(item.startTime);
   const endMinutes = parseClockToMinutes(item.endTime);
 

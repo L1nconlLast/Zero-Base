@@ -499,6 +499,8 @@ export interface ScheduleEntry {
   subject: string;
   startTime?: string;
   endTime?: string;
+  durationMinutes?: number;
+  orderIndex?: number;
   note?: string;
   done: boolean;
   status?: 'pendente' | 'concluido' | 'adiado';

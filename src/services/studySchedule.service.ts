@@ -83,6 +83,7 @@ export interface OperationalScheduleWindowItem {
   reason?: string;
   studyType?: ScheduleEntry['studyType'];
   priority?: ScheduleEntry['priority'];
+  durationMinutes?: number;
   source: 'entry' | 'weekly_plan';
   status: ScheduledStudyFocusStatus;
   startTime?: string;
@@ -128,6 +129,19 @@ export interface PrioritizedScheduledStudyFocus {
   score: number;
   reasonSummary: string;
   breakdown: StudyPrioritizationBreakdown;
+}
+
+export type ScheduleEntryReorderDirection = 'up' | 'down';
+
+export interface CreateManualScheduleEntryInput {
+  id: string;
+  date: string;
+  subject: string;
+  durationMinutes?: number;
+  topic?: string;
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const DEFAULT_OPERATIONAL_WINDOW_DAYS = 6;
@@ -202,8 +216,32 @@ const normalizeScheduleMatcher = (value?: string | null): string =>
     .toLowerCase()
     .trim();
 
+const parseClockToMinutes = (value?: string): number | null => {
+  if (!value || !/^\d{2}:\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const [hours, minutes] = value.split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return (hours * 60) + minutes;
+};
+
+const toClockLabel = (totalMinutes: number): string => {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
 const getPriorityRank = (value?: ScheduleEntry['priority']): number =>
   value === 'alta' ? 0 : 1;
+
+const getOrderRank = (value?: number): number =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : Number.MAX_SAFE_INTEGER;
 
 const normalizeDateKeyInput = (value: string): string | null => {
   if (!value) return null;
@@ -397,6 +435,11 @@ export const compareScheduleEntries = (left: ScheduleEntry, right: ScheduleEntry
     return left.date.localeCompare(right.date);
   }
 
+  const orderDiff = getOrderRank(left.orderIndex) - getOrderRank(right.orderIndex);
+  if (orderDiff !== 0) {
+    return orderDiff;
+  }
+
   const priorityDiff = getPriorityRank(left.priority) - getPriorityRank(right.priority);
   if (priorityDiff !== 0) {
     return priorityDiff;
@@ -418,6 +461,73 @@ export const compareScheduleEntries = (left: ScheduleEntry, right: ScheduleEntry
 
 export const sortScheduleEntries = (entries: ScheduleEntry[]): ScheduleEntry[] =>
   [...entries].sort(compareScheduleEntries);
+
+const getEntryDurationMinutes = (
+  entry: Pick<ScheduleEntry, 'durationMinutes' | 'startTime' | 'endTime'>,
+  fallbackDurationMinutes = DEFAULT_WEEKLY_PREFERENCES.defaultSessionDurationMinutes,
+): number => {
+  if (typeof entry.durationMinutes === 'number' && Number.isFinite(entry.durationMinutes)) {
+    return clamp(Math.round(entry.durationMinutes), 5, 180);
+  }
+
+  const startMinutes = parseClockToMinutes(entry.startTime);
+  const endMinutes = parseClockToMinutes(entry.endTime);
+  if (typeof startMinutes === 'number' && typeof endMinutes === 'number' && endMinutes > startMinutes) {
+    return clamp(endMinutes - startMinutes, 5, 180);
+  }
+
+  return clamp(fallbackDurationMinutes, 5, 180);
+};
+
+const buildEndTimeFromDuration = (startTime: string | undefined, durationMinutes: number): string | undefined => {
+  const startMinutes = parseClockToMinutes(startTime);
+  if (typeof startMinutes !== 'number') {
+    return undefined;
+  }
+
+  return toClockLabel(startMinutes + clamp(durationMinutes, 5, 180));
+};
+
+const getEntriesForDateSorted = (entries: ScheduleEntry[], date: string): ScheduleEntry[] =>
+  entries
+    .filter((entry) => entry.date === date)
+    .sort(compareScheduleEntries);
+
+const getNextOrderIndexForDate = (entries: ScheduleEntry[], date: string): number => {
+  const sameDayEntries = entries.filter((entry) => entry.date === date);
+  if (sameDayEntries.length === 0) {
+    return 0;
+  }
+
+  const highestOrderIndex = sameDayEntries.reduce((max, entry) =>
+    Math.max(max, typeof entry.orderIndex === 'number' ? entry.orderIndex : -1), -1);
+
+  if (highestOrderIndex >= 0) {
+    return highestOrderIndex + 1;
+  }
+
+  return sameDayEntries.length;
+};
+
+const applyUpdatedDayEntries = (
+  entries: ScheduleEntry[],
+  date: string,
+  orderedDayEntries: ScheduleEntry[],
+): ScheduleEntry[] => {
+  const dayEntryIds = new Set(orderedDayEntries.map((entry) => entry.id));
+  const reorderedDayEntries = orderedDayEntries.map((entry, index) => ({
+    ...entry,
+    orderIndex: index,
+  }));
+
+  return entries.map((entry) => {
+    if (entry.date !== date || !dayEntryIds.has(entry.id)) {
+      return entry;
+    }
+
+    return reorderedDayEntries.find((candidate) => candidate.id === entry.id) || entry;
+  });
+};
 
 const PRIORITIZATION_WEIGHT = {
   overdue: 100,
@@ -1146,6 +1256,48 @@ export const prioritizeSubjectInWeeklyPlan = (
   };
 };
 
+export const reorderSubjectInWeeklyPlan = (
+  schedule: WeeklyStudySchedule,
+  input: {
+    subject: string;
+    date: string;
+    direction: ScheduleEntryReorderDirection;
+  },
+): WeeklyStudySchedule => {
+  const dateKey = normalizeDateKeyInput(input.date);
+  if (!dateKey) {
+    return schedule;
+  }
+
+  const day = getWeekdayFromDate(new Date(`${dateKey}T12:00:00`));
+  const subjectLabels = [...(schedule.weekPlan[day]?.subjectLabels ?? [])];
+  const currentIndex = subjectLabels.findIndex(
+    (label) => normalizeScheduleMatcher(label) === normalizeScheduleMatcher(input.subject),
+  );
+  if (currentIndex === -1) {
+    return schedule;
+  }
+
+  const nextIndex = input.direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+  if (nextIndex < 0 || nextIndex >= subjectLabels.length) {
+    return schedule;
+  }
+
+  const [subjectLabel] = subjectLabels.splice(currentIndex, 1);
+  subjectLabels.splice(nextIndex, 0, subjectLabel);
+
+  return {
+    ...schedule,
+    weekPlan: {
+      ...schedule.weekPlan,
+      [day]: {
+        subjectLabels,
+      },
+    },
+    updatedAt: new Date().toISOString(),
+  };
+};
+
 export const toggleWeeklyDayAvailability = (
   schedule: WeeklyStudySchedule,
   day: Weekday,
@@ -1328,6 +1480,10 @@ export const moveScheduleEntry = (
   }
 
   let changed = false;
+  const nextOrderIndex = getNextOrderIndexForDate(
+    entries.filter((entry) => entry.id !== entryId),
+    normalizedTargetDate,
+  );
   const nextEntries = entries.map((entry) => {
     if (entry.id !== entryId || entry.date === normalizedTargetDate) {
       return entry;
@@ -1337,6 +1493,7 @@ export const moveScheduleEntry = (
     return {
       ...entry,
       date: normalizedTargetDate,
+      orderIndex: nextOrderIndex,
       updatedAt: editedAt,
       lastManualEditAt: editedAt,
       lastManualTargetDate: normalizedTargetDate,
@@ -1380,27 +1537,133 @@ export const prioritizeScheduleEntry = (
   entryId: string,
   editedAt = new Date().toISOString(),
 ): ScheduleEntry[] => {
+  const targetEntry = entries.find((entry) => entry.id === entryId);
+  if (!targetEntry) {
+    return entries;
+  }
+
+  const dayEntries = getEntriesForDateSorted(entries, targetEntry.date);
+  const targetIndex = dayEntries.findIndex((entry) => entry.id === entryId);
+  if (targetIndex === -1) {
+    return entries;
+  }
+
+  const nextDayEntries = [...dayEntries];
+  const [target] = nextDayEntries.splice(targetIndex, 1);
+  nextDayEntries.unshift({
+    ...target,
+    priority: 'alta',
+    manualPriority: true,
+    updatedAt: editedAt,
+    lastManualEditAt: editedAt,
+  });
+
+  return sortScheduleEntries(applyUpdatedDayEntries(entries, targetEntry.date, nextDayEntries));
+};
+
+export const reorderScheduleEntry = (
+  entries: ScheduleEntry[],
+  entryId: string,
+  direction: ScheduleEntryReorderDirection,
+  editedAt = new Date().toISOString(),
+): ScheduleEntry[] => {
+  const targetEntry = entries.find((entry) => entry.id === entryId);
+  if (!targetEntry) {
+    return entries;
+  }
+
+  const dayEntries = getEntriesForDateSorted(entries, targetEntry.date);
+  const targetIndex = dayEntries.findIndex((entry) => entry.id === entryId);
+  if (targetIndex === -1) {
+    return entries;
+  }
+
+  const swapIndex = direction === 'up' ? targetIndex - 1 : targetIndex + 1;
+  if (swapIndex < 0 || swapIndex >= dayEntries.length) {
+    return entries;
+  }
+
+  const nextDayEntries = [...dayEntries];
+  const currentEntry = nextDayEntries[targetIndex];
+  const swapEntry = nextDayEntries[swapIndex];
+  nextDayEntries[targetIndex] = {
+    ...swapEntry,
+    updatedAt: swapEntry.updatedAt ?? editedAt,
+  };
+  nextDayEntries[swapIndex] = {
+    ...currentEntry,
+    updatedAt: editedAt,
+    lastManualEditAt: editedAt,
+  };
+
+  return sortScheduleEntries(applyUpdatedDayEntries(entries, targetEntry.date, nextDayEntries));
+};
+
+export const updateScheduleEntryDuration = (
+  entries: ScheduleEntry[],
+  entryId: string,
+  durationMinutes: number,
+  editedAt = new Date().toISOString(),
+): ScheduleEntry[] => {
+  const clampedDuration = clamp(Math.round(durationMinutes || 0), 5, 180);
   let changed = false;
   const nextEntries = entries.map((entry) => {
     if (entry.id !== entryId) {
       return entry;
     }
 
-    if (entry.priority === 'alta') {
+    if (entry.durationMinutes === clampedDuration) {
       return entry;
     }
 
     changed = true;
     return {
       ...entry,
-      priority: 'alta' as const,
-      manualPriority: true,
+      durationMinutes: clampedDuration,
+      endTime: buildEndTimeFromDuration(entry.startTime, clampedDuration) ?? entry.endTime,
       updatedAt: editedAt,
       lastManualEditAt: editedAt,
     };
   });
 
   return changed ? sortScheduleEntries(nextEntries) : entries;
+};
+
+export const createManualScheduleEntry = (
+  entries: ScheduleEntry[],
+  input: CreateManualScheduleEntryInput,
+): ScheduleEntry[] => {
+  const normalizedDate = normalizeDateKeyInput(input.date);
+  if (!normalizedDate) {
+    return entries;
+  }
+
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const updatedAt = input.updatedAt ?? createdAt;
+  const subject = String(input.subject || '').trim();
+  if (!subject) {
+    return entries;
+  }
+
+  const nextEntry: ScheduleEntry = {
+    id: input.id,
+    date: normalizedDate,
+    subject,
+    topic: input.topic?.trim() || undefined,
+    note: input.note?.trim() || undefined,
+    durationMinutes: input.durationMinutes ? clamp(Math.round(input.durationMinutes), 5, 180) : undefined,
+    orderIndex: getNextOrderIndexForDate(entries, normalizedDate),
+    done: false,
+    status: 'pendente',
+    priority: 'normal',
+    source: 'manual',
+    createdAt,
+    updatedAt,
+    lastManualEditAt: updatedAt,
+    lastManualTargetDate: normalizedDate,
+  };
+
+  return sortScheduleEntries([...entries, nextEntry]);
 };
 
 export const buildOperationalScheduleWindow = (
@@ -1440,6 +1703,7 @@ export const buildOperationalScheduleWindow = (
           reason: entry.aiReason,
           studyType: entry.studyType,
           priority: entry.priority,
+          durationMinutes: getEntryDurationMinutes(entry),
           source: 'entry',
           status: resolveOperationalEntryStatus(entry, todayDateKey),
           startTime: entry.startTime,
@@ -1460,6 +1724,9 @@ export const buildOperationalScheduleWindow = (
               reason: resolution.matchedEntry?.aiReason,
               studyType: resolution.matchedEntry?.studyType,
               priority: resolution.matchedEntry?.priority ?? 'normal',
+              durationMinutes: resolution.matchedEntry
+                ? getEntryDurationMinutes(resolution.matchedEntry)
+                : schedule.preferences.defaultSessionDurationMinutes,
               source: 'weekly_plan' as const,
               status: resolution.matchedEntrySource === 'backlog' ? 'overdue' : resolution.status,
               startTime: undefined,

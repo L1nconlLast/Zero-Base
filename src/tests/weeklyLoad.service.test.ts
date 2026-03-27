@@ -15,6 +15,7 @@ const createItem = (overrides: Partial<OperationalScheduleWindowItem> = {}): Ope
   reason: overrides.reason,
   studyType: overrides.studyType ?? 'questoes',
   priority: overrides.priority ?? 'normal',
+  durationMinutes: overrides.durationMinutes,
   source: overrides.source ?? 'entry',
   status: overrides.status ?? 'pending',
   startTime: overrides.startTime,
@@ -49,6 +50,21 @@ describe('weeklyLoad.service', () => {
       sessions: 2,
       plannedSessions: 1,
       completedSessions: 1,
+    });
+  });
+
+  it('prefers explicit duration minutes when present', () => {
+    const day = createDay({
+      date: '2026-03-27',
+      offsetDays: 1,
+      items: [
+        createItem({ id: 'custom-duration', durationMinutes: 40, status: 'pending' }),
+      ],
+    });
+
+    expect(getDailyLoad(day, 25)).toMatchObject({
+      totalMinutes: 40,
+      plannedMinutes: 40,
     });
   });
 

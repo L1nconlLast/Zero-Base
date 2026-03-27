@@ -5,6 +5,7 @@ import {
   buildOperationalScheduleWindow,
   buildStudyContextForToday,
   chooseNextScheduledStudyFocus,
+  createManualScheduleEntry,
   createDefaultWeeklyAvailability,
   createDefaultWeeklyStudySchedule,
   createEmptyWeeklyPlan,
@@ -22,6 +23,8 @@ import {
   moveSubjectInWeeklyPlan,
   postponeScheduleEntry,
   prioritizeScheduleEntry,
+  reorderScheduleEntry,
+  reorderSubjectInWeeklyPlan,
   prioritizeSubjectInWeeklyPlan,
   resolveScheduledStudyFocus,
   shouldShowSuggestedAdjustment,
@@ -29,6 +32,7 @@ import {
   resolveTodayStudyState,
   sanitizeWeeklyStudySchedule,
   toggleWeeklyDayAvailability,
+  updateScheduleEntryDuration,
   updateWeeklyDayPlan,
 } from '../services/studySchedule.service';
 
@@ -47,6 +51,8 @@ const createEntry = (overrides: Partial<ScheduleEntry>): ScheduleEntry => ({
   note: overrides.note,
   startTime: overrides.startTime,
   endTime: overrides.endTime,
+  durationMinutes: overrides.durationMinutes,
+  orderIndex: overrides.orderIndex,
   manualPriority: overrides.manualPriority,
   createdAt: overrides.createdAt,
   updatedAt: overrides.updatedAt,
@@ -980,6 +986,71 @@ describe('studySchedule.service', () => {
       expect(result.find((entry) => entry.id === 'gamma')?.priority).toBe('alta');
     });
 
+    it('reorders entries inside the same day without duplicating them', () => {
+      const entries = sortScheduleEntries([
+        createEntry({ id: 'alpha', date: '2026-03-17', subject: 'Atualidades', orderIndex: 0 }),
+        createEntry({ id: 'beta', date: '2026-03-17', subject: 'Biologia', orderIndex: 1 }),
+        createEntry({ id: 'gamma', date: '2026-03-17', subject: 'Quimica', orderIndex: 2 }),
+      ]);
+
+      const result = reorderScheduleEntry(entries, 'beta', 'down');
+
+      expect(result.map((entry) => entry.id)).toEqual(['alpha', 'gamma', 'beta']);
+      expect(result.filter((entry) => entry.id === 'beta')).toHaveLength(1);
+      expect(result.find((entry) => entry.id === 'beta')?.orderIndex).toBe(2);
+    });
+
+    it('updates duration without losing the entry identity', () => {
+      const entries = [
+        createEntry({
+          id: 'duracao',
+          date: '2026-03-17',
+          subject: 'Biologia',
+          durationMinutes: 25,
+          startTime: '08:00',
+          endTime: '08:25',
+        }),
+      ];
+
+      const result = updateScheduleEntryDuration(entries, 'duracao', 40);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: 'duracao',
+        durationMinutes: 40,
+        endTime: '08:40',
+      });
+    });
+
+    it('creates a manual entry inside the same system without duplicating existing items', () => {
+      const entries = [
+        createEntry({
+          id: 'existente',
+          date: '2026-03-17',
+          subject: 'Matematica',
+          orderIndex: 0,
+        }),
+      ];
+
+      const result = createManualScheduleEntry(entries, {
+        id: 'novo-manual',
+        date: '2026-03-17',
+        subject: 'Redacao',
+        durationMinutes: 40,
+        createdAt: '2026-03-17T10:00:00.000Z',
+        updatedAt: '2026-03-17T10:00:00.000Z',
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result.find((entry) => entry.id === 'novo-manual')).toMatchObject({
+        subject: 'Redacao',
+        durationMinutes: 40,
+        source: 'manual',
+        status: 'pendente',
+      });
+      expect(result.filter((entry) => entry.subject === 'Redacao')).toHaveLength(1);
+    });
+
     it('moves the weekly plan subject when a planned item is remarcado', () => {
       let schedule = createDefaultWeeklyStudySchedule();
       schedule = updateWeeklyDayPlan(schedule, 'tuesday', ['Linguagens', 'Redacao']);
@@ -1005,6 +1076,19 @@ describe('studySchedule.service', () => {
       });
 
       expect(result.weekPlan.thursday.subjectLabels).toEqual(['Humanas', 'Atualidades', 'Biologia']);
+    });
+
+    it('reorders the weekly plan subject inside the same day', () => {
+      let schedule = createDefaultWeeklyStudySchedule();
+      schedule = updateWeeklyDayPlan(schedule, 'thursday', ['Atualidades', 'Humanas', 'Biologia']);
+
+      const result = reorderSubjectInWeeklyPlan(schedule, {
+        subject: 'Humanas',
+        date: '2026-03-19',
+        direction: 'down',
+      });
+
+      expect(result.weekPlan.thursday.subjectLabels).toEqual(['Atualidades', 'Biologia', 'Humanas']);
     });
   });
 
