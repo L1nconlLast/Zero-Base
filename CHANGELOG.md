@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## [2.2.0] - 2026-03-31
+
+### Added
+
+- Novo shell semantico para contextos de estudo, com isolamento de superfícies por dominio.
+- Visao geral de Outros como central de comando com hero contextual, proxima acao, estado do plano, ritmo semanal e alertas inteligentes.
+- Novos componentes e servicos de dominio para foco, plano, workspace e fluxo unificado de estudos.
+- Template padrao de PR em `.github/pull_request_template.md`.
+- Playbook de release em `docs/03_release/RELEASE_WORKFLOW.md`.
+- Template de entrada de changelog em `docs/03_release/CHANGELOG_TEMPLATE.md`.
+
+### Changed
+
+- Reorganizacao estrutural de modulos frontend para reduzir acoplamento e melhorar navegacao semantica.
+- Reorganizacao da documentacao com taxonomia oficial em `docs/01_product`, `docs/02_engineering`, `docs/03_release`, `docs/04_research` e `docs/99_archive`.
+- Fortalecimento da cobertura de testes e scripts de smoke para fluxos centrais.
+
+### Fixed
+
+- Ajustes em rotas, servicos e contratos para manter consistencia entre shell, plano e dashboard nos contextos expandidos.
+
+### Removed
+
+- Limpeza de artefatos legados dispersos na raiz e consolidacao em estrutura de documentacao mais previsivel.
+
+### Validacao
+
+- `npm run typecheck`: PASS
+- `npm run test:client`: PASS
+- `npm run build`: PASS
+- smoke: PASS (17/17)
+
+### Observabilidade e risco
+
+- impacto esperado: experiencia de navegacao mais orientada a acao e manutencao mais simples por separacao de responsabilidade.
+- risco residual: necessidade de monitorar bundle/chunks apos crescimento modular.
+- plano de rollback: revert do commit da release e reaplicacao incremental por dominio se houver regressao.
+
 ## [2.1.1-beta-ready] - Marco 2026
 
 ### Release State
