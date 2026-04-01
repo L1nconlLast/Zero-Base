@@ -182,6 +182,87 @@ export interface OutrosOverviewSnapshot {
   alerts: OutrosOverviewAlertSnapshot[];
 }
 
+export interface OutrosShellMetricSnapshot {
+  label: string;
+  value: string;
+  detail: string;
+}
+
+export interface OutrosFocusIdentitySnapshot {
+  topicLabel: string;
+  topicDetail: string;
+  goalLabel: string;
+  goalDetail: string;
+  whyItMatters: string;
+}
+
+export interface OutrosFocusCommitmentSnapshot {
+  stageLabel: string;
+  stageDetail: string;
+  rhythmLabel: string;
+  rhythmDetail: string;
+  continuityLabel: string;
+  continuityDetail: string;
+}
+
+export interface OutrosFocusManagementSnapshot {
+  statusLabel: string;
+  statusDetail: string;
+  metrics: OutrosShellMetricSnapshot[];
+}
+
+export interface OutrosFocusSnapshot {
+  identity: OutrosFocusIdentitySnapshot;
+  commitment: OutrosFocusCommitmentSnapshot;
+  management: OutrosFocusManagementSnapshot;
+}
+
+export interface OutrosPlanStructureSnapshot {
+  pathLabel: string;
+  pathDetail: string;
+  progressPercent: number | null;
+  statusLabel: string;
+  nextStepLabel: string;
+  nextStepDetail: string;
+}
+
+export interface OutrosPlanBacklogLaneSnapshot {
+  id: 'in_progress' | 'queued' | 'completed';
+  label: string;
+  count: number;
+  detail: string;
+  items: string[];
+  tone: 'active' | 'queue' | 'history';
+}
+
+export interface OutrosPlanBacklogSnapshot {
+  currentStepLabel: string;
+  currentStepDetail: string;
+  lanes: OutrosPlanBacklogLaneSnapshot[];
+}
+
+export interface OutrosPlanReviewStateSnapshot {
+  pendingLabel: string;
+  pendingDetail: string;
+  processedLabel: string;
+  processedDetail: string;
+  supportLabel: string;
+  supportDetail: string;
+}
+
+export interface OutrosPlanManagementSnapshot {
+  statusLabel: string;
+  statusDetail: string;
+  metrics: OutrosShellMetricSnapshot[];
+}
+
+export interface OutrosPlanSnapshot {
+  structure: OutrosPlanStructureSnapshot;
+  backlog: OutrosPlanBacklogSnapshot;
+  reviewState: OutrosPlanReviewStateSnapshot;
+  management: OutrosPlanManagementSnapshot;
+}
+
 export interface OutrosDashboardData {
   activeContext: {
     id: string;
@@ -210,6 +291,8 @@ export interface OutrosDashboardData {
   rank: OutrosRankSnapshot;
   rhythm: OutrosRhythmSnapshot;
   overview: OutrosOverviewSnapshot;
+  focus: OutrosFocusSnapshot;
+  plan: OutrosPlanSnapshot;
 }
 
 interface StudyContextRow {
@@ -313,6 +396,11 @@ const GOAL_TYPE_LABELS = {
   praticar: 'Praticar',
   rotina: 'Criar rotina',
   aprofundar: 'Aprofundar',
+} as const;
+const RHYTHM_LABELS = {
+  leve: 'Ritmo leve',
+  moderado: 'Ritmo moderado',
+  intenso: 'Ritmo intenso',
 } as const;
 const PACE_STATUS_LABELS = {
   abaixo: 'Abaixo do esperado',
@@ -1159,6 +1247,278 @@ export const buildOutrosOverviewSnapshot = ({
   };
 };
 
+const formatStepReference = (step: PathStepSummary): string => `Etapa ${step.stepOrder}`;
+
+export const buildOutrosFocusSnapshot = ({
+  activeTopic,
+  activeGoal,
+  activePath,
+  nextStep,
+  topics,
+  goals,
+  paths,
+  events,
+  contextSummary,
+  dailyMinutes,
+  profileRhythm,
+  rank,
+}: {
+  activeTopic: LearningTopicSummary | null;
+  activeGoal: LearningGoalSummary | null;
+  activePath: LearningPathSummary | null;
+  nextStep: PathStepSummary | null;
+  topics: LearningTopicSummary[];
+  goals: LearningGoalSummary[];
+  paths: LearningPathSummary[];
+  events: PersonalGoalEventSummary[];
+  contextSummary: string | null;
+  dailyMinutes: number | null;
+  profileRhythm: string | null;
+  rank: OutrosRankSnapshot;
+}): OutrosFocusSnapshot => {
+  const rhythmLabel = profileRhythm && profileRhythm in RHYTHM_LABELS
+    ? RHYTHM_LABELS[profileRhythm as keyof typeof RHYTHM_LABELS]
+    : 'Ritmo ainda nao definido';
+
+  let stageLabel = 'Setup inicial';
+  let stageDetail = 'Tema, objetivo e trilha ainda precisam ganhar forma para o foco virar rotina real.';
+
+  if (activePath) {
+    stageLabel = nextStep ? 'Foco com trilha ativa' : 'Foco com trilha montada';
+    stageDetail = nextStep
+      ? `${activePath.title} ja organiza o foco e segue para ${nextStep.title}.`
+      : `${activePath.title} ja existe, mas precisa de um proximo passo claro para nao esfriar.`;
+  } else if (activeGoal) {
+    stageLabel = 'Foco com direcao';
+    stageDetail = 'O objetivo ja esta claro. O proximo salto e transformar isso em trilha executavel.';
+  } else if (activeTopic) {
+    stageLabel = 'Foco definido';
+    stageDetail = 'O tema principal ja existe. Agora vale amarrar objetivo e continuidade.';
+  }
+
+  let managementStatusLabel = 'Base ainda em montagem';
+  let managementStatusDetail = 'Comece pelo primeiro tema para liberar objetivo, trilha e manutencao do dominio.';
+
+  if (topics.length > 0) {
+    managementStatusLabel = paths.length > 0 ? 'Base viva do foco' : 'Foco pronto para virar plano';
+    managementStatusDetail = paths.length > 0
+      ? 'Tema, objetivo e trilha ja podem ser mantidos no mesmo lugar sem perder a coerencia do shell.'
+      : 'O foco ja tem identidade. Falta consolidar a trilha para a execucao nao depender de memoria.';
+  }
+
+  return {
+    identity: {
+      topicLabel: activeTopic?.name || 'Tema ainda nao definido',
+      topicDetail: activeTopic
+        ? [
+            activeTopic.category ? activeTopic.category : null,
+            activeTopic.level ? `nivel ${activeTopic.level}` : null,
+          ].filter(Boolean).join(' - ')
+        : 'Escolha um tema principal para dar identidade ao estudo livre.',
+      goalLabel: activeGoal
+        ? GOAL_TYPE_LABELS[activeGoal.goalType]
+        : 'Objetivo ainda nao definido',
+      goalDetail: activeGoal?.description
+        || (activeGoal
+          ? `Objetivo ${GOAL_TYPE_LABELS[activeGoal.goalType]} ligado ao foco atual.`
+          : 'Sem objetivo ativo conectado ao tema principal.'),
+      whyItMatters: activeGoal?.description
+        || contextSummary
+        || 'Esse foco concentra o tema que voce quer transformar em progresso real agora.',
+    },
+    commitment: {
+      stageLabel,
+      stageDetail,
+      rhythmLabel,
+      rhythmDetail: dailyMinutes
+        ? `${dailyMinutes} min por dia previstos - ${PACE_STATUS_LABELS[rank.paceStatus]}.`
+        : `${PACE_STATUS_LABELS[rank.paceStatus]}. Defina minutos diarios para o ritmo parar de depender de memoria.`,
+      continuityLabel: nextStep
+        ? nextStep.title
+        : activePath
+          ? 'Trilha sem proximo passo'
+          : 'Sem continuidade pronta',
+      continuityDetail: nextStep
+        ? `${formatStepReference(nextStep)} da trilha ${activePath?.title || 'atual'} segue como melhor continuidade do foco.`
+        : activePath
+          ? `${activePath.title} precisa de uma nova etapa para a execucao voltar a andar.`
+          : 'Crie uma trilha com passos curtos para tirar o foco do campo abstrato.',
+    },
+    management: {
+      statusLabel: managementStatusLabel,
+      statusDetail: managementStatusDetail,
+      metrics: [
+        {
+          label: 'Temas',
+          value: String(topics.length),
+          detail: activeTopic ? `Ativo: ${activeTopic.name}.` : 'Nenhum tema ativo salvo agora.',
+        },
+        {
+          label: 'Objetivos',
+          value: String(goals.length),
+          detail: activeGoal
+            ? `Objetivo atual: ${GOAL_TYPE_LABELS[activeGoal.goalType]}.`
+            : 'Sem objetivo ativo ligado ao tema principal.',
+        },
+        {
+          label: 'Trilhas',
+          value: String(paths.length),
+          detail: activePath
+            ? `${activePath.title} segue como trilha principal.`
+            : 'Ainda sem trilha ativa para sustentar o foco.',
+        },
+        {
+          label: 'Agenda',
+          value: String(events.length),
+          detail: events.length > 0
+            ? 'Metas, blocos e revisoes ja aparecem no radar do dominio.'
+            : 'Sem eventos ligados ao foco neste momento.',
+        },
+      ],
+    },
+  };
+};
+
+export const buildOutrosPlanSnapshot = ({
+  activeTopic,
+  activePath,
+  nextStep,
+  paths,
+  steps,
+  events,
+  upcomingEvents,
+  rank,
+}: {
+  activeTopic: LearningTopicSummary | null;
+  activePath: LearningPathSummary | null;
+  nextStep: PathStepSummary | null;
+  paths: LearningPathSummary[];
+  steps: PathStepSummary[];
+  events: PersonalGoalEventSummary[];
+  upcomingEvents: PersonalGoalEventSummary[];
+  rank: OutrosRankSnapshot;
+}): OutrosPlanSnapshot => {
+  const activePathSteps = steps.filter((step) => step.pathId === activePath?.id);
+  const inProgressSteps = activePathSteps.filter((step) => step.status === 'em_andamento');
+  const queuedSteps = activePathSteps.filter((step) => step.status === 'nao_iniciado');
+  const completedSteps = activePathSteps.filter((step) => step.status === 'concluido');
+  const currentStep = inProgressSteps[0] || nextStep || null;
+  const nextEvent = upcomingEvents[0] || null;
+
+  let managementStatusLabel = 'Plano em montagem';
+  let managementStatusDetail = 'Monte a primeira trilha com passos claros para o foco ganhar continuidade de verdade.';
+
+  if (paths.length > 0) {
+    managementStatusLabel = nextStep ? 'Plano administravel' : 'Plano pede continuidade';
+    managementStatusDetail = nextStep
+      ? 'Trilha, backlog e agenda ja podem ser mantidos de forma deliberada sem colar tudo em uma unica lista.'
+      : 'A trilha existe, mas ainda precisa de um proximo passo claro para nao virar plano parado.';
+  }
+
+  return {
+    structure: {
+      pathLabel: activePath?.title || 'Sem trilha ativa',
+      pathDetail: activePath
+        ? `${activePath.progressPercent}% concluido - ${completedSteps.length}/${activePathSteps.length || 0} passos fechados${activeTopic ? ` - foco: ${activeTopic.name}` : ''}.`
+        : 'Monte uma trilha para transformar o foco em sequencia executavel com backlog e revisao claros.',
+      progressPercent: activePath?.progressPercent ?? null,
+      statusLabel: activePath?.status || 'setup',
+      nextStepLabel: currentStep?.title || 'Nenhum passo em andamento',
+      nextStepDetail: currentStep
+        ? `${formatStepReference(currentStep)} - ${currentStep.description || 'Melhor continuidade do plano agora.'}`
+        : activePath
+          ? `${activePath.title} esta sem proxima etapa definida.`
+          : 'Sem trilha ativa, o plano ainda nao consegue ordenar o que vem agora.',
+    },
+    backlog: {
+      currentStepLabel: currentStep?.title || 'Backlog sem passo atual',
+      currentStepDetail: currentStep
+        ? `${formatStepReference(currentStep)} da trilha ${activePath?.title || 'atual'}.`
+        : activePath
+          ? `${activePath.title} precisa de um passo em andamento ou uma fila clara.`
+          : 'Crie uma trilha e adicione passos para liberar backlog real.',
+      lanes: [
+        {
+          id: 'in_progress',
+          label: 'Em progresso',
+          count: inProgressSteps.length,
+          detail: inProgressSteps.length > 0
+            ? 'Passos que ja estao abertos e puxam a execucao do momento.'
+            : 'Nenhum passo esta em andamento agora.',
+          items: inProgressSteps.slice(0, 3).map((step) => `${formatStepReference(step)} - ${step.title}`),
+          tone: 'active',
+        },
+        {
+          id: 'queued',
+          label: 'Fila imediata',
+          count: queuedSteps.length,
+          detail: queuedSteps.length > 0
+            ? 'O que vem depois do passo atual sem precisar redecidir a trilha.'
+            : 'Nao existe fila imediata pronta para a trilha atual.',
+          items: queuedSteps.slice(0, 3).map((step) => `${formatStepReference(step)} - ${step.title}`),
+          tone: 'queue',
+        },
+        {
+          id: 'completed',
+          label: 'Historico',
+          count: completedSteps.length,
+          detail: completedSteps.length > 0
+            ? 'Passos que ja sairam do backlog principal e contam a evolucao da trilha.'
+            : 'Ainda nao ha passos concluidos nesta trilha.',
+          items: completedSteps.slice(-3).reverse().map((step) => `${formatStepReference(step)} - ${step.title}`),
+          tone: 'history',
+        },
+      ],
+    },
+    reviewState: {
+      pendingLabel: rank.pendingReviewsCount > 0
+        ? `${rank.pendingReviewsCount} revisao(oes) pendente(s)`
+        : 'Sem revisoes pendentes',
+      pendingDetail: rank.pendingReviewsCount > 0
+        ? `A proxima fila vence em ${rank.nextReviewDueAt ? toDateKey(rank.nextReviewDueAt) || 'breve' : 'breve'}.`
+        : 'Nenhuma revisao esta pressionando o plano agora.',
+      processedLabel: `${rank.processedReviews} revisao(oes) processada(s)`,
+      processedDetail: rank.processedReviews > 0
+        ? 'A trilha ja tem historico de retencao e nao so execucao.'
+        : 'Ainda nao houve revisao concluida dentro deste foco.',
+      supportLabel: nextEvent?.title || 'Sem evento de apoio',
+      supportDetail: nextEvent
+        ? `${EVENT_TYPE_LABELS[nextEvent.type] || 'Compromisso'} em ${toDateKey(nextEvent.startAt) || 'breve'}${nextEvent.topicName ? ` - ${nextEvent.topicName}` : ''}.`
+        : 'Quando houver meta, estudo ou revisao agendada, ela aparece aqui como suporte do plano.',
+    },
+    management: {
+      statusLabel: managementStatusLabel,
+      statusDetail: managementStatusDetail,
+      metrics: [
+        {
+          label: 'Trilhas',
+          value: String(paths.length),
+          detail: activePath ? `Principal: ${activePath.title}.` : 'Nenhuma trilha ativa definida.',
+        },
+        {
+          label: 'Passos',
+          value: String(steps.length),
+          detail: nextStep ? `Proximo: ${nextStep.title}.` : 'Sem proximo passo destacado agora.',
+        },
+        {
+          label: 'Agenda',
+          value: String(events.length),
+          detail: upcomingEvents.length > 0
+            ? `${upcomingEvents.length} compromisso(s) ainda no radar da trilha.`
+            : 'Sem agenda futura ligada ao plano.',
+        },
+        {
+          label: 'Revisoes',
+          value: String(rank.pendingReviewsCount),
+          detail: rank.processedReviews > 0
+            ? `${rank.processedReviews} revisao(oes) ja processada(s) no foco atual.`
+            : 'Ainda sem revisoes concluidas na trilha.',
+        },
+      ],
+    },
+  };
+};
+
 class OutrosDashboardService {
   async getOutrosDashboardData(userId: string): Promise<OutrosDashboardData> {
     const client = assertClient();
@@ -1393,6 +1753,30 @@ class OutrosDashboardService {
       fallbackFocusTitle: payload?.topicName || activeTopic?.name || 'Tema principal',
       contextSummary: activeContext?.context_summary || activeContext?.context_description || null,
     });
+    const focus = buildOutrosFocusSnapshot({
+      activeTopic,
+      activeGoal,
+      activePath,
+      nextStep,
+      topics,
+      goals,
+      paths,
+      events: scopedEvents,
+      contextSummary: activeContext?.context_summary || activeContext?.context_description || null,
+      dailyMinutes: payload?.dailyMinutes ?? null,
+      profileRhythm: payload?.pace || null,
+      rank,
+    });
+    const plan = buildOutrosPlanSnapshot({
+      activeTopic,
+      activePath,
+      nextStep,
+      paths,
+      steps,
+      events: scopedEvents,
+      upcomingEvents,
+      rank,
+    });
 
     return {
       activeContext: activeContext
@@ -1424,6 +1808,8 @@ class OutrosDashboardService {
       rank,
       rhythm,
       overview,
+      focus,
+      plan,
     };
   }
 }
