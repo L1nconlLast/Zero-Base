@@ -352,6 +352,12 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, onCompleteAttempt, supaba
   const repeatedQuestionsCount = Math.max(0, plannedQuestionCount - uniqueAvailableCount);
   const theme = TRACK_THEME[selectedTrack];
   const configProfile = EXAM_MODE_PROFILES[selectedConfig] ?? EXAM_MODE_PROFILES[0];
+  const heroPanelClass = 'rounded-2xl border border-white/60 bg-white/72 p-4 text-slate-900 backdrop-blur dark:border-slate-700/80 dark:bg-slate-950/72 dark:text-slate-100';
+  const heroChipClass = 'inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/68 px-3 py-1.5 text-xs font-medium text-slate-700 backdrop-blur dark:border-slate-700 dark:bg-slate-900/82 dark:text-slate-200';
+  const getHeroTrackChipClass = (selected: boolean) =>
+    selected
+      ? 'border-white/80 bg-white text-slate-900 shadow-lg dark:border-slate-200/80 dark:bg-slate-100 dark:text-slate-950'
+      : 'border-white/50 bg-white/45 text-slate-700 hover:bg-white/70 dark:border-slate-700 dark:bg-slate-900/82 dark:text-slate-200 dark:hover:bg-slate-800';
   const visibleTopics = showAllTopics ? topicsBySelection : topicsBySelection.slice(0, 12);
   const hiddenTopicsCount = Math.max(0, topicsBySelection.length - 12);
 
@@ -665,18 +671,19 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, onCompleteAttempt, supaba
   if (examState === 'setup') {
     return (
       <div className="max-w-5xl mx-auto space-y-6">
-        <section className={`relative overflow-hidden rounded-[28px] border ${theme.soft} p-6 sm:p-7 shadow-[0_20px_60px_rgba(15,23,42,0.08)]`}>
-          <div className={`absolute inset-x-0 top-0 h-40 bg-gradient-to-br ${theme.hero} opacity-95`} />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.28),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(15,23,42,0.12),transparent_38%)]" />
+        <section className={`relative overflow-hidden rounded-[28px] border ${theme.soft} p-6 sm:p-7 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:shadow-[0_28px_80px_rgba(2,6,23,0.34)]`}>
+          <div className={`absolute inset-x-0 top-0 h-40 bg-gradient-to-br ${theme.hero} opacity-92`} />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.36),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.14),transparent_38%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.06),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.04),transparent_38%)]" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden h-[68%] rounded-b-[28px] bg-[linear-gradient(180deg,rgba(15,23,42,0)_0%,rgba(2,6,23,0.74)_22%,rgba(2,6,23,0.9)_100%)] dark:block" />
           <div className="relative space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Simulado recomendado</p>
-                <h2 className="mt-2 inline-flex items-center gap-2 text-3xl font-semibold text-white sm:text-[2rem]">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-700/80 dark:text-orange-100/80">Simulado recomendado</p>
+                <h2 className="mt-2 inline-flex items-center gap-2 text-3xl font-semibold text-slate-950 dark:text-white sm:text-[2rem]">
                   <BookOpen className="h-7 w-7" />
                   {selectedModel ? selectedModel.nome : config.label}
                 </h2>
-                <p className="mt-2 max-w-2xl text-sm text-white/80 sm:text-[15px]">
+                <p className="mt-2 max-w-2xl text-sm text-slate-700 dark:text-orange-50/90 sm:text-[15px]">
                   {selectedModel
                     ? `Modelo oficial com ${selectedModel.questoes} questoes para treinar no formato ${selectedModel.banca}.`
                     : `${configProfile.description} ${adaptiveMode ? 'A IA prioriza os temas em que voce mais vacila.' : 'Voce entra direto em uma prova limpa e objetiva.'}`}
@@ -687,10 +694,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, onCompleteAttempt, supaba
                   <button
                     key={track}
                     onClick={() => setSelectedTrack(track)}
-                    className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${selectedTrack === track
-                      ? 'border-white/50 bg-white text-slate-900 shadow-lg'
-                      : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
-                      }`}
+                    className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${getHeroTrackChipClass(selectedTrack === track)}`}
                   >
                     {TRACK_LABEL[track]}
                   </button>
@@ -699,21 +703,21 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, onCompleteAttempt, supaba
             </div>
 
             <div className="grid gap-3 sm:grid-cols-4">
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Questoes</p>
-                <p className="mt-2 text-2xl font-semibold text-white">{plannedQuestionCount || config.questions}</p>
+              <div className={heroPanelClass}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-300">Questoes</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{plannedQuestionCount || config.questions}</p>
               </div>
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Tempo</p>
-                <p className="mt-2 text-2xl font-semibold text-white">{plannedMinutes} min</p>
+              <div className={heroPanelClass}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-300">Tempo</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{plannedMinutes} min</p>
               </div>
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Nivel</p>
-                <p className="mt-2 text-2xl font-semibold text-white">{configProfile.level}</p>
+              <div className={heroPanelClass}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-300">Nivel</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{configProfile.level}</p>
               </div>
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Impacto</p>
-                <p className="mt-2 text-sm font-semibold text-white">{selectedModel?.category || 'XP + ranking'}</p>
+              <div className={heroPanelClass}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-300">Impacto</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{selectedModel?.category || 'XP + ranking'}</p>
               </div>
             </div>
 
@@ -723,13 +727,13 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, onCompleteAttempt, supaba
                 const DisciplineIcon = discipline.Icon;
 
                 return (
-                  <span key={item.subject} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur">
+                  <span key={item.subject} className={heroChipClass}>
                     <DisciplineIcon className="h-3.5 w-3.5" />
                     {discipline.label} · {item.count}
                   </span>
                 );
               }) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur">
+                <span className={heroChipClass}>
                   <Sigma className="h-3.5 w-3.5" />
                   Distribuicao livre para {TRACK_LABEL[selectedTrack]}
                 </span>
@@ -740,18 +744,18 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, onCompleteAttempt, supaba
               <button
                 onClick={startExam}
                 disabled={availablePool.length === 0}
-                className="inline-flex flex-1 items-center justify-center gap-3 rounded-2xl bg-slate-950 px-5 py-4 text-left text-white shadow-xl transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
+                className="inline-flex flex-1 items-center justify-center gap-3 rounded-2xl border border-slate-950/10 bg-slate-950 px-5 py-4 text-left text-white shadow-xl transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-200/70 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
               >
                 <Play className="h-5 w-5 shrink-0" />
                 <span className="min-w-0">
                   <span className="block truncate text-base font-semibold">{setupCtaLabel}</span>
-                  <span className="block text-xs font-medium text-white/70 dark:text-slate-500">{setupCtaMeta}</span>
+                  <span className="block text-xs font-medium text-white/75 dark:text-slate-500">{setupCtaMeta}</span>
                 </span>
               </button>
               <button
                 type="button"
                 onClick={() => setShowAdvancedFilters((previous) => !previous)}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-5 py-4 text-sm font-semibold text-white transition hover:bg-white/20"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/60 bg-white/55 px-5 py-4 text-sm font-semibold text-slate-700 transition hover:bg-white/75 dark:border-slate-700 dark:bg-slate-900/82 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <Filter className="h-4 w-4" />
                 {showAdvancedFilters ? 'Ocultar personalizacao' : 'Personalizar simulado'}
@@ -759,7 +763,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, onCompleteAttempt, supaba
             </div>
 
             {availablePool.length === 0 && (
-              <div className="inline-flex items-center gap-2 rounded-2xl border border-amber-300/40 bg-amber-400/15 px-4 py-3 text-sm text-white">
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-amber-300/70 bg-amber-100/85 px-4 py-3 text-sm text-amber-900 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 Nenhuma questao encontrada com os filtros atuais. Abra a personalizacao e alivie os filtros para liberar o simulado.
               </div>
@@ -1112,7 +1116,7 @@ const MockExam: React.FC<MockExamProps> = ({ onEarnXP, onCompleteAttempt, supaba
                   <p className={`text-xs font-semibold uppercase tracking-[0.24em] ${theme.text}`}>A IA deve puxar voce para</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {adaptiveHighlights.map((item) => (
-                      <span key={item.key} className="rounded-full border border-white/50 bg-white/70 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-200">
+                      <span key={item.key} className="rounded-full border border-white/55 bg-white/75 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-200">
                         {item.subject} · {item.topic}
                       </span>
                     ))}

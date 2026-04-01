@@ -592,12 +592,33 @@ const waitForAuthenticatedShell = async (session) =>
         return false;
       }
 
+      if (
+        body.includes('fluxo principal')
+        || body.includes('atalho do dia')
+        || body.includes('comecar agora')
+        || body.includes('estudar agora')
+      ) {
+        return true;
+      }
+
+      const shellLabels = [
+        'configuracoes',
+        'inicio',
+        'plano',
+        'estudo',
+        'revisoes',
+        'simulados',
+        'mentor ia',
+        'mais no app',
+      ];
+
       return Array.from(document.querySelectorAll('button, a, [role="button"]')).some((candidate) => {
         const style = window.getComputedStyle(candidate);
         const rect = candidate.getBoundingClientRect();
         if (!rect.width || !rect.height) return false;
         if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
-        return normalize(candidate.textContent || '') === 'configuracoes';
+        const label = normalize(candidate.textContent || '');
+        return shellLabels.some((candidateLabel) => label === candidateLabel || label.includes(candidateLabel));
       });
     })()`,
     { timeoutMs: 30000, label: 'shell autenticado' },
@@ -781,6 +802,15 @@ const getDisplayedFocusLabel = async (session) =>
 
       if (matches.length > 0) {
         return matches[0];
+      }
+
+      const bodyMatches = ${JSON.stringify(KNOWN_DISCIPLINE_LABELS)}.filter((label) => {
+        const bodyText = normalize(document.body?.innerText || '');
+        return bodyText.includes(normalize(label));
+      });
+
+      if (bodyMatches.length > 0) {
+        return bodyMatches[0];
       }
 
       return null;

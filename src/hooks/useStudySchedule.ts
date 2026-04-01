@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ScheduleEntry } from '../types';
 import {
   createManualScheduleEntry,
+  getStudyScheduleStorageKey,
   moveScheduleEntry,
   postponeScheduleEntry,
   persistScheduleEntriesSnapshot,
@@ -25,12 +26,12 @@ const generateId = (): string => {
   return `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 };
 
-const loadEntries = (): ScheduleEntry[] => {
-  return readPersistedScheduleEntries();
+const loadEntries = (storageKey?: string): ScheduleEntry[] => {
+  return readPersistedScheduleEntries(storageKey);
 };
 
-const persist = (entries: ScheduleEntry[]): void => {
-  persistScheduleEntriesSnapshot(entries.slice(-MAX_ENTRIES));
+const persist = (entries: ScheduleEntry[], storageKey?: string): void => {
+  persistScheduleEntriesSnapshot(entries.slice(-MAX_ENTRIES), storageKey);
 };
 
 const mergeEntryMetadata = (local: ScheduleEntry, cloud: ScheduleEntry): ScheduleEntry => ({
@@ -108,18 +109,40 @@ const toEntryPatch = (block: StudyBlock): Partial<ScheduleEntry> => {
 };
 
 // ── Hook ─────────────────────────────────────────────────────
-export function useStudySchedule(userId?: string | null) {
-  const [entries, setEntries] = useState<ScheduleEntry[]>(loadEntries);
+interface UseStudyScheduleOptions {
+  storageKey?: string;
+  enableCloudSync?: boolean;
+}
+
+export function useStudySchedule(userId?: string | null, options?: UseStudyScheduleOptions) {
+  const storageKey = options?.storageKey || getStudyScheduleStorageKey();
+  const enableCloudSync = options?.enableCloudSync ?? true;
+  const [entries, setEntries] = useState<ScheduleEntry[]>(() => loadEntries(storageKey));
   const syncedRef = useRef(false);
+  const activeStorageKeyRef = useRef(storageKey);
 
   // Sync to localStorage on change
   useEffect(() => {
-    persist(entries);
-  }, [entries]);
+    if (activeStorageKeyRef.current !== storageKey) {
+      return;
+    }
+
+    persist(entries, storageKey);
+  }, [entries, storageKey]);
+
+  useEffect(() => {
+    if (activeStorageKeyRef.current === storageKey) {
+      return;
+    }
+
+    syncedRef.current = false;
+    activeStorageKeyRef.current = storageKey;
+    setEntries(loadEntries(storageKey));
+  }, [storageKey]);
 
   // ── Cloud sync: carregar ao montar ──
   useEffect(() => {
-    if (!userId || !isSupabaseConfigured || syncedRef.current) return;
+    if (!enableCloudSync || !userId || !isSupabaseConfigured || syncedRef.current) return;
 
     let cancelled = false;
 
@@ -130,7 +153,7 @@ export function useStudySchedule(userId?: string | null) {
 
         setEntries((local) => {
           const merged = mergeEntries(local, cloudEntries);
-          persist(merged);
+          persist(merged, storageKey);
 
           // Push local-only entries to cloud (best effort)
           const cloudIds = new Set(cloudEntries.map((entry: ScheduleEntry) => entry.id));
@@ -150,7 +173,7 @@ export function useStudySchedule(userId?: string | null) {
 
     void loadCloud();
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [enableCloudSync, storageKey, userId]);
 
   /** Adiciona uma entrada no cronograma */
   const addEntry = useCallback(
@@ -179,13 +202,13 @@ export function useStudySchedule(userId?: string | null) {
       });
 
       // Push to cloud (fire-and-forget)
-      if (entry && userId && isSupabaseConfigured) {
+      if (entry && enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntry(userId, entry).catch(() => {});
       }
 
       return entry;
     },
-    [userId],
+    [enableCloudSync, userId],
   );
 
   /** Atualiza parcialmente uma entrada */
@@ -213,13 +236,13 @@ export function useStudySchedule(userId?: string | null) {
       );
 
       const target = updated.find((entry) => entry.id === id);
-      if (target && userId && isSupabaseConfigured) {
+      if (target && enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntry(userId, target).catch(() => {});
       }
 
       return updated;
     });
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   const moveEntry = useCallback((id: string, toDate: string) => {
     setEntries((prev) => {
@@ -229,13 +252,13 @@ export function useStudySchedule(userId?: string | null) {
       }
 
       const target = next.find((entry) => entry.id === id);
-      if (target && userId && isSupabaseConfigured) {
+      if (target && enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntry(userId, target).catch(() => {});
       }
 
       return next;
     });
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   const postponeEntry = useCallback((id: string, startDate?: Date) => {
     setEntries((prev) => {
@@ -245,13 +268,13 @@ export function useStudySchedule(userId?: string | null) {
       }
 
       const target = next.find((entry) => entry.id === id);
-      if (target && userId && isSupabaseConfigured) {
+      if (target && enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntry(userId, target).catch(() => {});
       }
 
       return next;
     });
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   const prioritizeEntry = useCallback((id: string) => {
     setEntries((prev) => {
@@ -261,13 +284,13 @@ export function useStudySchedule(userId?: string | null) {
       }
 
       const target = next.find((entry) => entry.id === id);
-      if (target && userId && isSupabaseConfigured) {
+      if (target && enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntry(userId, target).catch(() => {});
       }
 
       return next;
     });
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   const reorderEntry = useCallback((id: string, direction: 'up' | 'down') => {
     setEntries((prev) => {
@@ -280,13 +303,13 @@ export function useStudySchedule(userId?: string | null) {
         .filter((entry) => entry.date === prev.find((candidate) => candidate.id === id)?.date)
         .map((entry) => next.find((candidate) => candidate.id === entry.id))
         .filter(Boolean) as ScheduleEntry[];
-      if (sameDayTargets.length > 0 && userId && isSupabaseConfigured) {
+      if (sameDayTargets.length > 0 && enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntries(userId, sameDayTargets).catch(() => {});
       }
 
       return next;
     });
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   const updateEntryDuration = useCallback((id: string, durationMinutes: number) => {
     setEntries((prev) => {
@@ -296,13 +319,13 @@ export function useStudySchedule(userId?: string | null) {
       }
 
       const target = next.find((entry) => entry.id === id);
-      if (target && userId && isSupabaseConfigured) {
+      if (target && enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntry(userId, target).catch(() => {});
       }
 
       return next;
     });
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   const createManualEntry = useCallback((input: {
     date: string;
@@ -327,7 +350,7 @@ export function useStudySchedule(userId?: string | null) {
       return next;
     });
 
-    if (userId && isSupabaseConfigured) {
+    if (enableCloudSync && userId && isSupabaseConfigured) {
       const createdEntry = createManualScheduleEntry([], {
         id: nextId,
         date: input.date,
@@ -344,16 +367,16 @@ export function useStudySchedule(userId?: string | null) {
     }
 
     return nextId;
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   /** Remove uma entrada */
   const removeEntry = useCallback((id: string) => {
     setEntries((prev) => prev.filter((e) => e.id !== id));
 
-    if (userId && isSupabaseConfigured) {
+    if (enableCloudSync && userId && isSupabaseConfigured) {
       void studyScheduleService.deleteEntry(userId, id).catch(() => {});
     }
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   /** Marca/desmarca como concluída */
   const toggleDone = useCallback((id: string) => {
@@ -370,13 +393,13 @@ export function useStudySchedule(userId?: string | null) {
       });
       const entry = updated.find((e) => e.id === id);
 
-      if (entry && userId && isSupabaseConfigured) {
+      if (entry && enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntry(userId, entry).catch(() => {});
       }
 
       return updated;
     });
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   /** Atualiza nota de uma entrada */
   const updateNote = useCallback((id: string, note: string) => {
@@ -388,13 +411,13 @@ export function useStudySchedule(userId?: string | null) {
           : e);
       const entry = updated.find((e) => e.id === id);
 
-      if (entry && userId && isSupabaseConfigured) {
+      if (entry && enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntry(userId, entry).catch(() => {});
       }
 
       return updated;
     });
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   /** Entradas de um dia específico */
   const getEntriesForDate = useCallback(
@@ -432,13 +455,13 @@ export function useStudySchedule(userId?: string | null) {
         return stampEntryUpdate(entry, now, { ...toEntryPatch(block), source: 'ia' as const });
       }));
 
-      if (userId && isSupabaseConfigured) {
+      if (enableCloudSync && userId && isSupabaseConfigured) {
         void studyScheduleService.upsertEntries(userId, next).catch(() => {});
       }
 
       return next;
     });
-  }, [userId]);
+  }, [enableCloudSync, userId]);
 
   /** Datas que possuem ao menos uma entrada */
   const scheduledDates = new Set(entries.map((e) => e.date));

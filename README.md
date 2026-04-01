@@ -147,11 +147,11 @@ graph TD
 
 ## Organização do Repositório
 
-- Guia de organização: `docs/ORGANIZACAO_REPOSITORIO.md`
+- Guia de organização: `docs/02_engineering/ORGANIZACAO_REPOSITORIO.md`
 - Autor: Gleydson de Sousa Gomes (Linconl)
-- Resumo executivo: `docs/RESUMO_ZERO_BASE_V2.md`
-- Índice de arquivos: `INDEX_ARQUIVOS.html`
-- Estrutura detalhada: `ESTRUTURA_PROJETO.txt`
+- Resumo executivo: `docs/01_product/RESUMO_ZERO_BASE_V2.md`
+- Índice vivo da documentação: `docs/README.md`
+- Estrutura detalhada: `docs/02_engineering/ESTRUTURA_PROJETO.md`
 
 ---
 
@@ -202,11 +202,14 @@ npm run dev -- --port 3000
 
 ## Documentação Adicional
 
-- `GUIA_COMPLETO.md` - Documentação detalhada
-- `INICIO_RAPIDO.txt` - Comandos rápidos
-- `GUIA_INSTALACAO.html` - Guia visual
-- `docs/ORGANIZACAO_REPOSITORIO.md` - Mapa e convenções de organização
-- `docs/RESUMO_ZERO_BASE_V2.md` - Resumo executivo consolidado (Notion + repositório)
+- `docs/README.md` - Índice vivo da documentação
+- `docs/02_engineering/QUICK_START.md` - Onboarding técnico rápido
+- `docs/02_engineering/COMANDOS.md` - Comandos operacionais úteis
+- Arquivos visuais legados: `docs/99_archive/root_legacy/html_exports/`
+- `docs/02_engineering/ORGANIZACAO_REPOSITORIO.md` - Mapa e convenções de organização
+- `docs/02_engineering/GUIA_IMPLEMENTACAO.md` - Guia técnico de implementação
+- `docs/02_engineering/ESTRUTURA_PROJETO.md` - Visão resumida da estrutura do repositório
+- `docs/01_product/RESUMO_ZERO_BASE_V2.md` - Resumo executivo consolidado (Notion + repositório)
 
 ---
 

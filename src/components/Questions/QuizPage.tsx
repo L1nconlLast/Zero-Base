@@ -164,6 +164,8 @@ const QuizPage: React.FC<QuizPageProps> = ({
 
   const currentQuestion = questions[currentIdx];
   const isLastQuestion = currentIdx === questions.length - 1;
+  const isGuidedQuickFlow = Boolean(initialFilter || recommendedContext);
+  const guidedQuestionCount = 3;
 
   const subjectsByTrack = useMemo(() => {
     const unique = [...new Set(QUESTIONS_BANK.filter((q) => matchTrack(q, selectedTrack)).map((q) => q.subject))];
@@ -190,7 +192,7 @@ const QuizPage: React.FC<QuizPageProps> = ({
     setSelectedTrack(nextTrack);
     setSelectedSubject(initialFilter.subject || 'Todas');
     setSelectedTopic(initialFilter.topicName || 'Todos');
-    setSelectedDifficulty('todas');
+    setSelectedDifficulty('facil');
     setState('select');
     setQuestions([]);
     setCurrentIdx(0);
@@ -198,6 +200,14 @@ const QuizPage: React.FC<QuizPageProps> = ({
     setShowExplanation(false);
     setAnswers([]);
   }, [initialFilter]);
+
+  useEffect(() => {
+    if (!isGuidedQuickFlow) {
+      return;
+    }
+
+    setSelectedDifficulty('facil');
+  }, [isGuidedQuickFlow]);
 
   useEffect(() => {
     if (selectedSubject !== 'Todas' && !subjectsByTrack.includes(selectedSubject)) {
@@ -286,7 +296,7 @@ const QuizPage: React.FC<QuizPageProps> = ({
         matchTopic(q, selectedTopic),
     );
     const todayKey = getTodayKey();
-    const baseCount = dailyMode ? 5 : quizQuestionCount;
+    const baseCount = isGuidedQuickFlow ? guidedQuestionCount : dailyMode ? 5 : quizQuestionCount;
     let selectedQuestions: Question[] = [];
 
     if (dailyMode) {
@@ -325,7 +335,7 @@ const QuizPage: React.FC<QuizPageProps> = ({
     setStartedAt(Date.now());
     setShowResultDetails(false);
     setState('answering');
-  }, [dailyMode, getQuestionPriority, quizQuestionCount, recentlyAnsweredSet, selectedDifficulty, selectedSubject, selectedTopic, selectedTrack]);
+  }, [dailyMode, getQuestionPriority, guidedQuestionCount, isGuidedQuickFlow, quizQuestionCount, recentlyAnsweredSet, selectedDifficulty, selectedSubject, selectedTopic, selectedTrack]);
 
   const handleAnswer = (letter: string) => {
     if (selectedAnswer) return;
@@ -442,7 +452,51 @@ const QuizPage: React.FC<QuizPageProps> = ({
           </div>
         )}
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4 shadow-sm">
+        {isGuidedQuickFlow ? (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-5 shadow-sm">
+            <div className="rounded-2xl border border-sky-100 bg-sky-50/80 p-4 dark:border-sky-900/40 dark:bg-sky-950/20">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">
+                Pratica guiada
+              </p>
+              <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-slate-100">
+                3 questoes rapidas para fechar o bloco
+              </h3>
+              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
+                Nivel de aquecimento, feedback imediato e conclusao em poucos minutos.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                `Trilha: ${TRACK_LABEL[selectedTrack]}`,
+                `Materia: ${selectedSubject === 'Todas' ? 'Bloco recomendado' : selectedSubject}`,
+                `Dificuldade: ${DIFFICULTY_LABEL.facil}`,
+              ].map((item) => (
+                <div
+                  key={item}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
+                {filteredCount} questoes disponiveis ({TRACK_LABEL[selectedTrack]}) - sessao de ate {guidedQuestionCount} questoes
+              </p>
+              <button
+                onClick={startQuiz}
+                disabled={filteredCount === 0}
+                className="w-full py-3 rounded-xl font-bold text-white transition disabled:opacity-40"
+                style={{ backgroundColor: 'var(--color-primary)' }}
+              >
+                Comecar pratica guiada ({guidedQuestionCount} questoes)
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4 shadow-sm">
           <div>
             <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
               <Filter className="inline w-3.5 h-3.5 mr-1" />Trilha
@@ -583,12 +637,15 @@ const QuizPage: React.FC<QuizPageProps> = ({
               Iniciar Quiz ({dailyMode ? 5 : quizQuestionCount} questões)
             </button>
           </div>
-        </div>
+          </div>
+        )}
 
         {/* Pontos fracos — Fix #1 */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
-          <QuizErrorReview onStartReview={handleStartReview} />
-        </div>
+        {!isGuidedQuickFlow ? (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+            <QuizErrorReview onStartReview={handleStartReview} />
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -764,8 +821,12 @@ const QuizPage: React.FC<QuizPageProps> = ({
         {/* Explicação */}
         {showExplanation && (
           <div className={`p-4 rounded-xl text-sm border ${isCorrect ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'}`}>
-            <p className="font-bold mb-1">{isCorrect ? 'Correto!' : `Resposta correta: ${currentQuestion.correctAnswer}`}</p>
-            <p className="leading-relaxed">{currentQuestion.explanation}</p>
+            <p className="font-bold mb-1">
+              {isCorrect ? 'Correto. Voce ja entendeu isso.' : `Quase. Resposta correta: ${currentQuestion.correctAnswer}`}
+            </p>
+            <p className="leading-relaxed">
+              {isCorrect ? currentQuestion.explanation : `Vamos reforcar isso agora. ${currentQuestion.explanation}`}
+            </p>
           </div>
         )}
 

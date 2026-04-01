@@ -32,7 +32,7 @@ export const DevPhaseSwitcher: React.FC<DevPhaseSwitcherProps> = ({
     return (
       <button
         onClick={() => setIsCollapsed(false)}
-        className="fixed bottom-4 right-4 z-[90] rounded-full border border-slate-800 bg-slate-950/95 px-4 py-2 text-xs font-semibold text-white shadow-2xl backdrop-blur"
+        className="fixed bottom-4 right-4 z-[90] rounded-full border border-slate-700 bg-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-2xl"
       >
         Modo interno
       </button>
@@ -40,7 +40,7 @@ export const DevPhaseSwitcher: React.FC<DevPhaseSwitcherProps> = ({
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-[90] w-[min(92vw,360px)] rounded-2xl border border-slate-800 bg-slate-950/95 p-4 text-white shadow-2xl backdrop-blur">
+    <div className="fixed bottom-4 right-4 z-[90] w-[min(92vw,360px)] overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Modo interno</p>
@@ -112,9 +112,11 @@ export const DevPhaseSwitcher: React.FC<DevPhaseSwitcherProps> = ({
         Resetar modo interno
       </button>
 
-      <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
-        Override so altera a visualizacao interna da fase e acelera o QA de UX.
-      </p>
+      <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
+        <p className="text-[11px] leading-5 text-slate-400">
+          Override so altera a visualizacao interna da fase e acelera o QA de UX.
+        </p>
+      </div>
     </div>
   );
 };

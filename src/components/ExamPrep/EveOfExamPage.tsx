@@ -148,30 +148,30 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(244,114,182,0.2),transparent_26%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.18),transparent_24%),linear-gradient(180deg,rgba(88,28,135,0.92),rgba(15,23,42,0.98))] p-6 shadow-[0_32px_120px_rgba(76,29,149,0.28)] sm:p-8">
+      <div className="rounded-[36px] border border-fuchsia-100/90 bg-[radial-gradient(circle_at_top_left,rgba(244,114,182,0.10),transparent_26%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.10),transparent_24%),linear-gradient(180deg,rgba(252,248,255,0.98),rgba(243,237,250,0.96))] p-6 shadow-[0_28px_80px_-42px_rgba(168,85,247,0.22)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top_left,rgba(244,114,182,0.2),transparent_26%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.18),transparent_24%),linear-gradient(180deg,rgba(88,28,135,0.92),rgba(15,23,42,0.98))] dark:shadow-[0_32px_120px_rgba(76,29,149,0.28)] sm:p-8">
         <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="space-y-5">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-white/90">
+            <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-white/82 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-fuchsia-700 dark:border-white/15 dark:bg-white/10 dark:text-white/90">
               <Zap className="h-3.5 w-3.5" />
               {missionCopy.eyebrow}
             </div>
 
             <div className="space-y-3">
-              <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-white sm:text-5xl">
+              <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-slate-900 dark:text-white sm:text-5xl">
                 {missionCopy.title}
               </h1>
-              <p className="max-w-xl text-sm leading-6 text-white/80 sm:text-base">
+              <p className="max-w-xl text-sm leading-6 text-slate-600 dark:text-white/80 sm:text-base">
                 {missionCopy.subtitle}
               </p>
             </div>
 
-            <div className="max-w-xl rounded-[28px] border border-white/15 bg-white/10 p-5 shadow-[0_18px_60px_rgba(15,23,42,0.18)] sm:p-6">
+            <div className="max-w-xl rounded-[28px] border border-fuchsia-200 bg-white/84 p-5 shadow-[0_18px_40px_-26px_rgba(168,85,247,0.18)] dark:border-white/15 dark:bg-white/10 dark:shadow-[0_18px_60px_rgba(15,23,42,0.18)] sm:p-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-100/85">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-100/85">
                     Sessão única de reta final
                   </p>
-                  <p className="text-lg font-semibold text-white">
+                  <p className="text-lg font-semibold text-slate-900 dark:text-white">
                     {progressCopy}
                   </p>
                 </div>
@@ -184,7 +184,7 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
                   {pct === 100 ? 'Ver revisão concluída' : 'Começar revisão final'}
                 </button>
 
-                <p className="text-sm text-white/75">
+                <p className="text-sm text-slate-600 dark:text-white/75">
                   Sem escolher modo, sem abrir outras rotas. Agora é só percorrer os pontos críticos e fechar a véspera.
                 </p>
               </div>
@@ -192,11 +192,11 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
           </div>
 
           <div className="grid gap-3 self-start">
-            <div className="rounded-[24px] border border-white/15 bg-white/10 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Progresso vivo</p>
-              <p className="mt-2 text-5xl font-semibold text-white">{checkedCount}</p>
-              <p className="mt-1 text-sm text-white/75">pontos concluídos de {totalItems}</p>
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+            <div className="rounded-[24px] border border-fuchsia-200 bg-white/84 p-5 dark:border-white/15 dark:bg-white/10">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-700/80 dark:text-white/70">Progresso vivo</p>
+              <p className="mt-2 text-5xl font-semibold text-slate-900 dark:text-white">{checkedCount}</p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-white/75">pontos concluídos de {totalItems}</p>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-white/15">
                 <div
                   className="h-full rounded-full bg-amber-300 transition-all duration-300"
                   style={{ width: `${pct}%` }}
@@ -205,17 +205,17 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4">
-                <p className="text-2xl font-semibold text-white">{remainingCount}</p>
-                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-amber-100/75">Restantes</p>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-300/20 dark:bg-amber-400/10">
+                <p className="text-2xl font-semibold text-slate-900 dark:text-white">{remainingCount}</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-amber-700/75 dark:text-amber-100/75">Restantes</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
-                <p className="text-2xl font-semibold text-white">{pct}%</p>
-                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-white/65">Feito</p>
+              <div className="rounded-2xl border border-slate-200 bg-white/82 p-4 dark:border-white/10 dark:bg-white/10">
+                <p className="text-2xl font-semibold text-slate-900 dark:text-white">{pct}%</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-white/65">Feito</p>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-white/80">
+            <div className="rounded-2xl border border-slate-200 bg-white/82 p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/10 dark:text-white/80">
               {remainingCount > 0
                 ? `Você está a ${remainingCount} pontos de encerrar sua preparação final.`
                 : 'Sua reta final está concluída. Preserve energia e vá descansado.'}
@@ -224,15 +224,18 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
         </div>
       </div>
 
-      <div ref={checklistRef} className="rounded-[28px] border border-white/10 bg-slate-950/75 p-6 shadow-[0_24px_90px_rgba(15,23,42,0.28)]">
+      <div
+        ref={checklistRef}
+        className="rounded-[28px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,246,255,0.95))] p-6 shadow-[0_24px_60px_-38px_rgba(148,163,184,0.38)] dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.98))] dark:shadow-[0_24px_90px_rgba(15,23,42,0.4)]"
+      >
         <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Checklist final</p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Checklist final</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">
               {pct === 100 ? 'Tudo pronto para a prova' : 'Percorra os pontos críticos sem sair do ritmo'}
             </h2>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
+          <div className="rounded-2xl border border-slate-200 bg-white/82 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/82 dark:text-slate-300">
             {checkedCount}/{totalItems} pontos marcados
           </div>
         </div>
@@ -248,18 +251,18 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
                 key={topic.subject}
                 className={`rounded-[24px] border p-4 transition ${
                   allDone
-                    ? 'border-emerald-400/30 bg-emerald-400/10 shadow-[0_16px_50px_rgba(16,185,129,0.12)]'
-                    : 'border-white/10 bg-white/[0.03]'
+                    ? 'border-emerald-400/30 bg-emerald-400/10 shadow-[0_16px_50px_rgba(16,185,129,0.12)] dark:shadow-[0_16px_50px_rgba(16,185,129,0.08)]'
+                    : 'border-slate-200 bg-white/82 dark:border-slate-700 dark:bg-slate-900/82'
                 }`}
               >
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className={`rounded-2xl p-2 ${allDone ? 'bg-emerald-400/15 text-emerald-100' : 'bg-white/[0.05] text-slate-200'}`}>
+                    <div className={`rounded-2xl p-2 ${allDone ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-100' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-200'}`}>
                       <TopicIcon className="h-5 w-5" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-white">{topic.subject}</h3>
-                      <p className="text-xs text-slate-400">
+                      <h3 className="font-semibold text-slate-900 dark:text-white">{topic.subject}</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         {allDone ? 'Capítulo concluído na sua revisão final.' : `${checkedInTopic} de ${topic.key_points.length} pontos críticos revisados.`}
                       </p>
                     </div>
@@ -269,8 +272,8 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
                         allDone
-                          ? 'bg-emerald-400/15 text-emerald-100'
-                          : 'bg-white/[0.05] text-slate-300'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-100'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
                       }`}
                     >
                       {checkedInTopic}/{topic.key_points.length}
@@ -290,15 +293,15 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
                         onClick={() => toggleCheck(key)}
                         className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
                           isChecked
-                            ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-50'
-                            : 'border-white/5 bg-white/[0.02] text-slate-200 hover:border-white/10 hover:bg-white/[0.05]'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-50'
+                            : 'border-slate-200 bg-white/82 text-slate-700 hover:bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-900'
                         }`}
                       >
                         <div
                           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${
                             isChecked
                               ? 'border-emerald-300 bg-emerald-400 text-slate-950'
-                              : 'border-slate-500 bg-transparent text-transparent'
+                              : 'border-slate-500 bg-transparent text-transparent dark:border-slate-400'
                           }`}
                         >
                           <CheckCircle className="h-3.5 w-3.5" />
@@ -314,16 +317,16 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
         </div>
       </div>
 
-      <div className="rounded-[24px] border border-white/10 bg-slate-950/75 p-5 shadow-[0_24px_90px_rgba(15,23,42,0.22)]">
+      <div className="rounded-[24px] border border-slate-200/90 bg-white/82 p-5 shadow-[0_24px_60px_-38px_rgba(148,163,184,0.36)] dark:border-slate-800 dark:bg-slate-950/75 dark:shadow-[0_24px_90px_rgba(15,23,42,0.22)]">
         <button
           onClick={() => setSupportOpen((prev) => !prev)}
           className="flex w-full items-center justify-between gap-3 text-left"
         >
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Ferramentas de apoio</p>
-            <p className="mt-1 text-sm text-slate-300">Use só se precisar sair da trilha principal da véspera.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Ferramentas de apoio</p>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Use só se precisar sair da trilha principal da véspera.</p>
           </div>
-          <span className="inline-flex items-center gap-2 text-sm text-slate-300">
+          <span className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             {supportOpen ? 'Ocultar' : 'Mostrar'}
             <ChevronRight className={`h-4 w-4 transition ${supportOpen ? 'rotate-90' : ''}`} />
           </span>
@@ -333,21 +336,21 @@ const EveOfExamPage: React.FC<EveOfExamPageProps> = ({ onStartQuiz, onStartFlash
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <button
               onClick={() => onStartQuiz?.()}
-              className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm font-semibold text-slate-200 transition hover:border-blue-400/30 hover:bg-blue-400/10"
+              className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white/82 p-4 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/82 dark:text-slate-200 dark:hover:border-blue-400/30 dark:hover:bg-blue-400/10"
             >
               <Brain className="h-6 w-6 text-blue-300" />
               Quiz rápido
             </button>
             <button
               onClick={onStartFlashcards}
-              className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm font-semibold text-slate-200 transition hover:border-violet-400/30 hover:bg-violet-400/10"
+              className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white/82 p-4 text-sm font-semibold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 dark:border-slate-700 dark:bg-slate-900/82 dark:text-slate-200 dark:hover:border-violet-400/30 dark:hover:bg-violet-400/10"
             >
               <BookOpen className="h-6 w-6 text-violet-300" />
               Flashcards
             </button>
             <button
               onClick={onStartTimer}
-              className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm font-semibold text-slate-200 transition hover:border-emerald-400/30 hover:bg-emerald-400/10"
+              className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white/82 p-4 text-sm font-semibold text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50 dark:border-slate-700 dark:bg-slate-900/82 dark:text-slate-200 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-400/10"
             >
               <Clock className="h-6 w-6 text-emerald-300" />
               Pomodoro

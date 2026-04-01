@@ -28,6 +28,7 @@ import {
   Hammer,
 } from 'lucide-react';
 import type { MateriaTipo } from '../types';
+import { sanitizeSubjectLabel } from './sanitizeSubject';
 
 export type StudyTrackLabel = 'enem' | 'concursos' | 'hibrido';
 
@@ -119,6 +120,21 @@ export const getCycleSubjectByDisplayLabel = (
   }
 
   return 'Outra';
+};
+
+export const resolveTrackedDisciplineLabel = (
+  subject: string,
+  preferredTrack: StudyTrackLabel,
+  hybridEnemWeight?: number,
+): string => {
+  const safeSubject = sanitizeSubjectLabel(subject, 'Outra');
+  const cycleLabels = getCycleDisciplineLabels(preferredTrack, hybridEnemWeight);
+
+  if (safeSubject in cycleLabels) {
+    return cycleLabels[safeSubject as MateriaTipo].label;
+  }
+
+  return getDisplayDiscipline(safeSubject).label;
 };
 
 const DISPLAY_BY_SUBJECT: Record<string, DisciplineDisplay> = {

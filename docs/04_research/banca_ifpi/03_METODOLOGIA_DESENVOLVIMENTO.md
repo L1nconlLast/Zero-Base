@@ -1,0 +1,44 @@
+# 3. Metodologia e Desenvolvimento
+
+## Abordagem metodológica
+Foi adotada uma abordagem incremental em ciclos curtos:
+1. diagnóstico do estado do repositório e documentação;
+2. definição de padronização mínima necessária;
+3. implementação de ajustes com versionamento;
+4. validação por testes e revisão de consistência documental.
+
+## Procedimentos executados
+- revisão de títulos, nomes de projeto e artefatos de referência;
+- criação de documentação de síntese (resumo executivo e plano profissional);
+- ajuste de testes E2E para reduzir fragilidade em fluxo de PR;
+- atualização de fluxo de CI para separar smoke em PR e execução completa em push;
+- implementação de edição avançada do cronograma operacional, com remarcação, reordenação e ajuste rápido de duração;
+- validação complementar do fluxo "Hoje" com smoke automatizado executado sobre a demo publicada.
+
+## Ferramentas
+- controle de versão: Git/GitHub;
+- documentação: Markdown + Notion;
+- stack do projeto: React, TypeScript, Vite 5.x;
+- qualidade: Vitest, scripts smoke headless e Cypress.
+
+## Ambiente e evidências técnicas
+- Sistema operacional de desenvolvimento: Windows.
+- Commit de consolidação documental: `393ffed`
+- Commit de atualização do README: `af93460`
+- Commit do plano profissional e governança: `c6b2856`
+- Commit da publicação da documentação da banca: `7ddb7d7`
+- Commit da atualização do backend Mentor e pipeline: `64f7f59`
+- Commit da edição avançada do cronograma operacional: `084d3d4`
+- Artefato de validação complementar do cronograma: `qa-artifacts/schedule-today-smoke-report.json`
+
+## Siglas adotadas
+- Progressive Web App (PWA): aplicação web instalável com capacidades de cache e uso parcial offline.
+
+## Estratégia de validação
+- validação de integridade do repositório (estado limpo e histórico de commits);
+- validação de execução de testes em escopo de smoke;
+- validação complementar do fluxo real `Cronograma -> sessão oficial -> conclusão -> persistência`;
+- revisão final de coerência entre documentos e mudanças aplicadas.
+
+## Reprodutibilidade
+Os resultados são reproduzíveis por meio do histórico de commits, arquivos versionados e pipeline configurado no repositório.

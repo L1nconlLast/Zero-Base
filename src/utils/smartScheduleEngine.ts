@@ -6,7 +6,7 @@ export type ReviewCadence = 'semanal' | 'quinzenal';
 export type PreferredPeriod = 'manha' | 'tarde' | 'noite';
 
 export interface SmartScheduleProfile {
-  examName: 'ENEM' | 'CONCURSO';
+  examName: 'ENEM' | 'CONCURSO' | 'HIBRIDO';
   examDate: string;
   desiredScore: number;
   hoursPerDay: number;
@@ -225,7 +225,11 @@ export const generateBasePlan = (profile: SmartScheduleProfile, startDate: strin
     if (shouldAddSimulado) {
       generated.push({
         date: toDateStr(currentDate),
-        subject: profile.examName === 'ENEM' ? 'Simulado ENEM' : 'Simulado Concurso',
+        subject: profile.examName === 'ENEM'
+          ? 'Simulado ENEM'
+          : profile.examName === 'HIBRIDO'
+            ? 'Simulado Hibrido'
+            : 'Simulado Concurso',
         topic: 'Prova completa',
         startTime: slots[0]?.startTime,
         endTime: slots[0]?.endTime,

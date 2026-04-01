@@ -140,9 +140,13 @@ const DayPlanEditorModal: React.FC<DayPlanEditorModalProps> = ({
                       type="button"
                       onClick={() => handleToggleSubject(subject)}
                       className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900"
+                      title={`Remover ${subject}`}
                     >
                       <Check className="h-3.5 w-3.5" />
                       {subject}
+                      <span className="rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] font-bold uppercase dark:bg-slate-900/10">
+                        remover
+                      </span>
                     </button>
                   ))}
                 </div>

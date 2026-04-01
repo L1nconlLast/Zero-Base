@@ -11,18 +11,65 @@ const ChatMessageSchema = z.object({
 
 const StudentContextSchema = z.object({
   userName: z.string().min(1).max(100),
+  objective: z.enum(['enem', 'concurso', 'hibrido']),
+  examName: z.string().min(1).max(120),
+  examDate: z.string().min(1).max(40).optional(),
   daysToExam: z.number().int().min(0).max(1500),
   strongArea: z.string().min(1).max(80),
   weakArea: z.string().min(1).max(80),
+  currentWeeklyFocus: z.string().min(1).max(80).optional(),
   weeklyPct: z.number().min(0).max(100),
+  todayMinutes: z.number().min(0).max(1440),
+  pendingReviews: z.number().int().min(0).max(500),
+  overdueReviews: z.number().int().min(0).max(500),
   streak: z.number().int().min(0),
+  previousFocus: z.string().min(1).max(80).optional(),
+  lastRecommendation: z.string().min(1).max(240).optional(),
+  sessionsLast7Days: z.number().int().min(0).max(30).optional(),
+  completedMockExams: z.number().int().min(0).max(200).optional(),
+  nextRecommendedSession: z.object({
+    subject: z.string().min(1).max(80),
+    durationMin: z.number().int().min(1).max(240),
+    format: z.enum(['focus', 'review', 'questions', 'mixed']),
+    reason: z.string().min(1).max(240),
+  }).optional(),
   trigger: z.enum(['weekly_start', 'inactivity_48h', 'goal_below_70', 'chat_opened', 'final_30_days']),
+});
+
+const DecisionContextSchema = z.object({
+  moment: z.string().min(1).max(80),
+  responseKind: z.string().min(1).max(80),
+  primarySubject: z.string().min(1).max(80).optional(),
+  summary: z.string().min(1).max(500),
+  response: z.object({
+    type: z.string().min(1).max(80),
+    nextStep: z.string().min(1).max(180),
+    whyNow: z.string().min(1).max(320),
+    caution: z.string().min(1).max(220),
+    tone: z.enum(['direct', 'supportive']),
+    title: z.string().min(1).max(120),
+    chips: z.array(z.string().min(1).max(80)).max(6),
+  }),
+  risk: z.object({
+    level: z.enum(['low', 'medium', 'high', 'critical']),
+    label: z.string().min(1).max(120),
+    summary: z.string().min(1).max(240),
+  }),
+  actions: z.array(z.object({
+    label: z.string().min(1).max(180),
+    description: z.string().min(1).max(280),
+    subject: z.string().min(1).max(80).optional(),
+    durationMin: z.number().int().min(1).max(240).optional(),
+    urgency: z.enum(['now', 'today', 'this_week']),
+  })).max(6),
+  safetyNotes: z.array(z.string().min(1).max(200)).max(6),
 });
 
 const ChatRequestSchema = z.object({
   message: z.string().min(1, 'Mensagem nao pode ser vazia.').max(2000),
   history: z.array(ChatMessageSchema).max(20).default([]),
   studentContext: StudentContextSchema,
+  decisionContext: DecisionContextSchema,
 });
 
 const isAuthError = (err: Error): boolean =>
@@ -52,7 +99,7 @@ export class MentorChatController {
       return;
     }
 
-    const { message, history, studentContext } = parsed.data;
+    const { message, history, studentContext, decisionContext } = parsed.data;
     const userId = req.auth?.userId;
     const requestId = req.id;
 
@@ -102,7 +149,7 @@ export class MentorChatController {
 
     try {
       await mentorChatService.streamChat(
-        { message, history, studentContext },
+        { message, history, studentContext, decisionContext },
         {
           onToken: (token) => {
             streamText += token;

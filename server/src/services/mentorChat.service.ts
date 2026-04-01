@@ -3,11 +3,28 @@ import { buildMentorStrategyMessage, normalizeMentorStrategyText } from '../../.
 
 export interface StudentContext {
   userName: string;
+  objective: 'enem' | 'concurso' | 'hibrido';
+  examName: string;
+  examDate?: string;
   daysToExam: number;
   strongArea: string;
   weakArea: string;
+  currentWeeklyFocus?: string;
   weeklyPct: number;
+  todayMinutes: number;
+  pendingReviews: number;
+  overdueReviews: number;
   streak: number;
+  previousFocus?: string;
+  lastRecommendation?: string;
+  sessionsLast7Days?: number;
+  completedMockExams?: number;
+  nextRecommendedSession?: {
+    subject: string;
+    durationMin: number;
+    format: 'focus' | 'review' | 'questions' | 'mixed';
+    reason: string;
+  };
   trigger: 'weekly_start' | 'inactivity_48h' | 'goal_below_70' | 'chat_opened' | 'final_30_days';
 }
 
@@ -16,10 +33,40 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface DecisionContext {
+  moment: string;
+  responseKind: string;
+  primarySubject?: string;
+  summary: string;
+  response: {
+    type: string;
+    nextStep: string;
+    whyNow: string;
+    caution: string;
+    tone: 'direct' | 'supportive';
+    title: string;
+    chips: string[];
+  };
+  risk: {
+    level: 'low' | 'medium' | 'high' | 'critical';
+    label: string;
+    summary: string;
+  };
+  actions: Array<{
+    label: string;
+    description: string;
+    subject?: string;
+    durationMin?: number;
+    urgency: 'now' | 'today' | 'this_week';
+  }>;
+  safetyNotes: string[];
+}
+
 export interface MentorChatInput {
   message: string;
   history: ChatMessage[];
   studentContext: StudentContext;
+  decisionContext: DecisionContext;
 }
 
 export interface MentorChatUsage {
@@ -52,8 +99,8 @@ interface GeminiGenerateResponse {
 
 const BLOCKED_PATTERNS = /(qual assunto vai cair|atalho|chute|gabarito|milagre)/i;
 
-const buildSystemPrompt = (ctx: StudentContext): string => `
-Voce e o "Mentor IA" da plataforma Zero Base 2.0 — tutor de alto rendimento
+const buildSystemPrompt = (ctx: StudentContext, decision: DecisionContext): string => `
+Voce e o "Mentor IA" da plataforma Zero Base 2.0 - tutor de alto rendimento
 especializado em preparacao para vestibulares (ENEM) e concursos publicos (nivel medio e superior).
 Use todo o seu conhecimento sobre o assunto. Voce tem acesso a um contexto rico de matriz ENEM e perfis de banca abaixo.
 
@@ -65,12 +112,46 @@ Use todo o seu conhecimento sobre o assunto. Voce tem acesso a um contexto rico 
 - Quando perguntado sobre um topico especifico (ex: genetica, termodinamica, direito constitucional), responda com os subtopicos de maior frequencia e as estrategias de estudo mais eficazes.
 
 ## Dados Reais do Aluno (${ctx.userName})
+- Objetivo atual: ${ctx.objective}
+- Prova alvo: ${ctx.examName}${ctx.examDate ? ` (${ctx.examDate})` : ''}
 - Dias restantes para a prova: ${ctx.daysToExam}
 - Area mais forte: ${ctx.strongArea}
 - Area mais fraca (prioridade maxima): ${ctx.weakArea}
+- Foco semanal atual: ${ctx.currentWeeklyFocus || ctx.weakArea}
 - Progresso na meta semanal: ${ctx.weeklyPct}%
+- Minutos estudados hoje: ${ctx.todayMinutes}
+- Revisoes pendentes: ${ctx.pendingReviews}
+- Revisoes vencidas: ${ctx.overdueReviews}
 - Sequencia de estudos (streak): ${ctx.streak} dias
 - Momento atual: ${ctx.trigger}
+- Foco anterior: ${ctx.previousFocus || 'nenhum relevante'}
+- Ultima recomendacao: ${ctx.lastRecommendation || 'sem recomendacao registrada'}
+- Sessoes nos ultimos 7 dias: ${ctx.sessionsLast7Days ?? 0}
+- Simulados concluidos: ${ctx.completedMockExams ?? 0}
+- Proxima sessao recomendada: ${ctx.nextRecommendedSession
+    ? `${ctx.nextRecommendedSession.subject} | ${ctx.nextRecommendedSession.durationMin} min | ${ctx.nextRecommendedSession.format} | ${ctx.nextRecommendedSession.reason}`
+    : 'nao definida'}
+
+## Snapshot do Motor de Decisao
+- Momento classificado: ${decision.moment}
+- Tipo de resposta esperado: ${decision.responseKind}
+- Materia prioritaria: ${decision.primarySubject || ctx.weakArea}
+- Resumo operacional: ${decision.summary}
+- Envelope curto:
+  - titulo: ${decision.response.title}
+  - tipo: ${decision.response.type}
+  - tom: ${decision.response.tone}
+  - proximo passo: ${decision.response.nextStep}
+  - por que agora: ${decision.response.whyNow}
+  - cuidado agora: ${decision.response.caution}
+  - chips: ${decision.response.chips.join(' | ') || 'nenhum'}
+- Nivel de risco: ${decision.risk.level}
+- Rotulo de risco: ${decision.risk.label}
+- Leitura de risco: ${decision.risk.summary}
+- Acoes prioritarias:
+${decision.actions.map((action, index) => `  ${index + 1}. ${action.label} | ${action.description} | urgencia=${action.urgency}`).join('\n') || '  1. Sem acoes registradas'}
+- Safety notes:
+${decision.safetyNotes.map((note, index) => `  ${index + 1}. ${note}`).join('\n') || '  1. Sem notas adicionais'}
 
 ## Regras de Resposta por Momento
 - final_30_days: foco em revisao, simulados e gestao de ansiedade. Sem conteudo novo.
@@ -79,7 +160,14 @@ Use todo o seu conhecimento sobre o assunto. Voce tem acesso a um contexto rico 
 - weekly_start: briefing motivacional + 3 prioridades da semana com justificativa.
 - chat_opened: responda de forma direta, sem introducao generica.
 
-## Matriz ENEM — Conhecimento Base
+## Regras Operacionais
+- O snapshot do motor de decisao e a fonte primaria para prioridade, risco e proximo passo.
+- Nao contradiga o momento classificado nem invente uma materia diferente da prioridade atual.
+- Se houver revisoes vencidas, considere isso antes de sugerir novo conteudo.
+- Quando houver proxima sessao recomendada, prefira traduzir essa recomendacao em linguagem clara em vez de recalcular outra.
+- Respostas devem terminar com um proximo passo acionavel.
+
+## Matriz ENEM - Conhecimento Base
 Use este conhecimento para responder perguntas sobre qualquer disciplina do ENEM:
 
 **Linguagens e Codigos** (Portugues, Literatura, Artes, Educacao Fisica, Lingua Estrangeira, Redacao):
@@ -104,7 +192,7 @@ Use este conhecimento para responder perguntas sobre qualquer disciplina do ENEM
 - Filosofia: contrato social (Hobbes/Locke/Rousseau), etica (Aristoteles/Kant/Mill), epistemologia.
 - Sociologia: classicos (Durkheim/Weber/Marx), desigualdade, movimentos sociais, cultura.
 
-## Bancas de Concurso — Perfis
+## Bancas de Concurso - Perfis
 Use este conhecimento para orientar candidatos a concursos:
 
 **CEBRASPE/CESPE**: Itens Certo/Errado com penalidade. Termos absolutos (sempre/nunca/somente) costumam invalidar o item. Disciplinas quentes: Direito Constitucional/Administrativo, Portugues, Raciocinio Logico.
@@ -125,7 +213,7 @@ Use este conhecimento para orientar candidatos a concursos:
 
 **FUNRIO**: Universidades federais. Conhecimentos especificos pesados (60%+ da prova), Legislacao Federal de pessoal.
 
-## Disciplinas de Concurso — Alta Cobranca
+## Disciplinas de Concurso - Alta Cobranca
 - Direito Constitucional: CF 1988 arts. 1-17 (principios), 37-41 (Adm. Publica), 102-135 (Poder Judiciario/MP).
 - Direito Administrativo: ato administrativo, licitacao (Lei 14.133), servidores (Lei 8.112).
 - Raciocinio Logico: proposicoes, conectivos logicos, tabela-verdade, silogismos, quantificadores.
@@ -134,6 +222,11 @@ Use este conhecimento para orientar candidatos a concursos:
 
 Responda sempre em portugues do Brasil.
 `.trim();
+
+const buildActionLines = (decision: DecisionContext, limit = 3): string[] =>
+  decision.actions
+    .slice(0, limit)
+    .map((action) => `- ${action.label}: ${action.description}`);
 
 export class MentorChatService {
   private readonly configuredProvider = (process.env.MENTOR_PROVIDER || 'local').toLowerCase();
@@ -200,32 +293,64 @@ export class MentorChatService {
   }
 
   private buildLocalReply(input: MentorChatInput): string {
-    const { message, studentContext } = input;
+    const { message, studentContext, decisionContext } = input;
     const normalized = normalizeMentorStrategyText(message);
 
     const strategyReply = buildMentorStrategyMessage(message, '-');
     if (strategyReply) {
-      return strategyReply;
+      return [
+        `Leitura do seu momento: ${decisionContext.response.whyNow}`,
+        '',
+        strategyReply,
+        '',
+        `Aplique isso primeiro assim: ${decisionContext.response.nextStep}.`,
+      ].join('\n');
     }
 
     if (normalized.includes('plano') || normalized.includes('semana')) {
       return [
-        'Plano rapido para os proximos 7 dias:',
-        `- 3 blocos de 25min em ${studentContext.weakArea}`,
-        `- 2 blocos de 20min em ${studentContext.strongArea}`,
-        '- 1 revisao geral no sabado (45min)',
-      ].join('\n');
+        `Proximo passo: ${decisionContext.response.nextStep}.`,
+        `Por que agora: ${decisionContext.response.whyNow}`,
+        `Cuidado agora: ${decisionContext.response.caution}`,
+        'Plano objetivo agora:',
+        ...buildActionLines(decisionContext),
+      ].filter(Boolean).join('\n');
     }
 
     if (normalized.includes('hoje') || normalized.includes('revisar')) {
-      return `Prioridade de hoje: ${studentContext.weakArea}. Faça 2 blocos curtos e finalize com 10min de revisao ativa.`;
+      return [
+        `Proximo passo: ${decisionContext.response.nextStep}.`,
+        `Por que agora: ${decisionContext.response.whyNow}`,
+        `Cuidado agora: ${decisionContext.response.caution}`,
+      ].filter(Boolean).join('\n');
     }
 
     if (normalized.includes('consist') || normalized.includes('streak')) {
-      return `Seu streak atual e ${studentContext.streak} dias. Meta minima: 15min por dia para manter ritmo sem desgaste.`;
+      return [
+        `Seu streak atual e ${studentContext.streak} dias e o risco do momento esta em ${decisionContext.risk.label.toLowerCase()}.`,
+        `Por que agora: ${decisionContext.response.whyNow}`,
+        `Meta minima agora: ${decisionContext.response.nextStep}.`,
+      ].join('\n');
     }
 
-    return `Com ${studentContext.daysToExam} dias para a prova, foco imediato em ${studentContext.weakArea}. Posso montar um plano de 14 dias agora.`;
+    if (studentContext.nextRecommendedSession) {
+      return [
+        `Proximo passo: ${decisionContext.response.nextStep}.`,
+        '',
+        `Por que agora: ${decisionContext.response.whyNow}`,
+        `Motivo: ${studentContext.nextRecommendedSession.reason}`,
+        `Cuidado agora: ${decisionContext.response.caution}`,
+      ].filter(Boolean).join('\n');
+    }
+
+    return [
+      `Proximo passo: ${decisionContext.response.nextStep}.`,
+      `Por que agora: ${decisionContext.response.whyNow}`,
+      `Cuidado agora: ${decisionContext.response.caution}`,
+      '',
+      'Acoes de apoio:',
+      ...buildActionLines(decisionContext, 2),
+    ].filter(Boolean).join('\n');
   }
 
   private async streamWithGemini(input: MentorChatInput, handlers: StreamHandlers, signal?: AbortSignal): Promise<void> {
@@ -252,7 +377,7 @@ export class MentorChatService {
       },
       body: JSON.stringify({
         systemInstruction: {
-          parts: [{ text: buildSystemPrompt(input.studentContext) }],
+          parts: [{ text: buildSystemPrompt(input.studentContext, input.decisionContext) }],
         },
         contents,
         generationConfig: {
@@ -289,7 +414,7 @@ export class MentorChatService {
     }
 
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: 'system', content: buildSystemPrompt(input.studentContext) },
+      { role: 'system', content: buildSystemPrompt(input.studentContext, input.decisionContext) },
       ...input.history.map((item) => ({ role: item.role, content: item.content })),
       { role: 'user', content: input.message },
     ];

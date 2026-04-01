@@ -1,0 +1,39 @@
+[
+  {
+    "id": "beta-2026-03-28-001",
+    "userId": "user-optional",
+    "date": "2026-03-28",
+    "category": "BUG",
+    "title": "Nao conseguiu finalizar a sessao",
+    "description": "Usuario inicia em Estudos, abre o fechamento e o botao final nao conclui o fluxo.",
+    "screen": "estudos",
+    "severity": "HIGH",
+    "frequency": 1,
+    "reproducible": true,
+    "status": "OPEN"
+  },
+  {
+    "id": "beta-2026-03-28-002",
+    "date": "2026-03-28",
+    "category": "UX_FRICTION",
+    "title": "Nao entendeu o proximo passo na Home",
+    "description": "Usuario terminou a sessao, voltou para a Home e nao percebeu o bloco de progresso.",
+    "screen": "home",
+    "severity": "MEDIUM",
+    "frequency": 1,
+    "reproducible": true,
+    "status": "OPEN"
+  },
+  {
+    "id": "beta-2026-03-28-003",
+    "date": "2026-03-28",
+    "category": "IDEIA",
+    "title": "Adicionar comparativo com amigos",
+    "description": "Sugestao futura de camada social sem impacto no fluxo principal do beta.",
+    "screen": "dashboard",
+    "severity": "LOW",
+    "frequency": 1,
+    "reproducible": false,
+    "status": "DISMISSED"
+  }
+]

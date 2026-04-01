@@ -85,11 +85,30 @@ describe('DashboardPage official study card states', () => {
         completedSessions: 2,
         plannedSessions: 5,
         ratio: 0.4,
-        label: '2 de 5 sessões concluídas',
+        label: '2 de 5 sessoes concluidas',
       },
     });
 
     expect(screen.getByTestId('study-now-card-reason')).toHaveTextContent('Priorizado por atraso');
-    expect(screen.getByTestId('study-now-card-weekly-progress')).toHaveTextContent('2 de 5 sessões concluídas');
+    expect(screen.getByTestId('study-now-card-weekly-progress')).toHaveTextContent('2 de 5 sessoes concluidas');
+  });
+
+  it('renderiza disciplina e topico saneados no card oficial', () => {
+    renderDashboard({
+      status: 'ready',
+      title: 'Seu proximo estudo ja esta pronto',
+      discipline: 'Matematical|zb-session|eyJ0b2tlbiI6IngifQ==',
+      topic: 'revisao_de_funcoes||zb-session||abc123',
+      reason: 'Atrasado e Prioridade alta',
+      estimatedDurationMinutes: 20,
+      sessionTypeLabel: 'Sessao curta priorizada',
+      ctaLabel: 'Estudar agora',
+      onAction: vi.fn(),
+    });
+
+    expect(screen.getByTestId('study-now-card')).toHaveAttribute('data-study-discipline', 'Matematica');
+    expect(screen.getByTestId('study-now-card')).toHaveAttribute('data-study-topic', 'Revisao de Funcoes');
+    expect(screen.queryByText(/zb-session/i)).not.toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes('Matematica') && content.includes('Revisao de Funcoes'))).toBeInTheDocument();
   });
 });

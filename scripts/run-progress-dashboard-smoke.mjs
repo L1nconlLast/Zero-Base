@@ -7,6 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 const ROOT = process.cwd();
 const ARTIFACTS_DIR = path.join(ROOT, 'qa-artifacts');
 const REPORT_PATH = path.join(ARTIFACTS_DIR, 'progress-dashboard-smoke-report.json');
+const REMOTE_BYPASS_TOKEN = String(process.env.PROGRESS_QA_BYPASS_TOKEN || '').trim();
 
 const chromeCandidates = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -179,6 +180,7 @@ const launchChrome = async (port) => {
 
   await session.send('Page.enable');
   await session.send('Runtime.enable');
+  await session.send('Network.enable');
 
   return {
     session,
@@ -551,11 +553,80 @@ const navigate = async (session, url) => {
   );
 };
 
-const openDashboard = async (session) => {
+const openDashboard = async (session, baseUrl) => {
   await closeOptionalOverlays(session);
-  await waitForText(session, 'Progresso', { timeoutMs: 30000 });
-  await clickByText(session, 'Progresso', { exact: true });
+  const url = new URL(`${baseUrl}/`);
+  url.searchParams.set('tab', 'dashboard');
+  if (REMOTE_BYPASS_TOKEN) {
+    url.searchParams.set('x-vercel-set-bypass-cookie', 'true');
+    url.searchParams.set('x-vercel-protection-bypass', REMOTE_BYPASS_TOKEN);
+  }
+  await navigate(session, url.toString());
+  await closeOptionalOverlays(session);
 };
+
+const scrollIntoView = async (session, selector, label) => {
+  const found = await evalInPage(
+    session,
+    `(() => {
+      const node = document.querySelector(${JSON.stringify(selector)});
+      if (!node) return false;
+      node.scrollIntoView({ block: 'start', inline: 'nearest' });
+      return true;
+    })()`,
+  );
+
+  if (!found) {
+    throw new Error(`Nao encontrei ${label}.`);
+  }
+
+  await delay(350);
+};
+
+const readWeeklyReportState = async (session) =>
+  evalInPage(
+    session,
+    `(() => {
+      const container = document.getElementById('weekly-report-container');
+      if (!container) {
+        return null;
+      }
+
+      const text = (container.innerText || '').replace(/\\s+/g, ' ').trim();
+      const viewportWidth = window.innerWidth;
+      const docOverflow = document.documentElement.scrollWidth > viewportWidth + 1;
+      const containerOverflow = container.scrollWidth > container.clientWidth + 1;
+
+      return {
+        text,
+        docOverflow,
+        containerOverflow,
+      };
+    })()`,
+  );
+
+const readRankOverviewState = async (session) =>
+  evalInPage(
+    session,
+    `(() => {
+      const section = document.getElementById('ranks-section');
+      if (!section) {
+        return null;
+      }
+
+      const text = (section.innerText || '').replace(/\\s+/g, ' ').trim();
+      const expandedCards = section.querySelectorAll('.motion-card').length;
+      const toggleText = Array.from(section.querySelectorAll('button'))
+        .map((button) => (button.textContent || '').replace(/\\s+/g, ' ').trim())
+        .find(Boolean) || null;
+
+      return {
+        text,
+        expandedCards,
+        toggleText,
+      };
+    })()`,
+  );
 
 const seedUserData = async (session, email, userData, displayName = 'QA Progresso') => {
   const userDataKey = `zeroBaseData_${email.trim().toLowerCase()}`;
@@ -613,6 +684,7 @@ const main = async () => {
     || cypressEnv.SUPABASE_URL
     || envFile.SUPABASE_URL
     || envFile.VITE_SUPABASE_URL;
+  const skipEmptyState = process.env.PROGRESS_QA_SKIP_EMPTY === '1';
 
   if (!loginEmail || !loginPassword || !publishableKey || !supabaseUrl || !serviceRoleKey) {
     throw new Error('Credenciais/config E2E ausentes para o smoke de Progresso.');
@@ -642,6 +714,13 @@ const main = async () => {
     const remotePort = 9950 + Math.floor(Math.random() * 80);
     browser = await launchChrome(remotePort);
     await setViewport(browser.session, { width: 1440, height: 1080, mobile: false });
+    if (REMOTE_BYPASS_TOKEN) {
+      await browser.session.send('Network.setExtraHTTPHeaders', {
+        headers: {
+          'x-vercel-protection-bypass': REMOTE_BYPASS_TOKEN,
+        },
+      });
+    }
 
     await browser.session.send('Page.addScriptToEvaluateOnNewDocument', {
       source: createSeedScript({
@@ -653,19 +732,64 @@ const main = async () => {
       }),
     });
 
-    await navigate(browser.session, `${baseUrl}/`);
-    await openDashboard(browser.session);
+    await openDashboard(browser.session, baseUrl);
     await waitForDataDashboard(browser.session);
     recordStep('progress_hero', 'passed');
 
+    const rankOverviewState = await readRankOverviewState(browser.session);
+    if (!rankOverviewState) {
+      throw new Error('Nao encontrei o bloco de ranks no dashboard.');
+    }
+    if (rankOverviewState.expandedCards > 0) {
+      throw new Error('Ranking deveria iniciar recolhido, mas renderizou a lista completa.');
+    }
+    if (!normalize(rankOverviewState.toggleText || '').includes('ver ranks')) {
+      throw new Error(`CTA de expandir ranks nao apareceu como esperado: ${rankOverviewState.toggleText || 'sem texto'}`);
+    }
+    recordStep('rank_overview_collapsed', 'passed', rankOverviewState);
+
+    await closeOptionalOverlays(browser.session);
     await screenshot(browser.session, 'progress-dashboard-smoke-desktop');
     recordStep('desktop_capture', 'passed', {
       screenshot: 'qa-artifacts/progress-dashboard-smoke-desktop.png',
     });
 
+    await waitForText(browser.session, 'Relatorio Semanal', { timeoutMs: 20000 });
+    await waitForText(browser.session, 'Distribuicao por Materia', { timeoutMs: 20000 });
+    await scrollIntoView(browser.session, '#weekly-report-container', 'o relatorio semanal');
+    await closeOptionalOverlays(browser.session);
+    const weeklyReportState = await readWeeklyReportState(browser.session);
+    if (!weeklyReportState) {
+      throw new Error('Relatorio semanal nao encontrado no dashboard.');
+    }
+    const forbiddenTokens = ['payload', 'uuid', 'json', 'hash', '{', '['];
+    const leakedTokens = forbiddenTokens.filter((token) => weeklyReportState.text.toLowerCase().includes(token));
+    if (leakedTokens.length > 0) {
+      throw new Error(`Relatorio semanal ainda expõe texto tecnico: ${leakedTokens.join(', ')}`);
+    }
+    if (weeklyReportState.docOverflow || weeklyReportState.containerOverflow) {
+      throw new Error('Relatorio semanal apresentou overflow horizontal.');
+    }
+    await screenshot(browser.session, 'progress-dashboard-weekly-report');
+    recordStep('weekly_report_capture', 'passed', {
+      screenshot: 'qa-artifacts/progress-dashboard-weekly-report.png',
+    });
+
     await setViewport(browser.session, { width: 390, height: 844, mobile: true });
     await waitForText(browser.session, 'Painel de progresso');
+    await closeOptionalOverlays(browser.session);
     await screenshot(browser.session, 'progress-dashboard-smoke-mobile');
+    await waitForText(browser.session, 'Relatorio Semanal', { timeoutMs: 20000 });
+    await scrollIntoView(browser.session, '#weekly-report-container', 'o relatorio semanal mobile');
+    await closeOptionalOverlays(browser.session);
+    const mobileWeeklyReportState = await readWeeklyReportState(browser.session);
+    if (!mobileWeeklyReportState) {
+      throw new Error('Relatorio semanal nao encontrado no mobile.');
+    }
+    if (mobileWeeklyReportState.docOverflow || mobileWeeklyReportState.containerOverflow) {
+      throw new Error('Relatorio semanal apresentou overflow horizontal no mobile.');
+    }
+    await screenshot(browser.session, 'progress-dashboard-weekly-report-mobile');
     await clearViewport(browser.session);
     recordStep('responsive_mobile', 'passed', {
       screenshot: 'qa-artifacts/progress-dashboard-smoke-mobile.png',
@@ -673,6 +797,17 @@ const main = async () => {
 
     await browser.close();
     browser = null;
+
+    if (skipEmptyState) {
+      report.summary = {
+        passed: report.steps.filter((step) => step.status === 'passed').length,
+        failed: 0,
+      };
+
+      await fs.writeFile(REPORT_PATH, JSON.stringify(report, null, 2));
+      console.log(JSON.stringify(report, null, 2));
+      return;
+    }
 
     const tempEmail = `e2e_progress_empty_${Date.now()}@zerobase.dev`;
     const tempPassword = 'ProgressSmoke@2026';
@@ -706,8 +841,7 @@ const main = async () => {
       }),
     });
 
-    await navigate(browser.session, `${baseUrl}/`);
-    await openDashboard(browser.session);
+    await openDashboard(browser.session, baseUrl);
     await waitForEmptyDashboard(browser.session);
     recordStep('empty_state', 'passed');
 

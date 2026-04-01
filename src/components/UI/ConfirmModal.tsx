@@ -4,15 +4,17 @@
 // ============================================================
 
 import React from 'react';
-import { X, AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import { X, AlertTriangle, CheckCircle, Info, Loader2 } from 'lucide-react';
 
 export interface ConfirmModalProps {
   open: boolean;
   title: string;
   message: string;
+  impact?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: 'info' | 'warning' | 'danger' | 'success';
+  confirmLoading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   /** Se true, mostra só o botão de confirmação (estilo alert) */
@@ -46,9 +48,11 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   open,
   title,
   message,
+  impact,
   confirmLabel = 'Confirmar',
   cancelLabel = 'Cancelar',
   variant = 'info',
+  confirmLoading = false,
   onConfirm,
   onCancel,
   alertOnly = false,
@@ -61,7 +65,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
-      onClick={onCancel}
+      onClick={confirmLoading ? undefined : onCancel}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -72,7 +76,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
       >
         <button
           onClick={onCancel}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+          disabled={confirmLoading}
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:text-gray-200"
           aria-label="Fechar"
         >
           <X size={18} />
@@ -94,21 +99,29 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
             {message}
           </p>
+          {impact ? (
+            <p className="mb-6 w-full rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+              {impact}
+            </p>
+          ) : null}
 
           <div className="flex gap-3 w-full">
             {!alertOnly && (
               <button
                 onClick={onCancel}
-                className="flex-1 py-2.5 px-4 rounded-lg font-semibold text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                disabled={confirmLoading}
+                className="flex-1 py-2.5 px-4 rounded-lg font-semibold text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-gray-600 transition"
               >
                 {cancelLabel}
               </button>
             )}
             <button
               onClick={onConfirm}
-              className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-sm text-white transition ${styles.confirmBg}`}
+              disabled={confirmLoading}
+              className={`flex-1 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-semibold text-sm text-white transition disabled:cursor-not-allowed disabled:opacity-70 ${styles.confirmBg}`}
             >
-              {confirmLabel}
+              {confirmLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {confirmLoading ? 'Processando...' : confirmLabel}
             </button>
           </div>
         </div>

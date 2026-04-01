@@ -18,7 +18,11 @@ const resolveDataTheme = (pref: UiTheme): 'light' | 'dark' => {
 };
 
 const applyTheme = (pref: UiTheme): void => {
-  document.documentElement.setAttribute('data-theme', resolveDataTheme(pref));
+  const resolvedTheme = resolveDataTheme(pref);
+  document.documentElement.setAttribute('data-theme', resolvedTheme);
+  document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
+  document.documentElement.style.colorScheme = resolvedTheme;
+  localStorage.setItem('darkMode', JSON.stringify(resolvedTheme === 'dark'));
 };
 
 const resolveStoredLanguage = (): UiLanguage => {

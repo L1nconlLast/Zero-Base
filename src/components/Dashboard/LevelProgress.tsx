@@ -26,7 +26,7 @@ const LevelProgress: React.FC<LevelProgressProps> = ({ userPoints }) => {
   return (
     <>
       <div
-        className="level-progress rounded-lg p-6 text-white shadow-lg"
+        className="level-progress h-fit rounded-2xl p-5 text-white shadow-lg sm:p-6"
         style={{ backgroundImage: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' }}
       >
         <div className="flex items-center justify-between mb-4">

@@ -1,59 +1,57 @@
 import type { StudySession } from '../types';
-import { logger } from './logger';
+import { buildWeeklyStudySnapshot } from './weeklyStudySnapshot';
 
-type ChartDayData = {
+export interface WeeklyChartDetail {
+  label: string;
+  minutes: number;
+}
+
+export interface WeeklyChartDatum {
+  key: string;
   name: string;
   horas: number;
-  meta: number;
-  detalhes: Record<string, number>;
+  minutos: number;
+  metaHoras: number;
+  metaMinutes: number;
+  metGoal: boolean;
+  detalhes: WeeklyChartDetail[];
+}
+
+const clampChartLabel = (label: string, max = 26): string => {
+  if (label.length <= max) {
+    return label;
+  }
+
+  return `${label.slice(0, Math.max(1, max - 1)).trimEnd()}...`;
 };
 
 export const processarDadosSemanais = (
-  sessoes: StudySession[],
-  metaDiariaMinutos: number
-): ChartDayData[] => {
-  const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-  const hoje = new Date();
+  sessions: StudySession[],
+  dailyGoalMinutes: number,
+): WeeklyChartDatum[] => {
+  const snapshot = buildWeeklyStudySnapshot(sessions);
+  const safeGoalMinutes = Math.max(0, Number(dailyGoalMinutes) || 0);
 
-  const ultimos7Dias = Array.from({ length: 7 }, (_, i) => {
-    const data = new Date();
-    data.setDate(hoje.getDate() - (6 - i));
+  return snapshot.daily.map((day) => {
+    const majorSubjects = day.subjects.slice(0, 4).map((subject) => ({
+      label: clampChartLabel(subject.subject),
+      minutes: subject.minutes,
+    }));
+    const otherMinutes = day.subjects
+      .slice(4)
+      .reduce((sum, subject) => sum + subject.minutes, 0);
+
     return {
-      dataCompleta: data.toLocaleDateString(),
-      diaSemana: diasSemana[data.getDay()],
-      minutos: 0,
-      detalhes: {} as Record<string, number>,
+      key: day.dateKey,
+      name: day.shortLabel,
+      horas: Number((day.minutes / 60).toFixed(1)),
+      minutos: day.minutes,
+      metaHoras: Number((safeGoalMinutes / 60).toFixed(1)),
+      metaMinutes: safeGoalMinutes,
+      metGoal: day.minutes >= safeGoalMinutes && safeGoalMinutes > 0,
+      detalhes: otherMinutes > 0
+        ? [...majorSubjects, { label: 'Outras', minutes: otherMinutes }]
+        : majorSubjects,
     };
   });
-
-  if (Array.isArray(sessoes)) {
-    sessoes.forEach((sessao) => {
-      try {
-        const dataSessao = new Date(sessao.date).toLocaleDateString();
-        const diaEncontrado = ultimos7Dias.find((d) => d.dataCompleta === dataSessao);
-
-        if (!diaEncontrado) {
-          return;
-        }
-
-        const duracao = sessao.duration ?? sessao.minutes ?? 0;
-        if (duracao <= 0) {
-          return;
-        }
-
-        diaEncontrado.minutos += duracao;
-        const materia = sessao.subject || 'Outra';
-        diaEncontrado.detalhes[materia] = (diaEncontrado.detalhes[materia] || 0) + duracao;
-      } catch (error) {
-        logger.warn('Erro ao processar sessão semanal', 'ChartHelpers', error);
-      }
-    });
-  }
-
-  return ultimos7Dias.map((dia) => ({
-    name: dia.diaSemana,
-    horas: Number((dia.minutos / 60).toFixed(1)),
-    meta: Number((metaDiariaMinutos / 60).toFixed(1)),
-    detalhes: dia.detalhes,
-  }));
 };

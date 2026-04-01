@@ -1,6 +1,7 @@
 import React from 'react';
 import { CalendarPlus, CalendarX2, PencilLine } from 'lucide-react';
 import type { Weekday, WeeklyDayPlan } from '../../types';
+import { normalizeSubjectLabel, truncatePresentationLabel } from '../../utils/uiLabels';
 
 interface WeeklyDayCardProps {
   day: Weekday;
@@ -26,18 +27,19 @@ const WeeklyDayCard: React.FC<WeeklyDayCardProps> = ({
   onEdit,
   onToggleActive,
 }) => {
-  const visibleSubjects = plan.subjectLabels.slice(0, 3);
-  const overflowCount = Math.max(0, plan.subjectLabels.length - visibleSubjects.length);
+  const normalizedSubjects = plan.subjectLabels.map((subject) => normalizeSubjectLabel(subject, 'Outra'));
+  const visibleSubjects = normalizedSubjects.slice(0, 3);
+  const overflowCount = Math.max(0, normalizedSubjects.length - visibleSubjects.length);
 
   return (
     <article
-      className={`rounded-2xl border p-4 shadow-sm transition-all ${
+      className={`overflow-hidden rounded-2xl border p-4 shadow-sm transition-all ${
         isToday
           ? 'border-sky-300 bg-sky-50/70 dark:border-sky-700 dark:bg-sky-950/20'
           : ''
       } ${
         isActive
-          ? 'opacity-100'
+          ? 'opacity-100 dark:bg-slate-950/88'
           : 'bg-slate-50 opacity-75 dark:bg-slate-900/60'
       }`}
     >
@@ -88,7 +90,7 @@ const WeeklyDayCard: React.FC<WeeklyDayCardProps> = ({
       </div>
 
       <div className="mt-4 min-h-[110px]">
-        {plan.subjectLabels.length === 0 ? (
+        {normalizedSubjects.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
             {isActive ? (
               <>
@@ -107,9 +109,10 @@ const WeeklyDayCard: React.FC<WeeklyDayCardProps> = ({
             {visibleSubjects.map((subject) => (
               <span
                 key={subject}
-                className="inline-flex rounded-full border border-slate-200 bg-slate-50/70 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300"
+                title={subject}
+                className="inline-flex max-w-full rounded-full border border-slate-200 bg-slate-50/70 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300"
               >
-                {subject}
+                <span className="truncate">{truncatePresentationLabel(subject, 18, subject)}</span>
               </span>
             ))}
             {overflowCount > 0 && (

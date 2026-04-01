@@ -14,8 +14,10 @@ lerna-debug.log*
 
 node_modules
 dist
+dev-dist/
 dist-ssr
 *.local
+coverage/
 
 # Editor directories and files
 .vscode/*
@@ -39,4 +41,7 @@ qa-artifacts/
 .deploy-*/
 .npm-cache*/
 .tmp/
+.tmp-*.log
+.tmp-*.err.log
+.supabase/
 supabase/.temp/

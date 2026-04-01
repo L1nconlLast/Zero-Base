@@ -479,6 +479,22 @@ const buildSecondaryRecommendations = (
     }));
 };
 
+const STARTER_DIFFICULTY_WEIGHT: Record<StudySessionQuestion['difficulty'], number> = {
+  facil: 0,
+  medio: 1,
+  dificil: 2,
+};
+
+const prioritizeStarterQuestions = (questions: StudySessionQuestion[]): StudySessionQuestion[] =>
+  [...questions].sort((left, right) => {
+    const difficultyDiff = STARTER_DIFFICULTY_WEIGHT[left.difficulty] - STARTER_DIFFICULTY_WEIGHT[right.difficulty];
+    if (difficultyDiff !== 0) {
+      return difficultyDiff;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+
 const pickQuestionsForRecommendation = async (
   recommendation: RecommendationContext,
   limit: number,
@@ -493,6 +509,10 @@ const pickQuestionsForRecommendation = async (
     .map((questionRow) => mapQuestionRow(questionRow, recommendation))
     .filter((question): question is StudySessionQuestion => Boolean(question))
     .filter((question) => !excludedIds.has(question.id));
+
+  if (limit <= 3) {
+    return shuffle(prioritizeStarterQuestions(validQuestions).slice(0, limit));
+  }
 
   return shuffle(validQuestions).slice(0, limit);
 };

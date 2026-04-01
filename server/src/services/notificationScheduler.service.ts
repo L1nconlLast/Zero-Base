@@ -21,9 +21,9 @@ class NotificationSchedulerService {
 
     const run = async () => {
       try {
-        const result = await pushNotificationService.runInactivityReminderJob(48);
+        const result = await pushNotificationService.runDay1ResumeReminderJob();
         if (result.sent > 0) {
-          console.log(`[push-scheduler] inactivity reminders sent=${result.sent} users=${result.users}`);
+          console.log(`[push-scheduler] day1 resume reminders sent=${result.sent} users=${result.users}`);
         }
       } catch (error) {
         console.error('[push-scheduler] job failed', error);

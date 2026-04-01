@@ -6,6 +6,7 @@ import {
   shouldShowSuggestedAdjustment,
 } from '../../services/studySchedule.service';
 import type { RecentPaceState, SuggestedAdjustment } from '../../services/studySchedule.service';
+import { normalizeSubjectLabel } from '../../utils/uiLabels';
 
 interface TodayScheduleStatusProps {
   todayState: TodayStudyState;
@@ -56,6 +57,7 @@ const TodayScheduleStatus: React.FC<TodayScheduleStatusProps> = ({
     const effectiveLabels = enrichedSubjectLabels?.length
       ? enrichedSubjectLabels
       : todayState.subjectLabels;
+    const normalizedLabels = effectiveLabels.map((label) => normalizeSubjectLabel(label, 'Outra'));
     const shouldShowSuggestedTopicCopy = Boolean(suggestedTopicCopy) && effectiveLabels.length === 1;
     const shouldShowPrimaryAdjustAction = !(suggestedAdjustment && recentPaceState !== 'on_track' && isSuggestionVisible);
 
@@ -70,7 +72,7 @@ const TodayScheduleStatus: React.FC<TodayScheduleStatusProps> = ({
               Seu estudo de hoje ja esta definido
             </h3>
             <p className="mt-2 text-sm text-emerald-900/80 dark:text-emerald-100/80">
-              Hoje voce vai estudar: {effectiveLabels.join(', ')}.
+              Hoje voce vai estudar: {normalizedLabels.join(', ')}.
             </p>
             {shouldShowSuggestedTopicCopy ? (
               <p className="mt-1 text-xs text-emerald-900/60 dark:text-emerald-100/60">

@@ -300,37 +300,37 @@ const FlashcardsPage: React.FC = () => {
 
     return (
       <div className="mx-auto max-w-2xl space-y-5">
-        <div className="rounded-[28px] border border-white/10 bg-slate-950/70 p-5 shadow-[0_20px_80px_rgba(15,23,42,0.35)]">
+        <div className="rounded-[28px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,246,255,0.95))] p-5 shadow-[0_20px_60px_-32px_rgba(148,163,184,0.38)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] dark:shadow-[0_20px_80px_rgba(15,23,42,0.35)]">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-200">
+              <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">
                 <Brain className="h-3.5 w-3.5" />
                 {SESSION_MODE_LABEL[sessionMode ?? 'due']}
               </div>
               <div>
-                <h2 className="text-2xl font-semibold text-white">Revise ate zerar esta fila.</h2>
-                <p className="text-sm text-slate-300">
+                <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Revise ate zerar esta fila.</h2>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
                   {currentIdx + 1} de {sessionCards.length} cards desta sessao. Restam {remainingCards} apos este.
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center">
-                <p className="text-lg font-semibold text-white">{sessionDone}</p>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Feitos</p>
+              <div className="rounded-2xl border border-slate-200 bg-white/82 px-4 py-3 text-center dark:border-white/10 dark:bg-white/[0.03]">
+                <p className="text-lg font-semibold text-slate-900 dark:text-white">{sessionDone}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Feitos</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center">
-                <p className="text-lg font-semibold text-amber-300">{remainingCards}</p>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Restantes</p>
+              <div className="rounded-2xl border border-slate-200 bg-white/82 px-4 py-3 text-center dark:border-white/10 dark:bg-white/[0.03]">
+                <p className="text-lg font-semibold text-amber-600 dark:text-amber-300">{remainingCards}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Restantes</p>
               </div>
             </div>
           </div>
         </div>
 
         <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
-          <span className="text-slate-300">{currentIdx + 1}/{sessionCards.length}</span>
-          <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-100">
+          <span className="text-slate-600 dark:text-slate-300">{currentIdx + 1}/{sessionCards.length}</span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-100">
             <DisciplineIcon className="h-3.5 w-3.5" />
             {card.subject}
           </span>
@@ -342,7 +342,7 @@ const FlashcardsPage: React.FC = () => {
           style={{ perspective: '1000px' }}
         >
           <div
-            className="relative w-full rounded-[28px] border border-white/10 bg-slate-950/70 shadow-[0_20px_80px_rgba(15,23,42,0.35)] transition-transform duration-500"
+            className="relative w-full rounded-[28px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,246,255,0.95))] shadow-[0_20px_60px_-32px_rgba(148,163,184,0.38)] transition-transform duration-500 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] dark:shadow-[0_20px_80px_rgba(15,23,42,0.35)]"
             style={{
               transformStyle: 'preserve-3d',
               transform: flipped ? 'rotateY(180deg)' : 'rotateY(0)',
@@ -350,26 +350,26 @@ const FlashcardsPage: React.FC = () => {
             }}
           >
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center rounded-[28px] bg-slate-950/90 p-8"
+              className="absolute inset-0 flex flex-col items-center justify-center rounded-[28px] bg-white/96 p-8 dark:bg-slate-950/90"
               style={{ backfaceVisibility: 'hidden' }}
             >
               <p className="mb-5 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Pergunta</p>
-              <p className="text-center text-2xl font-semibold leading-relaxed text-white">
+              <p className="text-center text-2xl font-semibold leading-relaxed text-slate-900 dark:text-white">
                 {card.front}
               </p>
               <p className="mt-6 text-xs text-slate-500">Toque para revelar a resposta</p>
             </div>
 
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center rounded-[28px] border border-blue-400/20 bg-blue-950/40 p-8"
+              className="absolute inset-0 flex flex-col items-center justify-center rounded-[28px] border border-blue-200 bg-blue-50/92 p-8 dark:border-blue-400/20 dark:bg-blue-950/40"
               style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
             >
-              <p className="mb-5 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-200">Resposta</p>
-              <p className="text-center text-base leading-relaxed text-slate-100">
+              <p className="mb-5 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-700 dark:text-blue-200">Resposta</p>
+              <p className="text-center text-base leading-relaxed text-slate-800 dark:text-slate-100">
                 {card.back}
               </p>
               {cardState.repetitions > 0 && (
-                <p className="mt-6 text-xs text-slate-400">
+                <p className="mt-6 text-xs text-slate-500 dark:text-slate-400">
                   Proxima revisao estimada: {getIntervalLabel(cardState.interval)}
                 </p>
               )}
@@ -378,8 +378,8 @@ const FlashcardsPage: React.FC = () => {
         </div>
 
         {flipped ? (
-          <div className="rounded-[24px] border border-white/10 bg-slate-950/70 p-5 shadow-[0_20px_80px_rgba(15,23,42,0.3)]">
-            <p className="mb-4 text-center text-sm font-semibold text-slate-200">
+          <div className="rounded-[24px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,246,255,0.95))] p-5 shadow-[0_20px_60px_-32px_rgba(148,163,184,0.32)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] dark:shadow-[0_20px_80px_rgba(15,23,42,0.3)]">
+            <p className="mb-4 text-center text-sm font-semibold text-slate-800 dark:text-slate-200">
               Como voce se saiu neste card?
             </p>
             <div className="grid grid-cols-2 gap-3">
@@ -455,31 +455,31 @@ const FlashcardsPage: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(96,165,250,0.24),transparent_30%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] p-6 shadow-[0_32px_120px_rgba(15,23,42,0.42)] sm:p-8">
+      <div className="rounded-[36px] border border-sky-100/90 bg-[radial-gradient(circle_at_top_left,rgba(96,165,250,0.14),transparent_30%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(237,244,252,0.96))] p-6 shadow-[0_28px_80px_-42px_rgba(125,211,252,0.35)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,165,250,0.24),transparent_30%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] dark:shadow-[0_32px_120px_rgba(15,23,42,0.42)] sm:p-8">
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-5">
             <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-300/15 bg-blue-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-100">
+              <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-700 dark:border-blue-300/15 dark:bg-blue-400/10 dark:text-blue-100">
                 <BookOpen className="h-3.5 w-3.5" />
                 {missionLabel}
               </div>
               <div className="space-y-2">
-                <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-white sm:text-5xl">
+                <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-slate-900 dark:text-white sm:text-5xl">
                   {reviewHeadline}
                 </h1>
-                <p className="max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
+                <p className="max-w-xl text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">
                   {reviewSupport}
                 </p>
               </div>
             </div>
 
-            <div className="max-w-xl rounded-[28px] border border-blue-300/15 bg-blue-500/12 p-5 shadow-[0_18px_60px_rgba(37,99,235,0.18)] sm:p-6">
+            <div className="max-w-xl rounded-[28px] border border-blue-200 bg-blue-50/92 p-5 shadow-[0_18px_40px_-26px_rgba(59,130,246,0.2)] dark:border-blue-300/15 dark:bg-blue-500/12 dark:shadow-[0_18px_60px_rgba(37,99,235,0.18)] sm:p-6">
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-100/75">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700/80 dark:text-blue-100/75">
                     {SESSION_MODE_LABEL[reviewMode]}
                   </p>
-                  <p className="text-lg font-semibold text-white">
+                  <p className="text-lg font-semibold text-slate-900 dark:text-white">
                     {dueCount > 0 ? `Entre e limpe os ${dueCount} vencidos antes de qualquer outra coisa.` : 'Sua fila principal ja esta em dia. Faça uma passada curta para manter o ritmo.'}
                   </p>
                 </div>
@@ -494,15 +494,15 @@ const FlashcardsPage: React.FC = () => {
                   {reviewQueue.length > 0 ? ` (${dueCount > 0 ? dueCount : reviewQueue.length})` : ''}
                 </button>
 
-                <div className="flex flex-wrap gap-2 text-xs text-slate-200/85">
-                  <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5">
+                <div className="flex flex-wrap gap-2 text-xs text-slate-600 dark:text-slate-200/85">
+                  <span className="rounded-full border border-slate-200 bg-white/82 px-3 py-1.5 dark:border-white/10 dark:bg-white/[0.05]">
                     Trilha {TRACK_LABEL[selectedTrack]}
                   </span>
-                  <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5">
+                  <span className="rounded-full border border-slate-200 bg-white/82 px-3 py-1.5 dark:border-white/10 dark:bg-white/[0.05]">
                     {selectedSubject === 'Todas' ? 'Todas as materias' : selectedSubject}
                   </span>
                   {selectedTopic !== 'Todos' && (
-                    <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5">
+                    <span className="rounded-full border border-slate-200 bg-white/82 px-3 py-1.5 dark:border-white/10 dark:bg-white/[0.05]">
                       Topico: {selectedTopic}
                     </span>
                   )}
@@ -512,24 +512,24 @@ const FlashcardsPage: React.FC = () => {
           </div>
 
           <div className="grid gap-3 self-start">
-            <div className="rounded-[24px] border border-amber-300/15 bg-amber-400/10 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-100/80">Agora</p>
-              <p className="mt-2 text-5xl font-semibold text-white">{stats.due}</p>
-              <p className="mt-1 text-sm text-amber-50/85">cards vencidos esperando revisao</p>
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50/92 p-5 dark:border-amber-300/15 dark:bg-amber-400/10">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700/80 dark:text-amber-100/80">Agora</p>
+              <p className="mt-2 text-5xl font-semibold text-slate-900 dark:text-white">{stats.due}</p>
+              <p className="mt-1 text-sm text-amber-700/90 dark:text-amber-50/85">cards vencidos esperando revisao</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-2xl font-semibold text-white">{stats.reviewed}</p>
-                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">Revisados</p>
+              <div className="rounded-2xl border border-slate-200 bg-white/82 p-4 dark:border-white/10 dark:bg-white/[0.04]">
+                <p className="text-2xl font-semibold text-slate-900 dark:text-white">{stats.reviewed}</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Revisados</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-2xl font-semibold text-white">{stats.totalCards}</p>
-                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">No banco</p>
+              <div className="rounded-2xl border border-slate-200 bg-white/82 p-4 dark:border-white/10 dark:bg-white/[0.04]">
+                <p className="text-2xl font-semibold text-slate-900 dark:text-white">{stats.totalCards}</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">No banco</p>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
+            <div className="rounded-2xl border border-slate-200 bg-white/82 p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
               {reviewQueue.length > 0
                 ? `A fila abre com ${reviewQueue.length} cards e prioriza o que esta mais urgente primeiro.`
                 : 'Nao existe fila pronta nesta selecao agora.'}
@@ -539,36 +539,36 @@ const FlashcardsPage: React.FC = () => {
       </div>
 
       {lastSessionSummary && (
-        <div className="rounded-[24px] border border-emerald-400/15 bg-emerald-400/10 p-5 text-emerald-50 shadow-[0_20px_80px_rgba(5,150,105,0.12)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-200/80">Sessao concluida</p>
+        <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5 text-emerald-900 shadow-[0_18px_40px_-26px_rgba(16,185,129,0.18)] dark:border-emerald-400/15 dark:bg-emerald-400/10 dark:text-emerald-50 dark:shadow-[0_20px_80px_rgba(5,150,105,0.12)]">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700/80 dark:text-emerald-200/80">Sessao concluida</p>
           <p className="mt-2 text-xl font-semibold">
             {lastSessionSummary.reviewed} cards revisados em uma {lastSessionSummary.mode === 'due' ? 'sessao para zerar vencidos' : 'sessao de manutencao'}.
           </p>
-          <p className="mt-1 text-sm text-emerald-100/80">
+          <p className="mt-1 text-sm text-emerald-700/90 dark:text-emerald-100/80">
             Seu progresso ja foi salvo. Se houver mais cards vencidos, a fila sera recalculada automaticamente.
           </p>
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-[28px] border border-white/10 bg-slate-950/70 p-6 shadow-[0_24px_90px_rgba(15,23,42,0.28)]">
+        <div className="rounded-[28px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,246,255,0.95))] p-6 shadow-[0_24px_60px_-38px_rgba(148,163,184,0.38)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] dark:shadow-[0_24px_90px_rgba(15,23,42,0.28)]">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Proxima execucao</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Proxima execucao</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">
                 {dueCount > 0 ? 'Comece pelos vencidos' : 'Mantenha a memoria aquecida'}
               </h2>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300">
+            <div className="rounded-2xl border border-slate-200 bg-white/82 px-3 py-2 text-xs text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
               {SESSION_MODE_LABEL[reviewMode]}
             </div>
           </div>
 
           {reviewQueue.length > 0 ? (
             <div className="space-y-4">
-              <div className="rounded-2xl border border-blue-400/15 bg-blue-950/30 p-4">
-                <p className="text-sm text-slate-300">
-                  A fila vai abrir com <span className="font-semibold text-white">{reviewQueue.length} cards</span>
+              <div className="rounded-2xl border border-blue-200 bg-blue-50/92 p-4 dark:border-blue-400/15 dark:bg-blue-950/30">
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  A fila vai abrir com <span className="font-semibold text-slate-900 dark:text-white">{reviewQueue.length} cards</span>
                   {dueCount > 0
                     ? ' ordenados por atraso, repeticao e dificuldade.'
                     : ` para uma sessao curta de manutencao com ate ${MAINTENANCE_SESSION_SIZE} itens.`}
@@ -576,12 +576,12 @@ const FlashcardsPage: React.FC = () => {
               </div>
 
               <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Materias que puxam a fila</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Materias que puxam a fila</p>
                 <div className="flex flex-wrap gap-2">
                   {nextSubjectsPreview.map(([subject, count]) => (
                     <span
                       key={subject}
-                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-slate-200"
+                      className="rounded-full border border-slate-200 bg-white/82 px-3 py-1.5 text-sm text-slate-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200"
                     >
                       {subject} <span className="text-slate-400">x{count}</span>
                     </span>
@@ -589,43 +589,43 @@ const FlashcardsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
+              <div className="rounded-2xl border border-slate-200 bg-white/82 p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300">
                 O fluxo continua card apos card: revele, avalie e siga para o proximo sem sair da sessao.
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-5 text-sm text-slate-400">
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/76 p-5 text-sm text-slate-500 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-400">
               Nao ha cards para esta combinacao de trilha, materia e topico.
             </div>
           )}
         </div>
 
-        <div className="rounded-[28px] border border-white/10 bg-slate-950/70 p-6 shadow-[0_24px_90px_rgba(15,23,42,0.28)]">
+        <div className="rounded-[28px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,246,255,0.95))] p-6 shadow-[0_24px_60px_-38px_rgba(148,163,184,0.38)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] dark:shadow-[0_24px_90px_rgba(15,23,42,0.28)]">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Como funciona</p>
-          <div className="mt-4 space-y-3 text-sm text-slate-300">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              Revele a resposta e marque o card como <span className="font-semibold text-white">Errei</span>, <span className="font-semibold text-white">Dificil</span>, <span className="font-semibold text-white">Bom</span> ou <span className="font-semibold text-white">Facil</span>.
+          <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
+            <div className="rounded-2xl border border-slate-200 bg-white/82 p-4 dark:border-white/10 dark:bg-white/[0.03]">
+              Revele a resposta e marque o card como <span className="font-semibold text-slate-900 dark:text-white">Errei</span>, <span className="font-semibold text-slate-900 dark:text-white">Dificil</span>, <span className="font-semibold text-slate-900 dark:text-white">Bom</span> ou <span className="font-semibold text-slate-900 dark:text-white">Facil</span>.
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="rounded-2xl border border-slate-200 bg-white/82 p-4 dark:border-white/10 dark:bg-white/[0.03]">
               O algoritmo SM-2 recalcula o proximo intervalo automaticamente e salva tudo no navegador.
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="rounded-2xl border border-slate-200 bg-white/82 p-4 dark:border-white/10 dark:bg-white/[0.03]">
               Se nao houver vencidos, a tela puxa uma fila curta de manutencao para manter o ritmo vivo.
             </div>
           </div>
         </div>
       </div>
 
-      <div className="rounded-[28px] border border-white/10 bg-slate-950/70 p-6 shadow-[0_24px_90px_rgba(15,23,42,0.28)]">
+      <div className="rounded-[28px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,246,255,0.95))] p-6 shadow-[0_24px_60px_-38px_rgba(148,163,184,0.38)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.98))] dark:shadow-[0_24px_90px_rgba(15,23,42,0.28)]">
         <button
           onClick={() => setFiltersOpen((prev) => !prev)}
           className="flex w-full items-center justify-between gap-3 text-left"
         >
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
             <Filter className="h-3.5 w-3.5" />
             Ajustes opcionais
           </div>
-          <span className="inline-flex items-center gap-2 text-sm text-slate-300">
+          <span className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             {filtersOpen ? 'Ocultar' : 'Mostrar'}
             <ChevronRight className={`h-4 w-4 transition ${filtersOpen ? 'rotate-90' : ''}`} />
           </span>
@@ -695,8 +695,8 @@ const FlashcardsPage: React.FC = () => {
 
             {selectedTrack === 'ambos' && (
               <div className="grid gap-4 lg:grid-cols-2">
-                <div className="space-y-2 rounded-2xl border border-blue-400/10 bg-blue-950/20 p-4">
-                  <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-200">
+                <div className="space-y-2 rounded-2xl border border-blue-200 bg-blue-50/90 p-4 dark:border-blue-400/10 dark:bg-blue-950/20">
+                  <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-200">
                     <Flame className="h-3.5 w-3.5" />
                     Mais cobrados ENEM
                   </p>
@@ -717,8 +717,8 @@ const FlashcardsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="space-y-2 rounded-2xl border border-violet-400/10 bg-violet-950/20 p-4">
-                  <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-200">
+                <div className="space-y-2 rounded-2xl border border-violet-200 bg-violet-50/90 p-4 dark:border-violet-400/10 dark:bg-violet-950/20">
+                  <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 dark:text-violet-200">
                     <Landmark className="h-3.5 w-3.5" />
                     Mais cobrados Concurso
                   </p>
@@ -761,8 +761,8 @@ const FlashcardsPage: React.FC = () => {
         )}
       </div>
 
-      <div className="rounded-[24px] border border-white/10 bg-slate-950/70 p-5 text-sm text-slate-300 shadow-[0_24px_90px_rgba(15,23,42,0.22)]">
-        <p className="mb-2 flex items-center gap-2 font-semibold text-slate-100">
+      <div className="rounded-[24px] border border-slate-200/90 bg-white/82 p-5 text-sm text-slate-600 shadow-[0_24px_60px_-38px_rgba(148,163,184,0.36)] dark:border-white/10 dark:bg-slate-950/70 dark:text-slate-300 dark:shadow-[0_24px_90px_rgba(15,23,42,0.22)]">
+        <p className="mb-2 flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
           <AlertCircle className="h-4 w-4" />
           Regra da tela
         </p>

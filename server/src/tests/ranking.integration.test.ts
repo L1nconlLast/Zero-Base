@@ -244,7 +244,7 @@ describe('ranking API', () => {
     });
 
     it('rate limits: apenas 1 req a cada 10s', async () => {
-      const token = await createAuthToken();
+      const token = await createAuthToken('22222222-2222-4222-8222-222222222222');
 
       vi.spyOn(rankingService, 'getMe').mockResolvedValue({
         period: 'weekly',

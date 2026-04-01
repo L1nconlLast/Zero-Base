@@ -8,6 +8,7 @@
   --bg-secondary: #111827;
   --text-primary: #f9fafb;
   --text-secondary: #d1d5db;
+  color-scheme: dark;
 }
 
 /* Tema OLED Black */
@@ -141,13 +142,13 @@ body {
 }
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: "Sora", "Avenir Next", "Segoe UI Variable Display", "Segoe UI", sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
+  color-scheme: light;
   color: rgba(0, 0, 0, 0.87);
-  background-color: #f9fafb;
+  background-color: var(--bg-primary, #f2f5f8);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -171,11 +172,15 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--bg-primary, #eef2f6);
+  color: var(--text-primary, #0f172a);
 }
 
 #root {
   width: 100%;
   min-height: 100vh;
+  background-color: var(--bg-primary, #eef2f6);
+  color: var(--text-primary, #0f172a);
 }
 
 /* Scrollbar personalizado */

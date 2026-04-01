@@ -1,0 +1,25 @@
+export { EstudosPage } from './EstudosPage';
+export type { EstudosPageProps } from './EstudosPage';
+export type {
+  ExecutionCoreData,
+  ExecutionCoreEmphasis,
+  FinalizeStudySessionAdapterResult,
+  FinishInputs,
+  FinishPayload,
+  PostExecutionBandData,
+  PostExecutionContextData,
+  PostExecutionContinuityData,
+  PreferencesSyncStatus,
+  RuntimeStudyMode,
+  SessionHeaderData,
+  SessionHeaderStatus,
+  StudyExecutionRailData,
+  StudyMode,
+  StudySession,
+  SupportChecklistData,
+  SupportChecklistItem,
+  SupportChecklistItemStatus,
+  SupportClosureData,
+  SupportClosureEmphasis,
+  SupportRailData,
+} from './types';

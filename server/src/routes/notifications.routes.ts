@@ -25,4 +25,8 @@ router.post('/jobs/inactivity-48h', authMiddleware, adminAuthMiddleware, (req, r
   void notificationsController.runInactivityJob(req, res);
 });
 
+router.post('/jobs/day1-resume', authMiddleware, adminAuthMiddleware, (req, res) => {
+  void notificationsController.runDay1ResumeJob(req, res);
+});
+
 export default router;

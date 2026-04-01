@@ -36,6 +36,7 @@ import type {
   WeeklyStudySchedule,
 } from '../../types';
 import { MATERIAS_CONFIG } from '../../types';
+import type { StudyContextMode } from '../../features/studyContext/types';
 import { useStudySchedule } from '../../hooks/useStudySchedule';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { saasPlanningService } from '../../services/saasPlanning.service';
@@ -46,6 +47,7 @@ import {
   createDefaultWeeklyStudySchedule,
   DEFAULT_OPERATIONAL_WINDOW_DAYS,
   getActiveDaysCount,
+  getStudyScheduleStorageKey,
   getPaceCopy,
   getSuggestedAdjustment,
   getTodayCompletedSessions,
@@ -63,6 +65,8 @@ import {
   toggleWeeklyDayAvailability,
   updateWeeklyDayPlan,
 } from '../../services/studySchedule.service';
+import { faculdadeDashboardService } from '../../services/faculdadeDashboard.service';
+import { outrosDashboardService } from '../../services/outrosDashboard.service';
 import {
   getWeeklyLoadSummary,
   suggestRebalanceDay,
@@ -81,6 +85,11 @@ import {
   getSuggestedNextTopicAligned,
   getSuggestedTopicCopy,
 } from '../../utils/contentTree';
+import {
+  normalizePresentationLabel,
+  normalizeSubjectLabel,
+  truncatePresentationLabel,
+} from '../../utils/uiLabels';
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -133,6 +142,13 @@ const sanitizeSmartProfile = (profile: SmartScheduleProfile): SmartScheduleProfi
   };
 };
 
+const sortUniqueLabels = (values: Array<string | null | undefined>): string[] =>
+  [...new Set(
+    values
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean),
+  )].sort((left, right) => left.localeCompare(right));
+
 const getStudyTypeLabel = (studyType?: ScheduleEntry['studyType']): string => {
   if (studyType === 'teoria_questoes') return 'Teoria + Questões';
   if (studyType === 'questoes') return 'Questões';
@@ -160,6 +176,8 @@ interface StudyScheduleCalendarProps {
   userId?: string | null;
   weeklySchedule?: WeeklyStudySchedule;
   onChangeWeeklySchedule?: (schedule: WeeklyStudySchedule) => void;
+  studyContextMode?: StudyContextMode | null;
+  scheduleScope?: string | null;
   studyContextForToday?: StudyContextForToday;
   officialTodayActionCard?: {
     status: 'loading';
@@ -209,6 +227,8 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
   userId,
   weeklySchedule,
   onChangeWeeklySchedule,
+  studyContextMode,
+  scheduleScope,
   studyContextForToday,
   officialTodayActionCard,
   weeklyCompletedSessions,
@@ -220,9 +240,13 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
   const today = new Date();
   const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate());
   const userScope = userId || 'default';
-  const profileStorageKey = `smartScheduleProfile_${userScope}`;
-  const autoGenerateKey = `smartScheduleAutoGenerate_${userScope}`;
-  const weeklyScheduleStorageKey = `weeklyStudySchedule_${userScope}`;
+  const storageScope = scheduleScope || userScope;
+  const isNativePlannerContext = studyContextMode === 'faculdade' || studyContextMode === 'outros';
+  const isFaculdadePlanner = studyContextMode === 'faculdade';
+  const profileStorageKey = `smartScheduleProfile_${storageScope}`;
+  const autoGenerateKey = `smartScheduleAutoGenerate_${storageScope}`;
+  const weeklyScheduleStorageKey = `weeklyStudySchedule_${storageScope}`;
+  const scheduleStorageKey = getStudyScheduleStorageKey(scheduleScope);
   const initialSmartProfile = useMemo(() => createDefaultSmartProfile(), []);
   const defaultWeeklySchedule = useMemo(() => createDefaultWeeklyStudySchedule(), []);
   const [localWeeklySchedule, setLocalWeeklySchedule] = useLocalStorage<WeeklyStudySchedule>(
@@ -234,7 +258,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
   const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(todayStr);
   // Estados para selects
-  const [modalidade, setModalidade] = useState<'enem' | 'concurso' | null>('enem');
+  const [modalidade, setModalidade] = useState<string | null>('enem');
   const [disciplina, setDisciplina] = useState<string | null>(null);
   // Estados para formulário
   const [formNote, setFormNote] = useState<string>('');
@@ -246,6 +270,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [editingDay, setEditingDay] = useState<Weekday | null>(null);
   const [swapSubjectInput, setSwapSubjectInput] = useState('Matemática');
+  const [nativeSubjectOptions, setNativeSubjectOptions] = useState<string[]>([]);
   const smartProfileSectionRef = useRef<HTMLDivElement | null>(null);
   const weeklyGridSectionRef = useRef<HTMLDivElement | null>(null);
   const [smartProfile, setSmartProfile] = useLocalStorage<SmartScheduleProfile>(
@@ -267,7 +292,67 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     toggleDone,
     applyAdaptiveSchedule,
     getEntriesForDate,
-  } = useStudySchedule(userId);
+  } = useStudySchedule(userId, {
+    storageKey: scheduleStorageKey,
+    enableCloudSync: !isNativePlannerContext,
+  });
+
+  useEffect(() => {
+    if (!isNativePlannerContext || !userId) {
+      setNativeSubjectOptions([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadNativeSubjectOptions = async () => {
+      try {
+        if (studyContextMode === 'faculdade') {
+          const dashboard = await faculdadeDashboardService.getFaculdadeDashboardData(userId);
+          if (cancelled) {
+            return;
+          }
+
+          setNativeSubjectOptions(sortUniqueLabels([
+            ...dashboard.subjects
+              .filter((subject) => subject.status !== 'trancada')
+              .map((subject) => subject.name),
+            ...dashboard.exams.map((exam) => exam.subjectName),
+            ...dashboard.assignments.map((assignment) => assignment.subjectName),
+            ...dashboard.events.map((event) => event.subjectName),
+          ]));
+          return;
+        }
+
+        if (studyContextMode === 'outros') {
+          const dashboard = await outrosDashboardService.getOutrosDashboardData(userId);
+          if (cancelled) {
+            return;
+          }
+
+          setNativeSubjectOptions(sortUniqueLabels([
+            ...dashboard.topics.map((topic) => topic.name),
+            ...dashboard.paths.map((path) => path.title),
+            ...dashboard.steps.map((step) => step.title),
+            ...dashboard.events.map((event) => event.topicName),
+          ]));
+          return;
+        }
+
+        setNativeSubjectOptions([]);
+      } catch {
+        if (!cancelled) {
+          setNativeSubjectOptions([]);
+        }
+      }
+    };
+
+    void loadNativeSubjectOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isNativePlannerContext, scheduleScope, studyContextMode, userId]);
 
   useEffect(() => {
     const sanitized = sanitizeWeeklyStudySchedule(localWeeklySchedule);
@@ -557,12 +642,36 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
   };
 
   const selectedEntries = selectedDate ? getEntriesForDate(selectedDate) : [];
+  const orderedSelectedEntries = useMemo(
+    () =>
+      [...selectedEntries].sort((left, right) => {
+        const leftUrgency = left.done ? 2 : left.priority === 'alta' ? 0 : 1;
+        const rightUrgency = right.done ? 2 : right.priority === 'alta' ? 0 : 1;
+        const leftStart = left.startTime || '';
+        const rightStart = right.startTime || '';
+
+        return leftUrgency - rightUrgency
+          || leftStart.localeCompare(rightStart)
+          || normalizeSubjectLabel(left.subject, 'Outra').localeCompare(normalizeSubjectLabel(right.subject, 'Outra'));
+      }),
+    [selectedEntries],
+  );
+  const selectedPendingEntries = useMemo(
+    () => orderedSelectedEntries.filter((entry) => !entry.done),
+    [orderedSelectedEntries],
+  );
+  const selectedCompletedEntries = useMemo(
+    () => orderedSelectedEntries.filter((entry) => entry.done),
+    [orderedSelectedEntries],
+  );
+  const selectedPrimaryEntry = useMemo(
+    () => selectedPendingEntries.find((entry) => entry.priority === 'alta') || selectedPendingEntries[0] || null,
+    [selectedPendingEntries],
+  );
 
   const handleAdd = () => {
     if (!selectedDate || !disciplina) return;
-    const selectedDisciplineLabel = modalidade
-      ? disciplinas[modalidade].find((item) => item.id === disciplina)?.label
-      : null;
+    const selectedDisciplineLabel = availableDisciplineOptions.find((item) => item.id === disciplina)?.label ?? null;
 
     addEntry(selectedDate, selectedDisciplineLabel || disciplina, formNote, {
       source: 'manual',
@@ -633,6 +742,10 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
   };
 
   useEffect(() => {
+    if (isNativePlannerContext) {
+      return;
+    }
+
     if (!userId) {
       return;
     }
@@ -663,7 +776,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [userId, setSmartProfile]);
+  }, [isNativePlannerContext, userId, setSmartProfile]);
 
   const handleCompleteBlock = () => {
     if (!selectedEntry) return;
@@ -788,7 +901,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
       }
     }
 
-    toast.success(`${item.subject} foi priorizado no dia.`);
+    toast.success(`${normalizeSubjectLabel(item.subject, 'Outra')} foi priorizado no dia.`);
   }, [effectiveWeeklySchedule, entries, handleWeeklyScheduleChange, isSubjectPlannedForDate, prioritizeEntry]);
 
   const handleOperationalReorder = useCallback((
@@ -812,7 +925,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
       }
     }
 
-    toast.success(`Ordem de ${item.subject} ajustada no dia.`);
+    toast.success(`Ordem de ${normalizeSubjectLabel(item.subject, 'Outra')} ajustada no dia.`);
   }, [
     effectiveWeeklySchedule,
     entries,
@@ -829,7 +942,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
     const targetEntry = entries.find((entry) => entry.id === item.id) || null;
     if (targetEntry) {
       updateEntryDuration(targetEntry.id, durationMinutes);
-      toast.success(`Duracao de ${item.subject} ajustada para ${durationMinutes} min.`);
+      toast.success(`Duracao de ${normalizeSubjectLabel(item.subject, 'Outra')} ajustada para ${durationMinutes} min.`);
       return;
     }
 
@@ -840,7 +953,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
       note: item.note,
       durationMinutes,
     });
-    toast.success(`Criei um bloco real de ${item.subject} com ${durationMinutes} min.`);
+    toast.success(`Criei um bloco real de ${normalizeSubjectLabel(item.subject, 'Outra')} com ${durationMinutes} min.`);
   }, [createManualEntry, entries, updateEntryDuration]);
 
   const handleOperationalCreateManualEntry = useCallback((
@@ -859,7 +972,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
       topic: input.topic,
       note: input.note,
     });
-    toast.success(`Sessao de ${input.subject} adicionada ao cronograma.`);
+    toast.success(`Sessao de ${normalizeSubjectLabel(input.subject, 'Outra')} adicionada ao cronograma.`);
   }, [createManualEntry]);
 
   const handleOperationalRebalanceDay = useCallback((date: string) => {
@@ -901,6 +1014,10 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
   ]);
 
   useEffect(() => {
+    if (isNativePlannerContext) {
+      return;
+    }
+
     if (entries.length > 0) {
       return;
     }
@@ -912,7 +1029,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
 
     handleGenerateBaseSchedule();
     window.localStorage.removeItem(autoGenerateKey);
-  }, [entries.length, autoGenerateKey, handleGenerateBaseSchedule]);
+  }, [autoGenerateKey, entries.length, handleGenerateBaseSchedule, isNativePlannerContext]);
 
   const selectedDateObj = selectedDate ? new Date(`${selectedDate}T12:00:00`) : new Date(`${todayStr}T12:00:00`);
   const weekStart = getWeekStart(selectedDateObj);
@@ -1010,10 +1127,59 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
 
   const allDisciplineLabels = useMemo(() => {
     const values = new Set<string>();
-    disciplinas.enem.forEach((item) => values.add(item.label));
-    disciplinas.concurso.forEach((item) => values.add(item.label));
-    return [...values].sort((a, b) => a.localeCompare(b));
-  }, [disciplinas]);
+    const addLabel = (label?: string | null) => {
+      const normalized = typeof label === 'string' ? label.trim() : '';
+      if (normalized) {
+        values.add(normalized);
+      }
+    };
+
+    if (isNativePlannerContext) {
+      nativeSubjectOptions.forEach(addLabel);
+    } else {
+      disciplinas.enem.forEach((item) => addLabel(item.label));
+      disciplinas.concurso.forEach((item) => addLabel(item.label));
+    }
+
+    Object.values(effectiveWeeklySchedule.weekPlan).forEach((dayPlan) => {
+      dayPlan.subjectLabels.forEach(addLabel);
+    });
+    entries.forEach((entry) => addLabel(entry.subject));
+
+    return [...values].sort((left, right) => left.localeCompare(right));
+  }, [disciplinas, effectiveWeeklySchedule.weekPlan, entries, isNativePlannerContext, nativeSubjectOptions]);
+
+  const availableDisciplineOptions = useMemo(() => {
+    if (isNativePlannerContext) {
+      return allDisciplineLabels.map((label) => ({ id: label, label }));
+    }
+
+    if (!modalidade || (modalidade !== 'enem' && modalidade !== 'concurso')) {
+      return [];
+    }
+
+    return disciplinas[modalidade];
+  }, [allDisciplineLabels, disciplinas, isNativePlannerContext, modalidade]);
+
+  useEffect(() => {
+    if (isNativePlannerContext) {
+      setModalidade('contexto');
+      return;
+    }
+
+    setModalidade((current) => (current === 'enem' || current === 'concurso' ? current : 'enem'));
+  }, [isNativePlannerContext]);
+
+  useEffect(() => {
+    if (!disciplina) {
+      return;
+    }
+
+    const stillAvailable = availableDisciplineOptions.some((option) => option.id === disciplina);
+    if (!stillAvailable) {
+      setDisciplina(null);
+    }
+  }, [availableDisciplineOptions, disciplina]);
 
   const weekdayOrder: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -1234,7 +1400,8 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
         'Nenhuma disciplina disponível ainda para reorganizar a semana.',
       ]);
       toast('Nenhuma disciplina disponível ainda para reorganizar a semana.', { icon: 'ℹ️' });
-      smartProfileSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const target = isNativePlannerContext ? weeklyGridSectionRef.current : smartProfileSectionRef.current;
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
 
@@ -1245,7 +1412,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
       'Você ainda pode editar qualquer dia manualmente depois do ajuste.',
     ]);
     toast.success('Seu cronograma foi reorganizado com base nas suas disciplinas.');
-  }, [allDisciplineLabels, effectiveWeeklySchedule, handleWeeklyScheduleChange]);
+  }, [allDisciplineLabels, effectiveWeeklySchedule, handleWeeklyScheduleChange, isNativePlannerContext]);
 
   const handleSuggestedAdjustment = useCallback(
     (suggestion: NonNullable<typeof suggestedAdjustment>) => {
@@ -1260,10 +1427,17 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
   );
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div
+      className="mx-auto max-w-6xl space-y-6"
+      data-study-schedule-context={studyContextMode || 'legacy'}
+      data-study-schedule-scope={storageScope}
+    >
       <CronogramaHeader
         onAutoAdjust={handleAutoAdjustWeeklySchedule}
-        onEditPreferences={() => smartProfileSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        onEditPreferences={() => {
+          const target = isNativePlannerContext ? weeklyGridSectionRef.current : smartProfileSectionRef.current;
+          target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}
       />
 
       <CronogramaSummary
@@ -1305,6 +1479,7 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
         weeklyLoadSummary={operationalWeeklyLoadSummary}
         availableSubjectOptions={allDisciplineLabels}
         defaultSessionDurationMinutes={effectiveWeeklySchedule.preferences.defaultSessionDurationMinutes}
+        plannerVariant={isFaculdadePlanner ? 'faculdade' : 'default'}
         itemActionLabel={operationalActionLabels.item}
         emptyActionLabel={operationalActionLabels.empty}
         onStartOfficialStudy={operationalLoopAction}
@@ -1332,10 +1507,11 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
         />
       </div>
 
-      <div
-        ref={smartProfileSectionRef}
-        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4"
-      >
+      {!isNativePlannerContext && (
+        <div
+          ref={smartProfileSectionRef}
+          className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4"
+        >
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500" /> Cronograma Inteligente
@@ -1443,9 +1619,10 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
             ))}
           </div>
         )}
-      </div>
+        </div>
+      )}
 
-      {isPomodoroHelpOpen && (
+      {!isNativePlannerContext && isPomodoroHelpOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4" role="dialog" aria-modal="true">
           <div className="w-full max-w-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl p-5 space-y-4">
             <div className="flex items-start justify-between gap-3">
@@ -1625,18 +1802,38 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
               })}
             </h3>
             <span className="text-xs text-slate-400">
-              {selectedEntries.length} {selectedEntries.length === 1 ? 'disciplina' : 'disciplinas'}
+              {selectedPendingEntries.length} para fazer
+              {selectedCompletedEntries.length > 0 ? ` • ${selectedCompletedEntries.length} concluidos` : ''}
             </span>
           </div>
 
+          {isFaculdadePlanner && selectedPrimaryEntry ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 dark:border-amber-900 dark:bg-amber-950/20">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                Fazer agora
+              </p>
+              <p className="mt-2 text-sm font-semibold text-amber-950 dark:text-amber-100">
+                {normalizeSubjectLabel(selectedPrimaryEntry.subject, 'Outra')}
+                {selectedPrimaryEntry.topic ? ` • ${normalizePresentationLabel(selectedPrimaryEntry.topic, 'Topico livre')}` : ''}
+              </p>
+              <p className="mt-1 text-xs text-amber-900/70 dark:text-amber-100/70">
+                {selectedPrimaryEntry.priority === 'alta'
+                  ? 'Bloco priorizado no radar academico.'
+                  : 'Primeiro item ativo do dia selecionado.'}
+              </p>
+            </div>
+          ) : null}
+
           {/* Formulário para adicionar */}
           <div className="flex flex-col sm:flex-row gap-2">
-            <ModalidadeSelect value={modalidade} onChange={v => { setModalidade(v as 'enem' | 'concurso' | null); setDisciplina(null); }} />
+            {!isNativePlannerContext ? (
+              <ModalidadeSelect value={modalidade} onChange={(value) => { setModalidade(value); setDisciplina(null); }} />
+            ) : null}
             <DisciplinaSelect
-              modalidade={modalidade}
+              modalidade={isNativePlannerContext ? 'contexto' : modalidade}
               value={disciplina}
               onChange={setDisciplina}
-              disciplinas={modalidade ? disciplinas[modalidade] : []}
+              disciplinas={availableDisciplineOptions}
             />
             <input
               value={formNote}
@@ -1658,15 +1855,44 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
           {selectedEntries.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-4">Nenhuma disciplina agendada para este dia.</p>
           ) : (
-            <div className="space-y-2">
-              {selectedEntries.map((entry) => (
-                <ScheduleEntryCard
-                  key={entry.id}
-                  entry={entry}
-                  onToggle={() => toggleDone(entry.id)}
-                  onRemove={() => removeEntry(entry.id)}
-                />
-              ))}
+            <div className="space-y-4">
+              {selectedPendingEntries.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                      Para fazer agora
+                    </p>
+                    <span className="text-xs text-slate-400">{selectedPendingEntries.length} bloco(s)</span>
+                  </div>
+                  {selectedPendingEntries.map((entry) => (
+                    <ScheduleEntryCard
+                      key={entry.id}
+                      entry={entry}
+                      onToggle={() => toggleDone(entry.id)}
+                      onRemove={() => removeEntry(entry.id)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+
+              {selectedCompletedEntries.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                      Concluidos
+                    </p>
+                    <span className="text-xs text-slate-400">{selectedCompletedEntries.length} bloco(s)</span>
+                  </div>
+                  {selectedCompletedEntries.map((entry) => (
+                    <ScheduleEntryCard
+                      key={entry.id}
+                      entry={entry}
+                      onToggle={() => toggleDone(entry.id)}
+                      onRemove={() => removeEntry(entry.id)}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -1700,8 +1926,8 @@ const StudyScheduleCalendar: React.FC<StudyScheduleCalendarProps> = ({
             </div>
 
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm space-y-1">
-              <p><strong>Matéria:</strong> {selectedEntry.subject}</p>
-              <p><strong>Tópico:</strong> {selectedEntry.topic || 'Tópico livre'}</p>
+              <p><strong>Matéria:</strong> {normalizeSubjectLabel(selectedEntry.subject, 'Outra')}</p>
+              <p><strong>Tópico:</strong> {normalizePresentationLabel(selectedEntry.topic || 'Tópico livre', 'Tópico livre')}</p>
               <p><strong>Horário:</strong> {selectedEntry.startTime || '--:--'} - {selectedEntry.endTime || '--:--'}</p>
               <p><strong>Tipo:</strong> {getStudyTypeLabel(selectedEntry.studyType)}</p>
             </div>
@@ -1764,10 +1990,12 @@ const ScheduleEntryCard: React.FC<ScheduleEntryCardProps> = ({ entry, onToggle, 
     bgColor: 'bg-gray-50',
     borderColor: 'border-gray-200',
   };
+  const safeSubject = normalizeSubjectLabel(entry.subject, 'Outra');
+  const safeTopic = normalizePresentationLabel(entry.topic || 'Tópico livre', 'Tópico livre');
 
   return (
     <div
-      className={`flex items-center gap-3 p-3 rounded-xl border transition ${entry.done
+      className={`flex items-center gap-3 overflow-hidden rounded-xl border p-3 transition ${entry.done
           ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
           : `${cfg.bgColor} dark:bg-slate-800/70 ${cfg.borderColor} dark:border-slate-700`
         }`}
@@ -1784,8 +2012,11 @@ const ScheduleEntryCard: React.FC<ScheduleEntryCardProps> = ({ entry, onToggle, 
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className={`text-sm font-semibold ${entry.done ? 'line-through text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}>
-            {cfg.icon} {entry.subject}
+          <p
+            className={`max-w-full truncate text-sm font-semibold ${entry.done ? 'line-through text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}
+            title={safeSubject}
+          >
+            {cfg.icon} {truncatePresentationLabel(safeSubject, 22, safeSubject)}
           </p>
           {entry.priority === 'alta' && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
@@ -1795,8 +2026,8 @@ const ScheduleEntryCard: React.FC<ScheduleEntryCardProps> = ({ entry, onToggle, 
         </div>
 
         {(entry.topic || entry.studyType) && (
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            {entry.topic ? `Tópico: ${entry.topic}` : 'Tópico livre'} • {getStudyTypeLabel(entry.studyType)}
+          <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400" title={`${safeTopic} • ${getStudyTypeLabel(entry.studyType)}`}>
+            Tópico: {truncatePresentationLabel(safeTopic, 26, safeTopic)} • {getStudyTypeLabel(entry.studyType)}
           </p>
         )}
 

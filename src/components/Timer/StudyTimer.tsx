@@ -61,6 +61,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
     complete,
     cancel,
     clear,
+    syncMetadata,
   } = useStudySessionMachine({
     storageKey: `study-timer-session_${sessionStorageScope}`,
     exclusiveStorageKeys: [`pomodoro-session_${sessionStorageScope}`],
@@ -79,11 +80,12 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
 
   const elapsedSeconds = Math.floor(elapsedFocusMs / 1000);
   const progress = progressPercent;
-  const sessionLocked = status === 'running' || status === 'paused';
   const effectiveSubject = session?.subject || selectedSubject;
-  const quickStartSubject = session?.subject || preferredSubject || selectedSubject;
+  const quickStartSubject = session?.subject || selectedSubject || preferredSubject || 'Anatomia';
   const resolvedSubjectLabel =
-    displaySubjectLabel || cycleDisciplineLabels[effectiveSubject].label;
+    displaySubjectLabel && effectiveSubject === (preferredSubject || effectiveSubject)
+      ? displaySubjectLabel
+      : cycleDisciplineLabels[effectiveSubject].label;
 
   const radius = 88;
   const circumference = 2 * Math.PI * radius;
@@ -244,6 +246,14 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
     setShowResetModal(false);
   };
 
+  const handleSubjectChange = useCallback((nextSubject: MateriaTipo) => {
+    setSelectedSubject(nextSubject);
+
+    if (session && (status === 'running' || status === 'paused')) {
+      syncMetadata({ subject: nextSubject });
+    }
+  }, [session, status, syncMetadata]);
+
   return (
     <div
       className={`${
@@ -299,8 +309,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
                 return (
                   <button
                     key={key}
-                    onClick={() => !sessionLocked && setSelectedSubject(key)}
-                    disabled={sessionLocked}
+                    onClick={() => handleSubjectChange(key)}
                     title={discipline.label}
                     className={`
                       flex flex-col items-center p-2 sm:p-2.5 rounded-xl border-2 transition-all min-w-[56px] sm:min-w-[60px]
@@ -309,7 +318,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
                           ? `${config.bgColor} ${config.borderColor} ring-1 ring-current scale-105`
                           : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 opacity-60 hover:opacity-100'
                       }
-                      ${sessionLocked ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'}
+                      cursor-pointer hover:scale-105
                     `}
                   >
                     <DisciplineIcon className="w-4 h-4 sm:w-5 sm:h-5 mb-0.5 sm:mb-1" />

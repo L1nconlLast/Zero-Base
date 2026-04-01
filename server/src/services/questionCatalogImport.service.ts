@@ -138,7 +138,7 @@ const normalizeRecordKeys = (row: RawQuestionImportRow): RawQuestionImportRow =>
   return normalized;
 };
 
-const pickFirstString = (row: RawQuestionImportRow, aliases: string[]): string | null => {
+const pickFirstString = (row: RawQuestionImportRow, aliases: readonly string[]): string | null => {
   for (const alias of aliases) {
     const directValue = stringifyIfNeeded(row[alias]);
     if (directValue) return directValue;
@@ -196,12 +196,14 @@ const normalizeObjective = (value: string | null): Objective => {
   return 'both';
 };
 
-const parseJsonAlternatives = (value: unknown): Array<{ letter?: string; text?: string; correct?: boolean }> => {
-  const fallback: Array<{ letter?: string; text?: string; correct?: boolean }> = [];
+type ParsedJsonAlternative = { letter?: string; text?: string; correct?: boolean };
+
+const parseJsonAlternatives = (value: unknown): ParsedJsonAlternative[] => {
+  const fallback: ParsedJsonAlternative[] = [];
 
   if (Array.isArray(value)) {
     return value
-      .map((entry) => {
+      .map<ParsedJsonAlternative | null>((entry) => {
         if (typeof entry === 'string') {
           return { text: entry };
         }
@@ -214,7 +216,7 @@ const parseJsonAlternatives = (value: unknown): Array<{ letter?: string; text?: 
         }
         return null;
       })
-      .filter((entry): entry is { letter?: string; text?: string; correct?: boolean } => Boolean(entry));
+      .filter((entry): entry is ParsedJsonAlternative => entry !== null);
   }
 
   if (typeof value === 'string') {

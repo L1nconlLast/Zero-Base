@@ -1,0 +1,112 @@
+{
+  "columns": [
+    {
+      "id": "inbox",
+      "title": "INBOX",
+      "items": [
+        {
+          "id": "beta-2026-03-28-raw-001",
+          "title": "Usuario disse que nao entendeu o que fazer na Home",
+          "description": "Relato bruto ainda sem classificacao limpa.",
+          "category": null,
+          "screen": "home",
+          "severity": null,
+          "frequency": 1,
+          "status": "OPEN",
+          "owner": null,
+          "lastUpdated": "2026-03-28"
+        }
+      ]
+    },
+    {
+      "id": "classificado",
+      "title": "CLASSIFICADO",
+      "items": [
+        {
+          "id": "beta-2026-03-28-001",
+          "title": "Nao conseguiu finalizar a sessao",
+          "description": "Usuario inicia em Estudos, abre o fechamento e o botao final nao conclui o fluxo.",
+          "category": "BUG",
+          "screen": "estudos",
+          "severity": "HIGH",
+          "frequency": 1,
+          "status": "OPEN",
+          "owner": null,
+          "lastUpdated": "2026-03-28"
+        }
+      ]
+    },
+    {
+      "id": "validado",
+      "title": "VALIDADO",
+      "items": [
+        {
+          "id": "beta-2026-03-28-002",
+          "title": "Usuario nao entende o proximo passo",
+          "description": "A friccao apareceu em 3 usuarios ao voltar da sessao para a Home.",
+          "category": "UX_FRICTION",
+          "screen": "home",
+          "severity": "MEDIUM",
+          "frequency": 3,
+          "status": "VALIDATED",
+          "owner": null,
+          "lastUpdated": "2026-03-28"
+        }
+      ]
+    },
+    {
+      "id": "em-correcao",
+      "title": "EM CORRECAO",
+      "items": [
+        {
+          "id": "beta-2026-03-28-003",
+          "title": "Dashboard mostra dado semanal divergente",
+          "description": "Resumo e grafico estao usando fontes diferentes.",
+          "category": "BUG",
+          "screen": "dashboard",
+          "severity": "CRITICAL",
+          "frequency": 2,
+          "status": "VALIDATED",
+          "owner": "time-produto",
+          "lastUpdated": "2026-03-28"
+        }
+      ]
+    },
+    {
+      "id": "fixed",
+      "title": "FIXED",
+      "items": [
+        {
+          "id": "beta-2026-03-28-004",
+          "title": "Grafico semanal com label suja",
+          "description": "Slug interno aparecia no dashboard; corrigido com sanitizacao na origem.",
+          "category": "BUG",
+          "screen": "dashboard",
+          "severity": "HIGH",
+          "frequency": 4,
+          "status": "FIXED",
+          "owner": "time-produto",
+          "lastUpdated": "2026-03-28"
+        }
+      ]
+    },
+    {
+      "id": "dismissed",
+      "title": "DISMISSED",
+      "items": [
+        {
+          "id": "beta-2026-03-28-005",
+          "title": "Adicionar feed social",
+          "description": "Sugestao fora do escopo do beta fechado.",
+          "category": "IDEIA",
+          "screen": "dashboard",
+          "severity": "LOW",
+          "frequency": 1,
+          "status": "DISMISSED",
+          "owner": null,
+          "lastUpdated": "2026-03-28"
+        }
+      ]
+    }
+  ]
+}

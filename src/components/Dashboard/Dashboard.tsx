@@ -12,15 +12,27 @@ import {
   Trophy,
   Zap,
 } from 'lucide-react';
-import type { StudySession, UserData } from '../../types';
+import type { UserData } from '../../types';
 import { STUDY_METHODS } from '../../data/studyMethods';
-import { getDisplayDiscipline } from '../../utils/disciplineLabels';
+import {
+  getDisplayDiscipline,
+  resolveTrackedDisciplineLabel,
+  type StudyTrackLabel,
+} from '../../utils/disciplineLabels';
 import { predictNextLevel } from '../../utils/levelPrediction';
+import { getSubjectPalette, withAlpha } from '../../utils/subjectPalette';
+import {
+  buildWeeklyStudySnapshot,
+  getSessionMinutes,
+} from '../../utils/weeklyStudySnapshot';
 
 interface DashboardProps {
   userData: UserData;
   todayMinutes: number;
   userName: string;
+  darkMode?: boolean;
+  preferredTrack?: StudyTrackLabel;
+  hybridEnemWeight?: number;
   onStartFocusSession: () => void;
   onStartLongSession: () => void;
   onOpenQuestions: () => void;
@@ -44,40 +56,6 @@ interface SubjectBreakdown {
 type TrendDirection = 'up' | 'down' | 'flat';
 
 const DAY_FORMATTER = new Intl.DateTimeFormat('pt-BR', { weekday: 'short' });
-
-const startOfDay = (date: Date): Date => {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-};
-
-const toDateKey = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const parseSessionDate = (session: StudySession): Date => {
-  if (session.timestamp) {
-    const parsedTimestamp = new Date(session.timestamp);
-    if (!Number.isNaN(parsedTimestamp.getTime())) {
-      return parsedTimestamp;
-    }
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(session.date)) {
-    const [year, month, day] = session.date.split('-').map(Number);
-    return new Date(year, month - 1, day);
-  }
-
-  const parsedDate = new Date(session.date);
-  if (!Number.isNaN(parsedDate.getTime())) {
-    return parsedDate;
-  }
-
-  return new Date();
-};
 
 const formatMinutes = (minutes: number): string => {
   if (!minutes) {
@@ -160,6 +138,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   userData,
   todayMinutes,
   userName,
+  darkMode = false,
+  preferredTrack = 'enem',
+  hybridEnemWeight = 70,
   onStartFocusSession,
   onStartLongSession,
   onOpenQuestions,
@@ -181,87 +162,54 @@ export const Dashboard: React.FC<DashboardProps> = ({
     dailyPulse,
     subjectBreakdown,
   } = React.useMemo(() => {
-    const today = startOfDay(new Date());
-    const thisWeekStart = new Date(today);
-    thisWeekStart.setDate(today.getDate() - 6);
+    const snapshot = buildWeeklyStudySnapshot(sessions);
+    const trackedSessions = sessions.filter((session) => getSessionMinutes(session) > 0);
+    const minutesAllTime = trackedSessions.reduce((sum, session) => sum + getSessionMinutes(session), 0);
+    const nextDailyPulse: DailyPulse[] = snapshot.daily.map((day) => ({
+      key: day.dateKey,
+      label: DAY_FORMATTER.format(day.date).replace('.', '').slice(0, 3),
+      minutes: day.minutes,
+      isToday: day.isToday,
+    }));
+    const nextSubjectBreakdownMap = snapshot.subjectBreakdown.reduce<Record<string, SubjectBreakdown>>((acc, entry) => {
+      const subject = resolveTrackedDisciplineLabel(entry.subject, preferredTrack, hybridEnemWeight);
+      const current = acc[subject];
 
-    const previousWeekStart = new Date(thisWeekStart);
-    previousWeekStart.setDate(thisWeekStart.getDate() - 7);
-
-    const previousWeekEnd = new Date(thisWeekStart);
-    previousWeekEnd.setMilliseconds(previousWeekEnd.getMilliseconds() - 1);
-
-    let weekTotal = 0;
-    let previousWeekTotal = 0;
-    let minutesAllTime = 0;
-    const minutesByDate = new Map<string, number>();
-    const sessionsByDate = new Map<string, number>();
-    const weeklyMinutesBySubject = new Map<string, number>();
-    const weeklySessionsBySubject = new Map<string, number>();
-
-    sessions.forEach((session) => {
-      const sessionDate = startOfDay(parseSessionDate(session));
-      const sessionKey = toDateKey(sessionDate);
-      minutesAllTime += session.minutes;
-
-      minutesByDate.set(sessionKey, (minutesByDate.get(sessionKey) || 0) + session.minutes);
-      sessionsByDate.set(sessionKey, (sessionsByDate.get(sessionKey) || 0) + 1);
-
-      if (sessionDate >= thisWeekStart && sessionDate <= today) {
-        weekTotal += session.minutes;
-        weeklyMinutesBySubject.set(session.subject, (weeklyMinutesBySubject.get(session.subject) || 0) + session.minutes);
-        weeklySessionsBySubject.set(session.subject, (weeklySessionsBySubject.get(session.subject) || 0) + 1);
-      } else if (sessionDate >= previousWeekStart && sessionDate <= previousWeekEnd) {
-        previousWeekTotal += session.minutes;
+      if (!current) {
+        acc[subject] = {
+          subject,
+          minutes: entry.minutes,
+          sessions: entry.sessions,
+          share: 0,
+        };
+        return acc;
       }
-    });
 
-    const nextDailyPulse: DailyPulse[] = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(thisWeekStart);
-      date.setDate(thisWeekStart.getDate() + index);
-      const key = toDateKey(date);
-      return {
-        key,
-        label: DAY_FORMATTER.format(date).replace('.', '').slice(0, 3),
-        minutes: minutesByDate.get(key) || 0,
-        isToday: key === toDateKey(today),
-      };
-    });
+      current.minutes += entry.minutes;
+      current.sessions += entry.sessions;
+      return acc;
+    }, {});
 
-    const topDayEntry = Array.from(minutesByDate.entries()).sort((a, b) => b[1] - a[1])[0];
-    const parsedBestDay = topDayEntry
-      ? {
-          key: topDayEntry[0],
-          minutes: topDayEntry[1],
-          label: new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' })
-            .format(new Date(`${topDayEntry[0]}T12:00:00`))
-            .replace('.', ''),
-        }
-      : null;
-
-    const weeklySubjectTotal = Array.from(weeklyMinutesBySubject.values()).reduce((sum, value) => sum + value, 0);
-    const nextSubjectBreakdown: SubjectBreakdown[] = Array.from(weeklyMinutesBySubject.entries())
-      .map(([subject, minutes]) => ({
-        subject,
-        minutes,
-        sessions: weeklySessionsBySubject.get(subject) || 0,
-        share: weeklySubjectTotal > 0 ? Math.round((minutes / weeklySubjectTotal) * 100) : 0,
+    const nextSubjectBreakdown: SubjectBreakdown[] = Object.values(nextSubjectBreakdownMap)
+      .map((entry) => ({
+        ...entry,
+        share: snapshot.totalMinutes > 0 ? Math.round((entry.minutes / snapshot.totalMinutes) * 100) : 0,
       }))
-      .sort((a, b) => b.minutes - a.minutes)
+      .sort((left, right) => right.minutes - left.minutes)
       .slice(0, 5);
 
     return {
-      weekMinutes: weekTotal,
-      previousWeekMinutes: previousWeekTotal,
+      weekMinutes: snapshot.totalMinutes,
+      previousWeekMinutes: snapshot.previousTotalMinutes,
       totalMinutes: minutesAllTime,
-      totalSessions: sessions.length,
-      averageSessionMinutes: sessions.length ? Math.round(minutesAllTime / sessions.length) : 0,
-      activeDaysThisWeek: nextDailyPulse.filter((entry) => entry.minutes > 0).length,
-      bestDay: parsedBestDay,
+      totalSessions: trackedSessions.length,
+      averageSessionMinutes: trackedSessions.length ? Math.round(minutesAllTime / trackedSessions.length) : 0,
+      activeDaysThisWeek: snapshot.activeDays,
+      bestDay: snapshot.bestDay,
       dailyPulse: nextDailyPulse,
       subjectBreakdown: nextSubjectBreakdown,
     };
-  }, [sessions]);
+  }, [hybridEnemWeight, preferredTrack, sessions]);
 
   const streakDays = Math.max(userData.currentStreak || 0, userData.streak || 0);
   const dailyGoalMinutes = userData.dailyGoal || 180;
@@ -281,6 +229,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   );
   const topSubject = subjectBreakdown[0];
   const topSubjectDisplay = topSubject ? getDisplayDiscipline(topSubject.subject) : null;
+  const topSubjectPalette = getSubjectPalette(topSubject?.subject || 'Outra');
   const strongestPulse = Math.max(...dailyPulse.map((entry) => entry.minutes), 1);
   const weeklyAverageMinutes = Math.round(weekMinutes / 7);
   const weeklySignalCopy =
@@ -289,162 +238,195 @@ export const Dashboard: React.FC<DashboardProps> = ({
       : `Faltam ${formatMinutes(Math.max(weeklyGoalMinutes - weekMinutes, 0))} para bater sua meta semanal.`;
 
   return (
-    <div className="space-y-6">
-      <section className="overflow-hidden rounded-[28px] border border-slate-700/70 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_35%),radial-gradient(circle_at_right,rgba(14,165,233,0.16),transparent_30%),linear-gradient(145deg,#020617,#0f172a_55%,#111827)] shadow-[0_24px_60px_-30px_rgba(2,6,23,0.98)]">
-        <div className="grid gap-8 px-6 py-7 lg:px-8 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
+    <div className="space-y-5">
+      <section className={`overflow-hidden rounded-[26px] border shadow-[0_22px_50px_-28px_rgba(100,116,139,0.26)] ${
+        darkMode
+          ? 'border-slate-800/80 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_35%),radial-gradient(circle_at_right,rgba(59,130,246,0.10),transparent_28%),linear-gradient(145deg,rgba(15,23,42,0.98),rgba(17,24,39,0.98)_58%,rgba(2,6,23,0.98))] shadow-[0_26px_70px_-32px_rgba(2,6,23,0.52)]'
+          : 'border-slate-300/80 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.14),transparent_35%),radial-gradient(circle_at_right,rgba(14,165,233,0.10),transparent_28%),linear-gradient(145deg,rgba(230,237,245,0.98),rgba(220,229,239,0.98)_58%,rgba(226,234,242,0.96))]'
+      }`}>
+        <div className="grid gap-6 px-5 py-6 lg:px-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(290px,0.95fr)]">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-200">
+            <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] ${
+              darkMode
+                ? 'border-cyan-400/20 bg-cyan-400/10 text-cyan-200'
+                : 'border-sky-300/80 bg-sky-100/80 text-sky-700'
+            }`}>
               <Sparkles className="h-3.5 w-3.5" />
               Painel de progresso
             </div>
 
             <div className="mt-5 max-w-3xl">
-              <p className="text-sm font-medium text-sky-200/80">Ola, {userName.split(' ')[0] || 'estudante'}</p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
+              <p className={`text-sm font-medium ${darkMode ? 'text-cyan-200/80' : 'text-sky-700/80'}`}>Ola, {userName.split(' ')[0] || 'estudante'}</p>
+              <h2 className={`mt-2 text-[30px] font-semibold tracking-tight sm:text-[36px] ${darkMode ? 'text-slate-50' : 'text-slate-900'}`}>
                 Seu esforco esta ficando visivel.
               </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+              <p className={`mt-3 max-w-2xl text-sm leading-6 sm:text-base ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                 Hoje voce soma {formatMinutes(todayMinutes)}. Na semana, ja acumulou {formatMinutes(weekMinutes)} em{' '}
                 {activeDaysThisWeek} dias ativos, com um ritmo {weeklyChange.direction === 'down' ? 'mais baixo' : weeklyChange.direction === 'up' ? 'melhor' : 'estavel'} do que na semana passada.
               </p>
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+            <div className="mt-5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+              <div className={`rounded-2xl border p-3.5 backdrop-blur-sm ${darkMode ? 'border-slate-700/80 bg-slate-900/72' : 'border-slate-300/80 bg-white/76'}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Hoje</span>
-                  <Clock3 className="h-4 w-4 text-sky-300" />
+                  <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Hoje</span>
+                  <Clock3 className="h-4 w-4 text-sky-600" />
                 </div>
-                <p className="mt-3 text-3xl font-semibold text-slate-50">{formatMinutes(todayMinutes)}</p>
-                <p className="mt-2 text-sm text-slate-400">Meta diaria: {formatMinutes(dailyGoalMinutes)}</p>
+                <p className={`mt-2.5 text-[28px] font-semibold ${darkMode ? 'text-slate-50' : 'text-slate-900'}`}>{formatMinutes(todayMinutes)}</p>
+                <p className={`mt-1.5 text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Meta diaria: {formatMinutes(dailyGoalMinutes)}</p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+              <div className={`rounded-2xl border p-3.5 backdrop-blur-sm ${darkMode ? 'border-slate-700/80 bg-slate-900/72' : 'border-slate-300/80 bg-white/76'}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Semana</span>
-                  <Target className="h-4 w-4 text-cyan-300" />
+                  <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Semana</span>
+                  <Target className="h-4 w-4 text-cyan-600" />
                 </div>
-                <p className="mt-3 text-3xl font-semibold text-slate-50">{formatMinutes(weekMinutes)}</p>
-                <p className="mt-2 text-sm text-slate-400">{weeklyGoalProgress}% da meta semanal</p>
+                <p className={`mt-2.5 text-[28px] font-semibold ${darkMode ? 'text-slate-50' : 'text-slate-900'}`}>{formatMinutes(weekMinutes)}</p>
+                <p className={`mt-1.5 text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{weeklyGoalProgress}% da meta semanal</p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+              <div className={`rounded-2xl border p-3.5 backdrop-blur-sm ${darkMode ? 'border-slate-700/80 bg-slate-900/72' : 'border-slate-300/80 bg-white/76'}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Evolucao</span>
+                  <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Evolucao</span>
                   {weeklyChange.direction === 'down' ? (
-                    <ArrowDownRight className="h-4 w-4 text-rose-300" />
+                    <ArrowDownRight className="h-4 w-4 text-rose-500" />
                   ) : weeklyChange.direction === 'up' ? (
-                    <ArrowUpRight className="h-4 w-4 text-emerald-300" />
+                    <ArrowUpRight className="h-4 w-4 text-emerald-500" />
                   ) : (
-                    <ArrowRight className="h-4 w-4 text-slate-300" />
+                    <ArrowRight className="h-4 w-4 text-slate-500" />
                   )}
                 </div>
-                <p className="mt-3 text-3xl font-semibold text-slate-50">{weeklyChange.label}</p>
-                <p className="mt-2 text-sm text-slate-400">{weeklyChange.helper}</p>
+                <p className={`mt-2.5 text-[28px] font-semibold ${darkMode ? 'text-slate-50' : 'text-slate-900'}`}>{weeklyChange.label}</p>
+                <p className={`mt-1.5 text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{weeklyChange.helper}</p>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+              <div className={`rounded-2xl border p-3.5 backdrop-blur-sm ${darkMode ? 'border-slate-700/80 bg-slate-900/72' : 'border-slate-300/80 bg-white/76'}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Streak</span>
-                  <Flame className="h-4 w-4 text-amber-300" />
+                  <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Streak</span>
+                  <Flame className="h-4 w-4 text-amber-500" />
                 </div>
-                <p className="mt-3 text-3xl font-semibold text-slate-50">{streakDays} dias</p>
-                <p className="mt-2 text-sm text-slate-400">
+                <p className={`mt-2.5 text-[28px] font-semibold ${darkMode ? 'text-slate-50' : 'text-slate-900'}`}>{streakDays} dias</p>
+                <p className={`mt-1.5 text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                   {streakDays > 0 ? 'Voce esta mantendo o habito ativo.' : 'A primeira sessao ja libera sua sequencia.'}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[26px] border border-slate-700/80 bg-slate-950/60 p-5 shadow-[0_18px_36px_-24px_rgba(14,165,233,0.7)]">
+          <div className={`rounded-[24px] border p-4 shadow-[0_16px_30px_-22px_rgba(56,189,248,0.22)] ${
+            darkMode
+              ? 'border-slate-700/80 bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(17,24,39,0.94))]'
+              : 'border-slate-300/80 bg-[linear-gradient(180deg,rgba(239,245,250,0.96),rgba(226,235,243,0.94))]'
+          }`}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Pulso da semana</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-50">Horas que viram progresso</h3>
+                <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Pulso da semana</p>
+                <h3 className={`mt-2 text-xl font-semibold ${darkMode ? 'text-slate-50' : 'text-slate-900'}`}>Horas que viram progresso</h3>
               </div>
-              <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+              <div className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${darkMode ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200' : 'border-emerald-300 bg-emerald-100/85 text-emerald-700'}`}>
                 {activeDaysThisWeek}/7 dias ativos
               </div>
             </div>
 
-            <div className="mt-6 flex items-end gap-2">
+            <div className="mt-5 flex items-end gap-1.5">
               {dailyPulse.map((entry) => (
                 <div key={entry.key} className="flex flex-1 flex-col items-center gap-2">
-                  <div className="flex h-32 w-full items-end rounded-2xl bg-slate-900/80 px-1.5 pb-1.5">
+                  <div className={`flex h-28 w-full items-end rounded-2xl px-1.5 pb-1.5 ${darkMode ? 'bg-slate-800/90' : 'bg-slate-200/85'}`}>
                     <div
-                      className={`w-full rounded-xl transition-all duration-500 ${entry.isToday ? 'bg-gradient-to-t from-cyan-400 to-sky-300 shadow-[0_0_24px_rgba(56,189,248,0.45)]' : 'bg-gradient-to-t from-slate-600 to-slate-300/90'}`}
+                      className={`w-full rounded-xl transition-all duration-500 ${entry.isToday ? 'bg-gradient-to-t from-cyan-500 to-sky-400 shadow-[0_0_20px_rgba(56,189,248,0.28)]' : 'bg-gradient-to-t from-slate-500 to-slate-300'}`}
                       style={{
                         height: `${Math.max(14, Math.round((entry.minutes / strongestPulse) * 100))}%`,
                       }}
                     />
                   </div>
                   <div className="text-center">
-                    <p className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${entry.isToday ? 'text-sky-200' : 'text-slate-500'}`}>
+                    <p className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${entry.isToday ? (darkMode ? 'text-cyan-300' : 'text-sky-700') : (darkMode ? 'text-slate-400' : 'text-slate-500')}`}>
                       {entry.label}
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">{entry.minutes ? formatMinutes(entry.minutes) : '0 min'}</p>
+                    <p className={`mt-1 text-xs ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{entry.minutes ? formatMinutes(entry.minutes) : '0 min'}</p>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+            <div className={`mt-5 rounded-2xl border p-3.5 ${darkMode ? 'border-slate-700/80 bg-slate-900/72' : 'border-slate-300/80 bg-white/72'}`}>
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-slate-200">Meta semanal</span>
-                <span className="text-slate-400">{formatMinutes(weekMinutes)} / {formatMinutes(weeklyGoalMinutes)}</span>
+                <span className={`font-medium ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>Meta semanal</span>
+                <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{formatMinutes(weekMinutes)} / {formatMinutes(weeklyGoalMinutes)}</span>
               </div>
-              <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-800">
+              <div className={`mt-3 h-3 overflow-hidden rounded-full ${darkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-cyan-300 transition-all duration-700"
                   style={{ width: `${Math.max(6, weeklyGoalProgress)}%` }}
                 />
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-400">{weeklySignalCopy}</p>
+              <p className={`mt-3 text-sm leading-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{weeklySignalCopy}</p>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.95fr)_minmax(280px,0.8fr)]">
-        <div className="rounded-2xl border border-slate-700/70 bg-slate-900 p-6 shadow-[0_12px_28px_-18px_rgba(2,6,23,0.92)]">
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.94fr)_minmax(260px,0.78fr)]">
+        <div className={`rounded-2xl border p-5 shadow-[0_12px_28px_-18px_rgba(100,116,139,0.24)] ${
+          darkMode
+            ? 'border-slate-700/80 bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(17,24,39,0.94))]'
+            : 'border-slate-300/80 bg-[linear-gradient(180deg,rgba(233,240,246,0.98),rgba(223,232,241,0.96))]'
+        }`}>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Distribuicao da semana</p>
-              <h3 className="mt-2 text-xl font-semibold text-slate-50">Horas por materia</h3>
+              <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Distribuicao da semana</p>
+              <h3 className={`mt-2 text-xl font-semibold ${darkMode ? 'text-slate-50' : 'text-slate-900'}`}>Horas por materia</h3>
             </div>
             {topSubjectDisplay ? (
-              <div className="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-300">
+              <div
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium ${darkMode ? 'text-slate-100' : 'text-slate-700'}`}
+                style={{
+                  backgroundColor: darkMode ? withAlpha(topSubjectPalette.hex, 0.16) : withAlpha(topSubjectPalette.hex, 0.1),
+                  borderColor: darkMode ? withAlpha(topSubjectPalette.hex, 0.28) : withAlpha(topSubjectPalette.hex, 0.22),
+                }}
+              >
                 Lider: {topSubjectDisplay.label}
               </div>
             ) : null}
           </div>
 
-          <div className="mt-6 space-y-4">
+          <div className="mt-5 space-y-3">
             {subjectBreakdown.map((entry) => {
               const discipline = getDisplayDiscipline(entry.subject);
               const Icon = discipline.Icon;
+              const palette = getSubjectPalette(entry.subject);
 
               return (
-                <div key={entry.subject} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                <div key={entry.subject} className={`rounded-2xl border p-3.5 ${darkMode ? 'border-slate-700/80 bg-slate-900/72' : 'border-slate-300/80 bg-white/76'}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-2.5 text-sky-200">
+                      <div
+                        className="rounded-2xl border p-2.5"
+                        style={{
+                          backgroundColor: darkMode ? withAlpha(palette.hex, 0.16) : withAlpha(palette.hex, 0.1),
+                          borderColor: darkMode ? withAlpha(palette.hex, 0.28) : withAlpha(palette.hex, 0.18),
+                          color: palette.hex,
+                        }}
+                      >
                         <Icon className="h-4 w-4" />
                       </div>
                       <div>
-                        <p className="font-semibold text-slate-100">{discipline.label}</p>
-                        <p className="text-sm text-slate-400">{entry.sessions} sessoes registradas</p>
+                        <p className={`font-semibold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>{discipline.label}</p>
+                        <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{entry.sessions} sessoes registradas</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-semibold text-slate-50">{formatMinutes(entry.minutes)}</p>
-                      <p className="text-xs text-slate-400">{entry.share}% da sua semana</p>
+                      <p className={`text-lg font-semibold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>{formatMinutes(entry.minutes)}</p>
+                      <p className={`text-xs ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{entry.share}% da sua semana</p>
                     </div>
                   </div>
-                  <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-800">
+                  <div className={`mt-2.5 h-2.5 overflow-hidden rounded-full ${darkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-sky-400 to-cyan-300"
-                      style={{ width: `${Math.max(8, entry.share)}%` }}
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.max(8, entry.share)}%`,
+                        backgroundColor: palette.hex,
+                      }}
                     />
                   </div>
                 </div>
@@ -453,82 +435,100 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-700/70 bg-slate-900 p-6 shadow-[0_12px_28px_-18px_rgba(2,6,23,0.92)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Insights</p>
-          <h3 className="mt-2 text-xl font-semibold text-slate-50">O que esse ritmo esta mostrando</h3>
+        <div className={`rounded-2xl border p-5 shadow-[0_12px_28px_-18px_rgba(100,116,139,0.24)] ${
+          darkMode
+            ? 'border-slate-700/80 bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(17,24,39,0.94))]'
+            : 'border-slate-300/80 bg-[linear-gradient(180deg,rgba(233,240,246,0.98),rgba(223,232,241,0.96))]'
+        }`}>
+          <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Insights</p>
+          <h3 className={`mt-2 text-xl font-semibold ${darkMode ? 'text-slate-50' : 'text-slate-900'}`}>O que esse ritmo esta mostrando</h3>
 
-          <div className="mt-6 grid gap-3">
-            <div className="rounded-2xl border border-emerald-700/30 bg-emerald-950/20 p-4">
-              <div className="flex items-center gap-2 text-emerald-300">
+          <div className="mt-5 grid gap-2.5">
+            <div className={`rounded-2xl border p-3.5 ${darkMode ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-emerald-300 bg-emerald-50/85'}`}>
+              <div className={`flex items-center gap-2 ${darkMode ? 'text-emerald-200' : 'text-emerald-700'}`}>
                 <Trophy className="h-4 w-4" />
                 <span className="text-sm font-semibold">Melhor dia</span>
               </div>
-              <p className="mt-3 text-lg font-semibold text-slate-50">
+              <p className={`mt-3 text-lg font-semibold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>
                 {bestDay ? `${bestDay.label} · ${formatMinutes(bestDay.minutes)}` : 'Seu melhor dia vai aparecer aqui'}
               </p>
-              <p className="mt-1 text-sm text-emerald-200/80">Seu pico atual de volume ja esta claro no historico.</p>
+              <p className={`mt-1 text-sm ${darkMode ? 'text-emerald-100/80' : 'text-emerald-800/80'}`}>Seu pico atual de volume ja esta claro no historico.</p>
             </div>
 
-            <div className="rounded-2xl border border-sky-700/30 bg-sky-950/20 p-4">
-              <div className="flex items-center gap-2 text-sky-300">
+            <div
+              className="rounded-2xl border p-3.5"
+              style={{
+                backgroundColor: darkMode ? withAlpha(topSubjectPalette.hex, 0.14) : withAlpha(topSubjectPalette.hex, 0.08),
+                borderColor: darkMode ? withAlpha(topSubjectPalette.hex, 0.26) : withAlpha(topSubjectPalette.hex, 0.2),
+              }}
+            >
+              <div className="flex items-center gap-2" style={{ color: topSubjectPalette.hex }}>
                 <Brain className="h-4 w-4" />
                 <span className="text-sm font-semibold">Materia dominante</span>
               </div>
-              <p className="mt-3 text-lg font-semibold text-slate-50">
+              <p className={`mt-3 text-lg font-semibold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>
                 {topSubjectDisplay ? `${topSubjectDisplay.label} lidera sua semana` : 'Sua materia dominante aparece apos ganhar volume'}
               </p>
-              <p className="mt-1 text-sm text-sky-100/75">
+              <p className={`mt-1 text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                 {topSubject ? `${formatMinutes(topSubject.minutes)} acumulados em ${topSubject.sessions} sessoes.` : 'Continue estudando para revelar sua distribuicao.'}
               </p>
             </div>
 
-            <div className="rounded-2xl border border-amber-700/30 bg-amber-950/20 p-4">
-              <div className="flex items-center gap-2 text-amber-300">
+            <div className={`rounded-2xl border p-3.5 ${darkMode ? 'border-amber-400/20 bg-amber-400/10' : 'border-amber-300 bg-amber-50/88'}`}>
+              <div className={`flex items-center gap-2 ${darkMode ? 'text-amber-200' : 'text-amber-700'}`}>
                 <Zap className="h-4 w-4" />
                 <span className="text-sm font-semibold">Proximo nivel</span>
               </div>
-              <p className="mt-3 text-lg font-semibold text-slate-50">{nextLevelPrediction.label}</p>
-              <p className="mt-1 text-sm text-amber-100/75">
+              <p className={`mt-3 text-lg font-semibold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>{nextLevelPrediction.label}</p>
+              <p className={`mt-1 text-sm ${darkMode ? 'text-amber-100/80' : 'text-amber-800/80'}`}>
                 Faltam {nextLevelPrediction.pointsToNext.toLocaleString()} pontos para o nivel {nextLevelPrediction.nextLevel}.
               </p>
             </div>
 
-            <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-4">
-              <div className="flex items-center gap-2 text-slate-300">
+            <div className={`rounded-2xl border p-3.5 ${darkMode ? 'border-slate-700 bg-slate-900/72' : 'border-slate-300 bg-white/76'}`}>
+              <div className={`flex items-center gap-2 ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>
                 <Clock3 className="h-4 w-4" />
                 <span className="text-sm font-semibold">Acumulado</span>
               </div>
-              <p className="mt-3 text-lg font-semibold text-slate-50">{formatMinutes(totalMinutes)} registrados</p>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className={`mt-3 text-lg font-semibold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>{formatMinutes(totalMinutes)} registrados</p>
+              <p className={`mt-1 text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                 {totalSessions} sessoes concluidas com media de {formatMinutes(averageSessionMinutes)} por sessao.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-700/70 bg-slate-900 p-6 shadow-[0_12px_28px_-18px_rgba(2,6,23,0.92)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Proxima melhor acao</p>
-          <h3 className="mt-2 text-xl font-semibold text-slate-50">Mantenha o ritmo alto hoje</h3>
+        <div className={`rounded-2xl border p-5 shadow-[0_12px_28px_-18px_rgba(100,116,139,0.24)] ${
+          darkMode
+            ? 'border-slate-700/80 bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(17,24,39,0.94))]'
+            : 'border-slate-300/80 bg-[linear-gradient(180deg,rgba(233,240,246,0.98),rgba(223,232,241,0.96))]'
+        }`}>
+          <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Proxima melhor acao</p>
+          <h3 className={`mt-2 text-xl font-semibold ${darkMode ? 'text-slate-50' : 'text-slate-900'}`}>Mantenha o ritmo alto hoje</h3>
 
-          <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className={`mt-5 rounded-2xl border p-3.5 ${darkMode ? 'border-slate-700 bg-slate-900/72' : 'border-slate-300 bg-white/76'}`}>
             <div className="flex items-center gap-3">
-              <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-2.5 text-cyan-200">
+              <div className={`rounded-2xl border p-2.5 ${darkMode ? 'border-cyan-400/20 bg-cyan-400/10 text-cyan-200' : 'border-cyan-300 bg-cyan-100/80 text-cyan-700'}`}>
                 <Clock3 className="h-4 w-4" />
               </div>
               <div>
-                <p className="font-semibold text-slate-100">Sessao recomendada</p>
-                <p className="text-sm text-slate-400">
+                <p className={`font-semibold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>Sessao recomendada</p>
+                <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                   {recommendedMethod.name} · {recommendedMethod.focusMinutes} min de foco
                 </p>
               </div>
             </div>
-            <p className="mt-4 text-sm leading-6 text-slate-400">{recommendedMethod.description}</p>
+            <p className={`mt-4 text-sm leading-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{recommendedMethod.description}</p>
           </div>
 
-          <div className="mt-6 space-y-3">
+          <div className="mt-5 space-y-2.5">
             <button
               onClick={onStartFocusSession}
-              className="flex w-full items-center justify-between rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3.5 text-left text-sm font-semibold text-cyan-100 transition hover:border-cyan-400/50 hover:bg-cyan-500/15"
+              className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                darkMode
+                  ? 'border-cyan-400/25 bg-cyan-400/14 text-cyan-100 hover:border-cyan-400/35 hover:bg-cyan-400/20'
+                  : 'border-cyan-300 bg-cyan-100/75 text-cyan-800 hover:border-cyan-400 hover:bg-cyan-100'
+              }`}
             >
               <span>Comecar sessao de foco agora</span>
               <ArrowRight className="h-4 w-4" />
@@ -536,41 +536,53 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             <button
               onClick={onStartLongSession}
-              className="flex w-full items-center justify-between rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3.5 text-left text-sm font-semibold text-slate-100 transition hover:border-slate-500 hover:bg-slate-900"
+              className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                darkMode
+                  ? 'border-slate-700 bg-slate-900/72 text-slate-100 hover:border-slate-600 hover:bg-slate-900'
+                  : 'border-slate-300 bg-white/76 text-slate-800 hover:border-slate-400 hover:bg-white'
+              }`}
             >
               <span>Reservar bloco longo de estudo</span>
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="mt-6 grid gap-3">
+          <div className="mt-5 grid gap-2.5">
             <button
               onClick={onOpenQuestions}
-              className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-950"
+              className={`flex items-center justify-between rounded-2xl border px-4 py-2.5 text-sm transition ${
+                darkMode
+                  ? 'border-slate-700 bg-slate-900/72 text-slate-100 hover:border-slate-600 hover:bg-slate-900'
+                  : 'border-slate-300 bg-white/72 text-slate-800 hover:border-slate-400 hover:bg-white'
+              }`}
             >
               <span className="inline-flex items-center gap-2 font-medium">
-                <Target className="h-4 w-4 text-emerald-300" />
+                <Target className="h-4 w-4 text-emerald-600" />
                 Fazer bloco de questoes
               </span>
-              <ArrowRight className="h-4 w-4 text-slate-500" />
+                <ArrowRight className={`h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
             </button>
 
             <button
               onClick={onOpenFlashcards}
-              className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-950"
+              className={`flex items-center justify-between rounded-2xl border px-4 py-2.5 text-sm transition ${
+                darkMode
+                  ? 'border-slate-700 bg-slate-900/72 text-slate-100 hover:border-slate-600 hover:bg-slate-900'
+                  : 'border-slate-300 bg-white/72 text-slate-800 hover:border-slate-400 hover:bg-white'
+              }`}
             >
               <span className="inline-flex items-center gap-2 font-medium">
-                <BookOpen className="h-4 w-4 text-amber-300" />
+                <BookOpen className="h-4 w-4 text-amber-600" />
                 Revisar com flashcards
               </span>
-              <ArrowRight className="h-4 w-4 text-slate-500" />
+                <ArrowRight className={`h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
             </button>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Ritmo medio</p>
-            <p className="mt-2 text-lg font-semibold text-slate-50">{formatMinutes(weeklyAverageMinutes)} por dia nesta semana</p>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
+          <div className={`mt-5 rounded-2xl border p-3.5 ${darkMode ? 'border-slate-700 bg-slate-900/72' : 'border-slate-300 bg-white/72'}`}>
+            <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Ritmo medio</p>
+            <p className={`mt-2 text-lg font-semibold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>{formatMinutes(weeklyAverageMinutes)} por dia nesta semana</p>
+            <p className={`mt-2 text-sm leading-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
               Continue assim para manter o streak ativo e empurrar ranking, progresso semanal e feed social ao mesmo tempo.
             </p>
           </div>

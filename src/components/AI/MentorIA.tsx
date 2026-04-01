@@ -13,12 +13,27 @@ import toast from 'react-hot-toast';
 import type { UserData } from '../../types';
 import { useMentorMemory } from '../../hooks/useMentorMemory';
 import { mentorBriefingService } from '../../services/mentorBriefing.service';
-import { mentorChatApiService, type MentorChatPayload } from '../../services/mentorChatApi.service';
-import { mentorIAService, type MentorMessage } from '../../services/mentorIA.service';
+import { mentorChatApiService } from '../../services/mentorChatApi.service';
+import {
+  mentorIAService,
+  sanitizeMentorList,
+  sanitizeMentorText,
+  type MentorMessage,
+} from '../../services/mentorIA.service';
 import { examStrategyService } from '../../services/examStrategy.service';
 import { isSupabaseConfigured } from '../../services/supabase.client';
-import type { EngineDecision, MentorOutput, MentorTrigger } from '../../types/mentor';
+import type { MentorOutput, MentorTrigger } from '../../types/mentor';
 import { trackEvent } from '../../utils/analytics';
+import {
+  normalizeSubjectLabel,
+  truncatePresentationLabel,
+} from '../../utils/uiLabels';
+import { buildMentorDecisionInput } from '../../features/mentor/context/buildMentorDecisionInput';
+import { mentorDecisionEngine } from '../../features/mentor/decision/mentorDecisionEngine';
+import { buildMentorBriefingRequest } from '../../features/mentor/generation/buildMentorBriefingRequest';
+import { buildMentorChatPayload } from '../../features/mentor/generation/buildMentorChatPayload';
+import { composeMentorFallbackReply } from '../../features/mentor/generation/mentorFallbackComposer';
+import { buildMentorMemoryWriteBack } from '../../features/mentor/generation/buildMentorMemoryWriteBack';
 
 interface MentorIAProps {
   userName?: string;
@@ -27,6 +42,9 @@ interface MentorIAProps {
   userData: UserData;
   weeklyGoalMinutes: number;
   daysToExam?: number;
+  examGoal?: string;
+  examDate?: string;
+  preferredTrack?: 'enem' | 'concursos' | 'hibrido';
   onGoToFocus?: () => void;
   onGoToAcademy?: () => void;
 }
@@ -56,11 +74,28 @@ const colorByLevel: Record<AlertItem['level'], string> = {
   success: 'border-blue-500/30 bg-blue-500/10 text-blue-300',
 };
 
+const toAlertLevel = (riskLevel: 'low' | 'medium' | 'high' | 'critical'): AlertItem['level'] => {
+  if (riskLevel === 'high' || riskLevel === 'critical') {
+    return 'urgent';
+  }
+
+  if (riskLevel === 'medium') {
+    return 'info';
+  }
+
+  return 'success';
+};
+
 const getSubjectMinutes = (userData: UserData): Record<string, number> => {
   const sessions = userData.sessions || userData.studyHistory || [];
   return sessions.reduce<Record<string, number>>((acc, session) => {
-    const key = session.subject || 'Outra';
-    acc[key] = (acc[key] || 0) + session.minutes;
+    const key = normalizeSubjectLabel(String(session.subject || ''), 'Outra');
+    const minutes = Number(session.minutes || session.duration || 0);
+    if (minutes <= 0) {
+      return acc;
+    }
+
+    acc[key] = (acc[key] || 0) + minutes;
     return acc;
   }, {});
 };
@@ -98,9 +133,6 @@ const hasInactivity48h = (userData: UserData): boolean => {
   return Date.now() - new Date(lastSession.date).getTime() >= 48 * 60 * 60 * 1000;
 };
 
-const containsBlockedIntent = (text: string): boolean =>
-  /(qual assunto vai cair|atalho|chute|gabarito|milagre)/i.test(text);
-
 const MentorIA: React.FC<MentorIAProps> = ({
   userName,
   userEmail,
@@ -108,6 +140,9 @@ const MentorIA: React.FC<MentorIAProps> = ({
   userData,
   weeklyGoalMinutes,
   daysToExam = 247,
+  examGoal,
+  examDate,
+  preferredTrack,
   onGoToFocus,
   onGoToAcademy,
 }) => {
@@ -117,13 +152,11 @@ const MentorIA: React.FC<MentorIAProps> = ({
   const [briefing, setBriefing] = useState<MentorOutput | null>(null);
   const [briefingSource, setBriefingSource] = useState<'llm' | 'fallback'>('fallback');
   const userKey = userEmail || userName || 'default';
-  const [messages, setMessages] = useState<MentorMessage[]>([
-    {
-      id: mentorIAService.createMessage('assistant', 'init').id,
-      role: 'assistant',
-      createdAt: new Date().toISOString(),
-      content: `Ola, ${userName || 'estudante'}! Ja analisei seu momento atual e preparei alertas com memoria do seu estudo.`,
-    },
+  const [messages, setMessages] = useState<MentorMessage[]>(() => [
+    mentorIAService.createMessage(
+      'assistant',
+      `Ola, ${userName || 'estudante'}! Ja analisei seu momento atual e preparei alertas com memoria do seu estudo.`,
+    ),
   ]);
   const chatRef = useRef<HTMLDivElement | null>(null);
 
@@ -145,6 +178,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
     runtime: mentorRuntime,
     saveBriefing,
     rememberFollowedAction,
+    saveWriteBack,
   } = useMentorMemory({
     userKey,
     userData,
@@ -153,15 +187,30 @@ const MentorIA: React.FC<MentorIAProps> = ({
     trigger,
   });
 
-  const mentorFocus = mentorRuntime.recommendedFocus;
-  const mentorSecondaryFocus = mentorRuntime.secondaryFocus;
-  const mentorStrongArea = mentorRuntime.strongArea;
-  const mentorPreviousFocus = mentorMemory.previousFocus;
+  const mentorFocus = normalizeSubjectLabel(mentorRuntime.recommendedFocus, 'Outra');
+  const mentorSecondaryFocus = normalizeSubjectLabel(mentorRuntime.secondaryFocus, mentorFocus);
+  const mentorStrongArea = normalizeSubjectLabel(mentorRuntime.strongArea, 'Outra');
+  const mentorPreviousFocus = mentorMemory.previousFocus
+    ? normalizeSubjectLabel(mentorMemory.previousFocus, mentorFocus)
+    : null;
   const weeklyPct = mentorRuntime.weeklyPct;
   const weeklyDone = mentorRuntime.weeklyMinutesDone;
-  const subjectMinutes = Object.keys(mentorMemory.subjectMinutes).length > 0
-    ? mentorMemory.subjectMinutes
-    : getSubjectMinutes(userData);
+  const subjectMinutes = useMemo(() => {
+    const source = Object.keys(mentorMemory.subjectMinutes).length > 0
+      ? mentorMemory.subjectMinutes
+      : getSubjectMinutes(userData);
+
+    return Object.entries(source).reduce<Record<string, number>>((acc, [subject, minutes]) => {
+      const safeSubject = normalizeSubjectLabel(subject, 'Outra');
+      const safeMinutes = Number(minutes || 0);
+      if (safeMinutes <= 0) {
+        return acc;
+      }
+
+      acc[safeSubject] = (acc[safeSubject] || 0) + safeMinutes;
+      return acc;
+    }, {});
+  }, [mentorMemory.subjectMinutes, userData]);
   const subjectEntries = useMemo(
     () => Object.entries(subjectMinutes).sort(([, a], [, b]) => b - a),
     [subjectMinutes],
@@ -169,18 +218,99 @@ const MentorIA: React.FC<MentorIAProps> = ({
   const followedAction = mentorMemory.lastActionFollowed;
   const lastRecommendation = mentorMemory.lastRecommendations[0] || null;
   const lastAnalysisLabel = formatAnalysisRecency(mentorMemory.lastAnalysisAt);
-
-  const mentorEngineDecision = useMemo<EngineDecision>(
-    () => ({
-      prioridadeAtual: mentorFocus,
-      justificativa: `${mentorRuntime.focusShiftReason} Janela atual de ${daysToExam} dias ate a prova.`,
-      acoesSemana: [
-        `Revisar ${mentorFocus} por 20min em 3 dias da semana`,
-        `Resolver 15 questoes de ${mentorFocus} em blocos curtos`,
-        `Manter consistencia em ${mentorStrongArea} com 2 blocos leves`,
-      ],
+  const safeFocusShiftReason = useMemo(
+    () => sanitizeMentorText(mentorRuntime.focusShiftReason, {
+      fallback: 'O foco foi ajustado com base no seu ritmo recente.',
+      fallbackWhenEmpty: true,
+      maxLength: 220,
     }),
-    [daysToExam, mentorFocus, mentorRuntime.focusShiftReason, mentorStrongArea],
+    [mentorRuntime.focusShiftReason],
+  );
+  const safeLastRecommendation = useMemo(
+    () => sanitizeMentorText(lastRecommendation, {
+      fallback: 'Mentor montando sua primeira acao.',
+      fallbackWhenEmpty: true,
+      maxLength: 220,
+    }),
+    [lastRecommendation],
+  );
+  const safeBriefing = useMemo<MentorOutput | null>(() => {
+    if (!briefing) {
+      return null;
+    }
+
+    return {
+      ...briefing,
+      prioridade: normalizeSubjectLabel(
+        sanitizeMentorText(briefing.prioridade, {
+          fallback: mentorFocus,
+          fallbackWhenEmpty: true,
+          maxLength: 120,
+        }),
+        mentorFocus,
+      ),
+      justificativa: sanitizeMentorText(briefing.justificativa, {
+        fallback: 'O Mentor esta organizando sua leitura da semana.',
+        fallbackWhenEmpty: true,
+        maxLength: 320,
+      }),
+      acao_semana: sanitizeMentorList(briefing.acao_semana, {
+        fallback: `Revisar ${mentorFocus} em um bloco curto hoje.`,
+        maxItems: 4,
+        maxLength: 180,
+      }),
+      mensagem_motivacional: sanitizeMentorText(briefing.mensagem_motivacional, {
+        fallback: 'Constancia curta ainda vence excesso sem ritmo.',
+        fallbackWhenEmpty: true,
+        maxLength: 180,
+      }),
+    };
+  }, [briefing, mentorFocus]);
+
+  const mentorDecisionInput = useMemo(
+    () => buildMentorDecisionInput({
+      userKey,
+      examGoal,
+      examDate,
+      preferredTrack,
+      userData,
+      weeklyGoalMinutes,
+      daysToExam,
+      trigger,
+      memory: mentorMemory,
+      runtime: mentorRuntime,
+    }),
+    [
+      daysToExam,
+      examDate,
+      examGoal,
+      mentorMemory,
+      mentorRuntime,
+      preferredTrack,
+      trigger,
+      userData,
+      userKey,
+      weeklyGoalMinutes,
+    ],
+  );
+
+  const mentorDecision = useMemo(
+    () => mentorDecisionEngine.decide(mentorDecisionInput),
+    [mentorDecisionInput],
+  );
+
+  const mentorBriefingRequest = useMemo(
+    () => buildMentorBriefingRequest({
+      userKey,
+      input: mentorDecisionInput,
+      decision: mentorDecision,
+    }),
+    [mentorDecision, mentorDecisionInput, userKey],
+  );
+
+  const mentorMemoryWriteBack = useMemo(
+    () => buildMentorMemoryWriteBack(mentorDecisionInput, mentorDecision),
+    [mentorDecision, mentorDecisionInput],
   );
 
   const alerts = useMemo<AlertItem[]>(
@@ -188,31 +318,33 @@ const MentorIA: React.FC<MentorIAProps> = ({
       {
         id: 1,
         Icon: AlertTriangle,
-        title: `${mentorFocus} pede atencao agora`,
-        body: `${mentorRuntime.focusShiftReason} Recomendo 20 minutos hoje para recuperar ritmo sem perder consistencia.`,
-        action: `Iniciar foco em ${mentorFocus}`,
-        level: 'urgent',
+        title: `${mentorDecision.classification.primarySubject || mentorFocus} pede atencao agora`,
+        body: mentorDecision.summary,
+        action: mentorDecision.actions[0]?.label || `Iniciar foco em ${mentorFocus}`,
+        level: toAlertLevel(mentorDecision.classification.risk.level),
       },
       {
         id: 2,
         Icon: Lightbulb,
         title: `Meta semanal em ${weeklyPct}%`,
-        body: weeklyPct >= 50
-          ? 'Bom progresso. Manter sessoes curtas diarias deve garantir sua meta.'
-          : 'Voce ainda esta abaixo do ideal. Vale priorizar 2 sessoes extras ate sexta.',
-        action: 'Ajustar plano da semana',
+        body: mentorDecision.actions[1]?.description
+          || (weeklyPct >= 50
+            ? 'Bom progresso. Manter sessoes curtas diarias deve garantir sua meta.'
+            : 'Voce ainda esta abaixo do ideal. Vale priorizar 2 sessoes extras ate sexta.'),
+        action: mentorDecision.actions[1]?.label || 'Ajustar plano da semana',
         level: 'info',
       },
       {
         id: 3,
         Icon: Rocket,
-        title: `${mentorStrongArea} em evolucao`,
-        body: `Seu melhor desempenho recente esta em ${mentorStrongArea}. Use isso para ganhar XP com consistencia.`,
-        action: 'Continuar trilha forte',
+        title: `${mentorStrongArea} como alavanca de consistencia`,
+        body: mentorDecision.actions[2]?.description
+          || `Seu melhor desempenho recente esta em ${mentorStrongArea}. Use isso para ganhar XP com consistencia.`,
+        action: mentorDecision.actions[2]?.label || 'Continuar trilha forte',
         level: 'success',
       },
     ],
-    [mentorFocus, mentorRuntime.focusShiftReason, mentorStrongArea, weeklyPct],
+    [mentorDecision, mentorFocus, mentorStrongArea, weeklyPct],
   );
 
   useEffect(() => {
@@ -260,24 +392,14 @@ const MentorIA: React.FC<MentorIAProps> = ({
         return;
       }
 
-      const result = await mentorBriefingService.getBriefing({
-        userKey,
-        objective: 'enem',
-        examName: 'ENEM',
-        daysToExam,
-        level: weeklyPct >= 85 ? 'avancado' : weeklyPct >= 55 ? 'intermediario' : 'iniciante',
-        strongPoints: [mentorStrongArea],
-        weakPoints: [mentorFocus, mentorSecondaryFocus],
-        recentFrequency: `${weeklyPct}% da meta semanal`,
-        engineDecision: mentorEngineDecision,
-        trigger,
-      });
+      const result = await mentorBriefingService.getBriefing(mentorBriefingRequest);
 
       if (cancelled) return;
 
       setBriefing(result.output);
       setBriefingSource(result.source);
       saveBriefing(result.output, result.source);
+      saveWriteBack(mentorMemoryWriteBack);
 
       trackEvent(
         'mentor_briefing_generated',
@@ -309,17 +431,15 @@ const MentorIA: React.FC<MentorIAProps> = ({
     };
   }, [
     daysToExam,
-    mentorEngineDecision,
-    mentorFocus,
+    mentorBriefingRequest,
     mentorMemory.lastBriefing,
     mentorMemory.lastBriefingSource,
+    mentorMemoryWriteBack,
     mentorRuntime.shouldRefreshBriefing,
-    mentorSecondaryFocus,
-    mentorStrongArea,
     saveBriefing,
+    saveWriteBack,
     trigger,
     userEmail,
-    userKey,
     weeklyPct,
   ]);
 
@@ -334,52 +454,20 @@ const MentorIA: React.FC<MentorIAProps> = ({
   }, [messages, typing]);
 
   const getLocalFallbackReply = (text: string): string => {
-    if (containsBlockedIntent(text)) {
-      return 'Nao posso orientar atalhos ou previsoes de prova. Posso te orientar em estrategia real com base no seu momento atual.';
-    }
-
     const strategyMessage = examStrategyService.buildMessageForMentor(text);
-    if (strategyMessage) {
-      return strategyMessage;
-    }
+    const planMessage = text.toLowerCase().includes('plano') || text.toLowerCase().includes('semana')
+      ? buildPlanMessage(mentorFocus, mentorStrongArea)
+      : null;
 
-    if (briefing) {
-      if (text.toLowerCase().includes('hoje')) {
-        return `Prioridade de hoje: ${briefing.prioridade}. ${briefing.acao_semana[0] || 'Siga o primeiro bloco planejado.'}`;
-      }
-
-      if (text.toLowerCase().includes('focar') || text.toLowerCase().includes('fraco')) {
-        return `${briefing.justificativa} Acao pratica: ${briefing.acao_semana.join(' | ')}`;
-      }
-    }
-
-    const lower = text.toLowerCase();
-
-    if (lower.includes('fraca') || lower.includes('dificuldade')) {
-      return `Hoje suas areas mais frageis sao ${mentorFocus} e ${mentorSecondaryFocus}. Minha sugestao: 15min em ${mentorFocus} antes de qualquer outra tarefa.`;
-    }
-
-    if (lower.includes('plano') || lower.includes('semana')) {
-      return buildPlanMessage(mentorFocus, mentorStrongArea);
-    }
-
-    if (lower.includes('revisar') || lower.includes('hoje')) {
-      return `Para hoje: 1) ${mentorFocus} (15min), 2) ${mentorStrongArea} (20min), 3) revisao leve (10min). Total: 45min.`;
-    }
-
-    if (lower.includes('consist') || lower.includes('streak')) {
-      return `Seu streak esta em ${mentorRuntime.currentStreak} dias. Para manter: sessao minima diaria de 15min + revisao curta no fim do dia.`;
-    }
-
-    if (lower.includes('mudou') || lower.includes('foco')) {
-      return mentorPreviousFocus && mentorPreviousFocus !== mentorFocus
-        ? `Seu foco mudou de ${mentorPreviousFocus} para ${mentorFocus}. ${mentorRuntime.focusShiftReason}`
-        : mentorRuntime.focusShiftReason;
-    }
-
-    return lastRecommendation
-      ? `Entendi. Sua ultima recomendacao foi "${lastRecommendation}". Agora o melhor passo e manter foco em ${mentorFocus}. Quer que eu monte um plano de 14 dias?`
-      : `Entendi. Com ${daysToExam} dias para a prova, o melhor agora e constancia diaria e foco em ${mentorFocus}. Quer que eu monte um plano de 14 dias?`;
+    return composeMentorFallbackReply({
+      text,
+      input: mentorDecisionInput,
+      decision: mentorDecision,
+      safeBriefing,
+      strategyReply: strategyMessage || planMessage,
+      lastRecommendation: lastRecommendation ? safeLastRecommendation : null,
+      previousFocus: mentorPreviousFocus,
+    });
   };
 
   const handleFollowWeekAction = (action: string) => {
@@ -438,6 +526,21 @@ const MentorIA: React.FC<MentorIAProps> = ({
     const userMessage = mentorIAService.createMessage('user', content);
     const assistantMessage = mentorIAService.createMessage('assistant', '');
     let streamedReply = '';
+    const commitAssistantMessage = (nextContent: string) => {
+      const safeContent = sanitizeMentorText(nextContent, {
+        fallback: 'Nao consegui montar uma resposta valida agora. Tente reformular a pergunta.',
+        fallbackWhenEmpty: true,
+        maxLength: 1800,
+      });
+
+      setMessages((prev) => prev.map((message) => (
+        message.id === assistantMessage.id
+          ? { ...message, content: safeContent }
+          : message
+      )));
+
+      return safeContent;
+    };
 
     setInput('');
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
@@ -461,23 +564,15 @@ const MentorIA: React.FC<MentorIAProps> = ({
         content: message.content,
       }));
 
-    const payload: MentorChatPayload = {
+    const payload = buildMentorChatPayload({
       message: content,
       history: recentHistory,
-      studentContext: {
-        userName: userName ?? 'estudante',
-        daysToExam,
-        strongArea: mentorStrongArea,
-        weakArea: mentorFocus,
-        weeklyPct,
-        streak: mentorRuntime.currentStreak,
-        previousFocus: mentorPreviousFocus || undefined,
-        lastRecommendation: lastRecommendation || undefined,
-        sessionsLast7Days: mentorRuntime.sessionsLast7Days,
-        completedMockExams: mentorRuntime.completedMockExams,
-        trigger,
-      },
-    };
+      userName: userName ?? 'estudante',
+      input: mentorDecisionInput,
+      decision: mentorDecision,
+      lastRecommendation: lastRecommendation ? safeLastRecommendation : undefined,
+      previousFocus: mentorPreviousFocus,
+    });
 
     try {
       await mentorChatApiService.sendStream(payload, {
@@ -492,14 +587,11 @@ const MentorIA: React.FC<MentorIAProps> = ({
       });
 
       if (!streamedReply.trim()) {
-        const fallback = getLocalFallbackReply(content);
-        streamedReply = fallback;
-        setMessages((prev) => prev.map((message) => (
-          message.id === assistantMessage.id
-            ? { ...message, content: fallback }
-            : message
-        )));
+        streamedReply = getLocalFallbackReply(content);
       }
+
+      streamedReply = commitAssistantMessage(streamedReply);
+      saveWriteBack(mentorMemoryWriteBack);
 
       if (cloudUserId && isSupabaseConfigured) {
         void Promise.all([
@@ -524,11 +616,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
         || lowerErrorMessage.includes('sessao ausente')
       ) {
         const authMessage = 'Voce precisa estar logado para usar o Mentor IA online. Entre na sua conta para continuar.';
-        setMessages((prev) => prev.map((message) => (
-          message.id === assistantMessage.id
-            ? { ...message, content: authMessage }
-            : message
-        )));
+        commitAssistantMessage(authMessage);
 
         trackEvent('mentor_auth_required', { errorMessage }, { userEmail });
 
@@ -544,21 +632,14 @@ const MentorIA: React.FC<MentorIAProps> = ({
       ) {
         const fallback = getLocalFallbackReply(content);
         const quotaMessage = `${fallback}\n\nAviso: cota da IA atingida. Estou respondendo em modo local temporario.`;
-        setMessages((prev) => prev.map((message) => (
-          message.id === assistantMessage.id
-            ? { ...message, content: quotaMessage }
-            : message
-        )));
+        commitAssistantMessage(quotaMessage);
+        saveWriteBack(mentorMemoryWriteBack);
 
         trackEvent('mentor_ai_quota_exceeded', { errorMessage }, { userEmail });
         toast.error('Cota da IA esgotada. Verifique plano ou faturamento.');
       } else if (errorMessage.includes('429')) {
         const blockMessage = 'Atingiu o limite diario de uso do Mentor IA. Volte amanha para continuarmos a sua evolucao.';
-        setMessages((prev) => prev.map((message) => (
-          message.id === assistantMessage.id
-            ? { ...message, content: blockMessage }
-            : message
-        )));
+        commitAssistantMessage(blockMessage);
 
         trackEvent(
           'mentor_circuit_breaker_triggered',
@@ -569,11 +650,8 @@ const MentorIA: React.FC<MentorIAProps> = ({
         toast.error('Limite diario atingido. Volte amanha.');
       } else {
         const fallback = getLocalFallbackReply(content);
-        setMessages((prev) => prev.map((message) => (
-          message.id === assistantMessage.id
-            ? { ...message, content: fallback }
-            : message
-        )));
+        commitAssistantMessage(fallback);
+        saveWriteBack(mentorMemoryWriteBack);
 
         trackEvent(
           'mentor_chat_error',
@@ -596,8 +674,8 @@ const MentorIA: React.FC<MentorIAProps> = ({
       : 'Treinador estrategico';
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800 sm:p-5">
+    <div className="space-y-3.5">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Mentor IA Proativo</h2>
@@ -615,7 +693,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
           </div>
         </div>
 
-        <div className="mt-4 flex gap-2 overflow-x-auto">
+        <div className="mt-3 flex gap-2 overflow-x-auto">
           {([
             { id: 'alertas', label: 'Alertas' },
             { id: 'analise', label: 'Analise semanal' },
@@ -637,8 +715,8 @@ const MentorIA: React.FC<MentorIAProps> = ({
         </div>
       </div>
 
-      {briefing && (
-        <div className="space-y-3 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-800 dark:bg-indigo-900/20 sm:p-5">
+      {safeBriefing && (
+        <div className="space-y-2.5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-800 dark:bg-indigo-900/20">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
               <Pin className="h-3.5 w-3.5" /> Briefing semanal do Mentor
@@ -648,10 +726,12 @@ const MentorIA: React.FC<MentorIAProps> = ({
             </span>
           </div>
 
-          <p className="text-sm text-gray-900 dark:text-white">
-            <strong>Prioridade:</strong> {briefing.prioridade}
+          <p className="break-words text-sm text-gray-900 dark:text-white [overflow-wrap:anywhere]">
+            <strong>Prioridade:</strong> {safeBriefing.prioridade}
           </p>
-          <p className="text-sm text-gray-700 dark:text-gray-200">{briefing.justificativa}</p>
+          <p className="break-words text-sm text-gray-700 dark:text-gray-200 [overflow-wrap:anywhere]">
+            {safeBriefing.justificativa}
+          </p>
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <div className="rounded-xl border border-indigo-200/70 bg-white/70 p-3 dark:border-indigo-800/70 dark:bg-indigo-950/20">
@@ -660,20 +740,22 @@ const MentorIA: React.FC<MentorIAProps> = ({
             </div>
             <div className="rounded-xl border border-indigo-200/70 bg-white/70 p-3 dark:border-indigo-800/70 dark:bg-indigo-950/20">
               <p className="text-[11px] uppercase tracking-[0.12em] text-indigo-500 dark:text-indigo-300">Mudanca de foco</p>
-              <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{mentorRuntime.focusShiftReason}</p>
+              <p className="mt-1 break-words text-sm font-semibold text-gray-900 dark:text-white [overflow-wrap:anywhere]">
+                {safeFocusShiftReason}
+              </p>
             </div>
             <div className="rounded-xl border border-indigo-200/70 bg-white/70 p-3 dark:border-indigo-800/70 dark:bg-indigo-950/20">
               <p className="text-[11px] uppercase tracking-[0.12em] text-indigo-500 dark:text-indigo-300">Ultima recomendacao</p>
-              <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                {lastRecommendation || 'Mentor montando sua primeira acao.'}
+              <p className="mt-1 break-words text-sm font-semibold text-gray-900 dark:text-white [overflow-wrap:anywhere]">
+                {safeLastRecommendation}
               </p>
             </div>
           </div>
 
           <div className="space-y-1">
-            {briefing.acao_semana.map((action) => (
+            {safeBriefing.acao_semana.map((action, index) => (
               <button
-                key={action}
+                key={`${action}-${index}`}
                 onClick={() => handleFollowWeekAction(action)}
                 className={`w-full rounded-md border px-2 py-1 text-left text-xs transition ${
                   followedAction === action
@@ -686,7 +768,9 @@ const MentorIA: React.FC<MentorIAProps> = ({
             ))}
           </div>
 
-          <p className="text-xs text-indigo-700 dark:text-indigo-200">{briefing.mensagem_motivacional}</p>
+          <p className="break-words text-xs text-indigo-700 dark:text-indigo-200 [overflow-wrap:anywhere]">
+            {safeBriefing.mensagem_motivacional}
+          </p>
           <p className="text-[11px] text-gray-500 dark:text-gray-400">
             Fonte: {briefingSource === 'llm' ? 'LLM' : 'Fallback deterministico'}
           </p>
@@ -694,12 +778,12 @@ const MentorIA: React.FC<MentorIAProps> = ({
       )}
 
       {tab === 'alertas' && (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-3">
           {alerts.map((alert) => (
-            <div key={alert.id} className={`rounded-xl border p-4 ${colorByLevel[alert.level]}`}>
+            <div key={alert.id} className={`rounded-xl border p-3 ${colorByLevel[alert.level]}`}>
               <alert.Icon className="mb-1 h-5 w-5" />
-              <h3 className="mb-1 text-sm font-bold">{alert.title}</h3>
-              <p className="text-xs leading-relaxed opacity-80">{alert.body}</p>
+              <h3 className="mb-1 break-words text-sm font-bold [overflow-wrap:anywhere]">{alert.title}</h3>
+              <p className="break-words text-xs leading-relaxed opacity-80 [overflow-wrap:anywhere]">{alert.body}</p>
               <button
                 onClick={() => handleAlertAction(alert)}
                 className="mt-3 text-xs font-bold underline underline-offset-2"
@@ -712,7 +796,7 @@ const MentorIA: React.FC<MentorIAProps> = ({
       )}
 
       {tab === 'analise' && (
-        <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800 sm:p-5">
+        <div className="space-y-3.5 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
           <div>
             <p className="text-xs uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Meta semanal</p>
             <p className="text-2xl font-extrabold text-gray-900 dark:text-white">{weeklyPct}%</p>
@@ -739,7 +823,12 @@ const MentorIA: React.FC<MentorIAProps> = ({
             ) : (
               subjectEntries.slice(0, 5).map(([subject, minutes]) => (
                 <div key={subject} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-700 dark:text-gray-300">{subject}</span>
+                  <span
+                    className="min-w-0 truncate text-gray-700 dark:text-gray-300"
+                    title={normalizeSubjectLabel(subject, 'Outra')}
+                  >
+                    {truncatePresentationLabel(subject, 24, 'Outra')}
+                  </span>
                   <span className="font-semibold text-gray-900 dark:text-white">{minutes} min</span>
                 </div>
               ))
@@ -751,15 +840,15 @@ const MentorIA: React.FC<MentorIAProps> = ({
               <MessageSquareText className="h-4 w-4" /> Analise do Mentor
             </p>
             <p>
-              {mentorPreviousFocus && mentorPreviousFocus !== mentorFocus ? (
-                <>
-                  Bom avanco em <strong>{mentorPreviousFocus}</strong>. O foco agora mudou para <strong>{mentorFocus}</strong> para equilibrar seu desempenho.
-                </>
-              ) : (
-                <>
-                  Bom avanco em <strong>{mentorStrongArea}</strong>. Para equilibrar desempenho, priorize <strong>{mentorFocus}</strong> nos proximos 3 dias.
-                </>
-              )}
+                {mentorPreviousFocus && mentorPreviousFocus !== mentorFocus ? (
+                  <>
+                  Bom avanco em <strong>{normalizeSubjectLabel(mentorPreviousFocus, 'Outra')}</strong>. O foco agora mudou para <strong>{normalizeSubjectLabel(mentorFocus, 'Outra')}</strong> para equilibrar seu desempenho.
+                  </>
+                ) : (
+                  <>
+                  Bom avanco em <strong>{normalizeSubjectLabel(mentorStrongArea, 'Outra')}</strong>. Para equilibrar desempenho, priorize <strong>{normalizeSubjectLabel(mentorFocus, 'Outra')}</strong> nos proximos 3 dias.
+                  </>
+                )}
             </p>
           </div>
         </div>
@@ -767,11 +856,11 @@ const MentorIA: React.FC<MentorIAProps> = ({
 
       {tab === 'chat' && (
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-          <div ref={chatRef} className="h-[360px] space-y-3 overflow-y-auto p-4">
+          <div ref={chatRef} className="h-[320px] space-y-3 overflow-y-auto p-4">
             {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div key={message.id || `${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                  className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere] ${
                     message.role === 'user'
                       ? 'text-white'
                       : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100'

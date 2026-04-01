@@ -149,6 +149,8 @@ export const DEFAULT_OPERATIONAL_WINDOW_DAYS = 6;
 const TABLE = 'study_blocks';
 export const STUDY_SCHEDULE_STORAGE_KEY = 'mdz_study_schedule';
 export const STUDY_SCHEDULE_UPDATED_EVENT = 'zb-study-schedule-updated';
+export const getStudyScheduleStorageKey = (scope?: string | null): string =>
+  scope ? `${STUDY_SCHEDULE_STORAGE_KEY}_${scope}` : STUDY_SCHEDULE_STORAGE_KEY;
 const WEEKDAYS: Weekday[] = [
   'monday',
   'tuesday',
@@ -295,13 +297,13 @@ const appendSubjectToDay = (subjectLabels: string[], subject: string): string[] 
   return sanitizeSubjectLabels(next);
 };
 
-const loadLocalScheduleEntries = (): ScheduleEntry[] => {
+const loadLocalScheduleEntries = (storageKey = STUDY_SCHEDULE_STORAGE_KEY): ScheduleEntry[] => {
   if (typeof window === 'undefined') {
     return [];
   }
 
   try {
-    const raw = window.localStorage.getItem(STUDY_SCHEDULE_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) {
       return [];
     }
@@ -313,17 +315,18 @@ const loadLocalScheduleEntries = (): ScheduleEntry[] => {
   }
 };
 
-const persistLocalScheduleEntries = (entries: ScheduleEntry[]): void => {
+const persistLocalScheduleEntries = (entries: ScheduleEntry[], storageKey = STUDY_SCHEDULE_STORAGE_KEY): void => {
   if (typeof window === 'undefined') {
     return;
   }
 
   try {
-    window.localStorage.setItem(STUDY_SCHEDULE_STORAGE_KEY, JSON.stringify(entries));
+    window.localStorage.setItem(storageKey, JSON.stringify(entries));
     window.dispatchEvent(
       new CustomEvent(STUDY_SCHEDULE_UPDATED_EVENT, {
         detail: {
           entries,
+          storageKey,
         },
       }),
     );
@@ -332,10 +335,14 @@ const persistLocalScheduleEntries = (entries: ScheduleEntry[]): void => {
   }
 };
 
-export const readPersistedScheduleEntries = (): ScheduleEntry[] => loadLocalScheduleEntries();
+export const readPersistedScheduleEntries = (storageKey = STUDY_SCHEDULE_STORAGE_KEY): ScheduleEntry[] =>
+  loadLocalScheduleEntries(storageKey);
 
-export const persistScheduleEntriesSnapshot = (entries: ScheduleEntry[]): void => {
-  persistLocalScheduleEntries(entries);
+export const persistScheduleEntriesSnapshot = (
+  entries: ScheduleEntry[],
+  storageKey = STUDY_SCHEDULE_STORAGE_KEY,
+): void => {
+  persistLocalScheduleEntries(entries, storageKey);
 };
 
 const sanitizeWeeklyPreferences = (value: unknown): WeeklyStudyPreferences => {
@@ -2025,6 +2032,10 @@ class StudyScheduleService {
       topic?: string | null;
       completedAt?: string | null;
     },
+    options?: {
+      storageKey?: string;
+      enableCloudSync?: boolean;
+    },
   ): Promise<ScheduleEntry | null> {
     const completedDateKey = normalizeCompletedDateKey(input.completedAt || new Date().toISOString());
     if (!completedDateKey) {
@@ -2033,7 +2044,9 @@ class StudyScheduleService {
 
     const subjectKey = normalizeScheduleMatcher(input.subject);
     const topicKey = normalizeScheduleMatcher(input.topic);
-    const localEntries = loadLocalScheduleEntries();
+    const storageKey = options?.storageKey || STUDY_SCHEDULE_STORAGE_KEY;
+    const enableCloudSync = options?.enableCloudSync ?? true;
+    const localEntries = loadLocalScheduleEntries(storageKey);
 
     const rankedEntries = localEntries
       .map((entry, index) => {
@@ -2071,9 +2084,9 @@ class StudyScheduleService {
     };
     const nextEntries = [...localEntries];
     nextEntries[target.index] = updatedEntry;
-    persistLocalScheduleEntries(nextEntries);
+    persistLocalScheduleEntries(nextEntries, storageKey);
 
-    if (userId) {
+    if (enableCloudSync && userId) {
       await this.upsertEntry(userId, updatedEntry).catch(() => undefined);
     }
 

@@ -161,6 +161,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     cancel,
     clear,
     switchPhase,
+    syncMetadata,
   } = useStudySessionMachine({
     storageKey: `pomodoro-session_${sessionStorageScope}`,
     exclusiveStorageKeys: [`study-timer-session_${sessionStorageScope}`],
@@ -185,10 +186,12 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   const seconds = timeLeft % 60;
   const progress = session ? progressPercent : 0;
   const hasTrackedProgress = Boolean(session) && (status === 'running' || status === 'paused' || elapsedPhaseMs > 0);
-  const sessionLocked = status === 'running' || status === 'paused';
   const effectiveSubject = session?.subject || subject;
-  const quickStartSubject = session?.subject || preferredSubject || subject;
-  const resolvedSubjectLabel = displaySubjectLabel || cycleDisciplineLabels[effectiveSubject].label;
+  const quickStartSubject = session?.subject || subject || preferredSubject || 'Anatomia';
+  const resolvedSubjectLabel =
+    displaySubjectLabel && effectiveSubject === (preferredSubject || effectiveSubject)
+      ? displaySubjectLabel
+      : cycleDisciplineLabels[effectiveSubject].label;
 
   const radius = 88;
   const circumference = 2 * Math.PI * radius;
@@ -490,6 +493,14 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     setLongBreakOverrideMinutes(getPersistedOverrideForMethod(newMethodId));
   };
 
+  const handleSubjectChange = useCallback((nextSubject: MateriaTipo) => {
+    setSubject(nextSubject);
+
+    if (session && (status === 'running' || status === 'paused')) {
+      syncMetadata({ subject: nextSubject });
+    }
+  }, [session, status, syncMetadata]);
+
   return (
     <>
       {confirmAction && (
@@ -523,14 +534,14 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
         className={`${
           compact
             ? 'bg-[#0B1220] border border-slate-800 text-white shadow-[0_18px_48px_-24px_rgba(2,6,23,0.95)]'
-            : 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700'
+            : 'border border-slate-300/85 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.10),transparent_24%),linear-gradient(180deg,rgba(236,242,248,0.98)_0%,rgba(226,235,244,0.96)_100%)] text-slate-900 shadow-[0_18px_38px_rgba(100,116,139,0.16)] dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(2,6,23,0.98)_100%)] dark:text-slate-100 dark:shadow-[0_18px_48px_rgba(2,6,23,0.42)]'
         } rounded-3xl overflow-hidden`}
         data-testid="study-pomodoro-timer-ready"
         data-study-session-source="pomodoro"
         data-study-session-status={status}
         data-study-session-phase={mode}
       >
-        <div className={`h-1 w-full ${compact ? 'bg-slate-900/80' : 'bg-gray-100 dark:bg-gray-700'}`}>
+        <div className={`h-1 w-full ${compact ? 'bg-slate-900/80' : 'bg-slate-300 dark:bg-slate-800'}`}>
           <div
             className={`h-full transition-all duration-1000 ease-linear ${currentMode.bg}`}
             style={{ width: `${progress}%` }}
@@ -552,8 +563,8 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
                       px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5
                       ${
                         isSelected
-                          ? `${MODE_STYLES[modeKey].accent} bg-gray-100 dark:bg-gray-700 ring-1 ring-current`
-                          : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                          ? `${MODE_STYLES[modeKey].accent} bg-slate-100 dark:bg-slate-800 ring-1 ring-current`
+                          : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                       }
                     `}
                   >
@@ -567,7 +578,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
 
           {!compact && (
             <div className="mb-5">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 text-center">
+              <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Metodo de Estudo
               </p>
               <div className="flex flex-wrap justify-center gap-2">
@@ -581,7 +592,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
                       className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
                         selected
                           ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
                       }`}
                     >
                       {method.name}
@@ -589,33 +600,33 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
                   );
                 })}
               </div>
-              <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
+              <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
                 {effectiveFocusMinutes}m foco · {selectedMethod.breakMinutes}m pausa ·{' '}
                 {effectiveLongBreakMinutes}m pausa longa · ciclo{' '}
                 {selectedMethod.cyclesBeforeLongBreak}
               </p>
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Ajuste pausa longa
                 </span>
                 <button
                   type="button"
                   onClick={() => adjustLongBreakMinutes(-5)}
-                  className="px-2.5 py-1 rounded-md text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+                  className="px-2.5 py-1 rounded-md bg-slate-100 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
                   -5
                 </button>
                 <button
                   type="button"
                   onClick={() => adjustLongBreakMinutes(5)}
-                  className="px-2.5 py-1 rounded-md text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+                  className="px-2.5 py-1 rounded-md bg-slate-100 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
                   +5
                 </button>
                 <button
                   type="button"
                   onClick={() => adjustLongBreakMinutes(10)}
-                  className="px-2.5 py-1 rounded-md text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+                  className="px-2.5 py-1 rounded-md bg-slate-100 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
                   +10
                 </button>
@@ -661,7 +672,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
                   r={radius}
                   fill="none"
                   strokeWidth="6"
-                  className={compact ? 'stroke-slate-800' : 'stroke-gray-100 dark:stroke-gray-700'}
+                  className={compact ? 'stroke-slate-800' : 'stroke-slate-300 dark:stroke-slate-700'}
                 />
                 <circle
                   cx="110"
@@ -719,23 +730,22 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
                   return (
                     <button
                       key={key}
-                      onClick={() => !sessionLocked && setSubject(key)}
-                      disabled={sessionLocked}
+                      onClick={() => handleSubjectChange(key)}
                       title={discipline.label}
                       className={`
                         flex flex-col items-center p-2 sm:p-2.5 rounded-xl border-2 transition-all min-w-[56px] sm:min-w-[60px]
                         ${
                           isSelected
                             ? `${config.bgColor} ${config.borderColor} ring-1 ring-current scale-105`
-                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 opacity-60 hover:opacity-100'
+                            : 'bg-slate-100 dark:bg-gray-800 border-slate-300 dark:border-gray-600 opacity-70 hover:opacity-100'
                         }
-                        ${sessionLocked ? 'cursor-not-allowed' : 'cursor-pointer hover:scale-105'}
+                        cursor-pointer hover:scale-105
                       `}
                     >
                       <DisciplineIcon className="w-4 h-4 sm:w-5 sm:h-5 mb-0.5 sm:mb-1" />
                       <span
                         className={`text-[9px] sm:text-[10px] font-medium ${
-                          isSelected ? config.color : 'text-gray-500'
+                          isSelected ? config.color : 'text-slate-600'
                         }`}
                       >
                         {discipline.label}
@@ -808,7 +818,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
               <button
                 onClick={resetTimer}
                 data-testid="study-pomodoro-reset-button"
-                className="h-14 w-14 rounded-2xl flex items-center justify-center bg-gray-50 dark:bg-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600 hover:text-gray-600 dark:hover:text-gray-200 transition-all hover:scale-105 active:scale-95"
+                  className="h-14 w-14 rounded-2xl flex items-center justify-center bg-slate-200 dark:bg-slate-800 text-slate-500 hover:bg-slate-300 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 transition-all hover:scale-105 active:scale-95"
                 aria-label="Resetar"
               >
                 <RotateCcw size={20} />
@@ -817,7 +827,7 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
           )}
 
           {(isRunning || status === 'paused') && (
-            <p className={`text-center text-xs mt-5 ${compact ? 'text-slate-400' : 'text-gray-400'}`}>
+            <p className={`mt-5 text-center text-xs ${compact ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400'}`}>
               {mode === 'focus'
                 ? `Concentre-se em ${compact ? resolvedSubjectLabel : cycleDisciplineLabels[effectiveSubject].label}`
                 : mode === 'shortBreak'
@@ -841,8 +851,8 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
 
         {!compact && (
           <div className="px-6 pb-5">
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 text-xs text-gray-500 dark:text-gray-400 space-y-1">
-              <p className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5 mb-2">
+            <div className="space-y-1 rounded-xl bg-slate-100/95 p-4 text-xs text-slate-600 dark:bg-slate-800/80 dark:text-slate-400">
+              <p className="mb-2 flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-300">
                 <Info className="w-4 h-4" /> Como usar o Pomodoro?
               </p>
               <p>

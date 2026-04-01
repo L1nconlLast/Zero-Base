@@ -1,11 +1,16 @@
 import type { UserData } from '../types';
 import { buildAchievementContextFromStorage } from './achievementProgress.service';
+import { normalizeSubjectLabel } from '../utils/uiLabels';
+import { stripInternalSubjectMetadata } from '../utils/sanitizeSubject';
 import type {
+  MentorMemoryFactEntry,
   MentorMemory,
   MentorMemoryRuntime,
   MentorOutput,
+  MentorRiskState,
   MentorTrigger,
 } from '../types/mentor';
+import type { MentorMemoryWriteBack } from '../features/mentor/contracts';
 
 const STORAGE_PREFIX = 'mdz_mentor_memory_';
 export const MENTOR_MEMORY_COOLDOWN_MS = 2 * 60 * 60 * 1000;
@@ -19,13 +24,152 @@ const DEFAULT_STRONG_AREA = 'Natureza';
 const getSessions = (userData: UserData) =>
   (userData.sessions?.length ? userData.sessions : userData.studyHistory || []);
 
+const collapseWhitespace = (value: string): string =>
+  value.replace(/\s+/g, ' ').trim();
+
+const sanitizeMemoryText = (value: unknown, fallback = ''): string => {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  const sanitized = collapseWhitespace(stripInternalSubjectMetadata(value));
+  return sanitized || fallback;
+};
+
+const sanitizeMentorRisk = (value: MentorRiskState | null | undefined): MentorRiskState | null => {
+  if (!value) {
+    return null;
+  }
+
+  const level = value.level === 'critical' || value.level === 'high' || value.level === 'medium' || value.level === 'low'
+    ? value.level
+    : 'medium';
+
+  const label = sanitizeMemoryText(value.label);
+  const summary = sanitizeMemoryText(value.summary);
+
+  if (!label || !summary) {
+    return null;
+  }
+
+  return {
+    level,
+    label,
+    summary,
+  };
+};
+
+const sanitizeMentorFacts = (value: MentorMemoryFactEntry[] | null | undefined): MentorMemoryFactEntry[] =>
+  (Array.isArray(value) ? value : [])
+    .map((fact) => {
+      const source: MentorMemoryFactEntry['source'] =
+        fact?.source === 'user' || fact?.source === 'mentor' ? fact.source : 'system';
+
+      return {
+        key: sanitizeMemoryText(fact?.key),
+        value: sanitizeMemoryText(fact?.value),
+        source,
+        recordedAt: fact?.recordedAt || new Date().toISOString(),
+        expiresAt: fact?.expiresAt,
+      };
+    })
+    .filter((fact) => fact.key && fact.value)
+    .filter((fact, index, allFacts) => (
+      allFacts.findIndex((entry) => entry.key === fact.key && entry.value === fact.value) === index
+    ))
+    .slice(-12);
+
+const sanitizeMentorSubjectMinutes = (value: Record<string, number> | null | undefined): Record<string, number> =>
+  Object.entries(value || {}).reduce<Record<string, number>>((acc, [subject, minutes]) => {
+    const safeSubject = normalizeSubjectLabel(subject, 'Outra');
+    const safeMinutes = Number(minutes || 0);
+    if (safeMinutes <= 0) {
+      return acc;
+    }
+
+    acc[safeSubject] = (acc[safeSubject] || 0) + safeMinutes;
+    return acc;
+  }, {});
+
+const sanitizeMentorBriefing = (
+  briefing: MentorOutput | null | undefined,
+  fallbackFocus: string,
+): MentorOutput | null => {
+  if (!briefing) {
+    return null;
+  }
+
+  const prioridade = normalizeSubjectLabel(briefing.prioridade, fallbackFocus);
+  const justificativa = sanitizeMemoryText(
+    briefing.justificativa,
+    `Baixa recorrencia recente em ${prioridade}.`,
+  );
+  const acao_semana = (briefing.acao_semana || [])
+    .map((action) => sanitizeMemoryText(action))
+    .filter(Boolean)
+    .slice(0, 4);
+
+  return {
+    ...briefing,
+    prioridade,
+    justificativa,
+    acao_semana,
+    mensagem_motivacional: sanitizeMemoryText(
+      briefing.mensagem_motivacional,
+      'Consistencia curta ainda vence intensidade isolada.',
+    ),
+  };
+};
+
+const sanitizeMentorMemory = (value: MentorMemory | null | undefined): MentorMemory | null => {
+  if (!value || typeof value !== 'object' || value.version !== 1) {
+    return null;
+  }
+
+  const lastFocus = normalizeSubjectLabel(value.lastFocus, DEFAULT_FOCUS);
+  const previousFocus = value.previousFocus
+    ? normalizeSubjectLabel(value.previousFocus, lastFocus)
+    : null;
+  const strongArea = normalizeSubjectLabel(value.strongArea, DEFAULT_STRONG_AREA);
+  const weakAreas = (value.weakAreas || [])
+    .map((area) => normalizeSubjectLabel(area, 'Outra'))
+    .filter((area, index, allAreas) => area && allAreas.indexOf(area) === index)
+    .slice(0, 4);
+
+  return {
+    ...value,
+    lastFocus,
+    previousFocus,
+    focusShiftReason: value.focusShiftReason
+      ? sanitizeMemoryText(value.focusShiftReason, `Baixa recorrencia recente em ${lastFocus}.`)
+      : null,
+    weakAreas: weakAreas.length > 0 ? weakAreas : [lastFocus],
+    strongArea,
+    lastRecommendations: (value.lastRecommendations || [])
+      .map((recommendation) => sanitizeMemoryText(recommendation))
+      .filter(Boolean)
+      .slice(0, 6),
+    lastBriefing: sanitizeMentorBriefing(value.lastBriefing, lastFocus),
+    lastActionFollowed: value.lastActionFollowed ? sanitizeMemoryText(value.lastActionFollowed) : null,
+    subjectMinutes: sanitizeMentorSubjectMinutes(value.subjectMinutes),
+    lastDecisionSummary: value.lastDecisionSummary ? sanitizeMemoryText(value.lastDecisionSummary) : null,
+    currentRisk: sanitizeMentorRisk(value.currentRisk),
+    facts: sanitizeMentorFacts(value.facts),
+  };
+};
+
 export const getMentorMemoryStorageKey = (userKey: string) =>
   `${STORAGE_PREFIX}${(userKey || 'default').toLowerCase()}`;
 
 export const buildMentorSubjectMinutes = (userData: UserData): Record<string, number> =>
   getSessions(userData).reduce<Record<string, number>>((acc, session) => {
-    const key = session.subject || 'Outra';
-    acc[key] = (acc[key] || 0) + session.minutes;
+    const key = normalizeSubjectLabel(String(session.subject || ''), 'Outra');
+    const minutes = Number(session.minutes || session.duration || 0);
+    if (minutes <= 0) {
+      return acc;
+    }
+
+    acc[key] = (acc[key] || 0) + minutes;
     return acc;
   }, {});
 
@@ -33,9 +177,7 @@ const getSortedAreas = (subjectMinutes: Record<string, number>) =>
   Object.entries(subjectMinutes).sort(([, left], [, right]) => left - right);
 
 const safeMemory = (value: MentorMemory | null | undefined): MentorMemory | null => {
-  if (!value || typeof value !== 'object') return null;
-  if (value.version !== 1) return null;
-  return value;
+  return sanitizeMentorMemory(value);
 };
 
 export const readMentorMemory = (userKey: string): MentorMemory | null => {
@@ -189,15 +331,18 @@ export const buildMentorMemoryRuntime = ({
   daysToExam,
   trigger,
   previousMemory,
+  now,
 }: {
   userData: UserData;
   weeklyGoalMinutes: number;
   daysToExam: number;
   trigger: MentorTrigger;
   previousMemory?: MentorMemory | null;
+  now?: Date;
 }): MentorMemoryRuntime => {
-  const now = Date.now();
-  const mentorContext = buildAchievementContextFromStorage(userData, { weeklyGoalMinutes });
+  const safePreviousMemory = sanitizeMentorMemory(previousMemory || null);
+  const nowMs = Date.now();
+  const mentorContext = buildAchievementContextFromStorage(userData, { weeklyGoalMinutes, now });
   const subjectMinutes = buildMentorSubjectMinutes(userData);
   const sortedAreas = getSortedAreas(subjectMinutes);
   const rawWeakAreas = [
@@ -210,7 +355,7 @@ export const buildMentorMemoryRuntime = ({
     100,
     Math.round((weeklyMinutesDone / Math.max(weeklyGoalMinutes, 1)) * 100),
   );
-  const hasMeaningfulChange = hasRelevantContextChange(previousMemory || null, {
+  const hasMeaningfulChange = hasRelevantContextChange(safePreviousMemory || null, {
     weeklyPct,
     weeklyMinutesDone,
     totalStudyMinutes: mentorContext.totalMinutes,
@@ -225,18 +370,18 @@ export const buildMentorMemoryRuntime = ({
   });
 
   const focusPlan = resolveRecommendedFocus({
-    previousMemory: previousMemory || null,
+    previousMemory: safePreviousMemory || null,
     rawWeakAreas,
     strongArea,
     subjectMinutes,
     hasMeaningfulChange,
   });
-  const shouldInvalidateBriefing = Boolean(previousMemory && hasMeaningfulChange);
+  const shouldInvalidateBriefing = Boolean(safePreviousMemory && hasMeaningfulChange);
 
   const memory: MentorMemory = {
     version: 1,
-    lastAnalysisAt: previousMemory?.lastAnalysisAt || 0,
-    lastUpdatedAt: previousMemory && !hasMeaningfulChange ? previousMemory.lastUpdatedAt : now,
+    lastAnalysisAt: safePreviousMemory?.lastAnalysisAt || 0,
+    lastUpdatedAt: safePreviousMemory && !hasMeaningfulChange ? safePreviousMemory.lastUpdatedAt : nowMs,
     lastFocus: focusPlan.recommendedFocus,
     previousFocus: focusPlan.previousFocus,
     focusShiftReason: focusPlan.focusShiftReason,
@@ -252,18 +397,21 @@ export const buildMentorMemoryRuntime = ({
     completedMockExams: mentorContext.completedMockExams,
     daysToExam,
     lastTrigger: trigger,
-    lastRecommendations: shouldInvalidateBriefing ? [] : previousMemory?.lastRecommendations || [],
-    lastBriefing: shouldInvalidateBriefing ? null : previousMemory?.lastBriefing || null,
-    lastBriefingSource: shouldInvalidateBriefing ? null : previousMemory?.lastBriefingSource || null,
-    lastActionFollowed: previousMemory?.lastActionFollowed || null,
-    lastActionFollowedAt: previousMemory?.lastActionFollowedAt || null,
+    lastRecommendations: shouldInvalidateBriefing ? [] : safePreviousMemory?.lastRecommendations || [],
+    lastBriefing: shouldInvalidateBriefing ? null : safePreviousMemory?.lastBriefing || null,
+    lastBriefingSource: shouldInvalidateBriefing ? null : safePreviousMemory?.lastBriefingSource || null,
+    lastActionFollowed: safePreviousMemory?.lastActionFollowed || null,
+    lastActionFollowedAt: safePreviousMemory?.lastActionFollowedAt || null,
     subjectMinutes,
+    lastDecisionSummary: safePreviousMemory?.lastDecisionSummary || null,
+    currentRisk: safePreviousMemory?.currentRisk || null,
+    facts: safePreviousMemory?.facts || [],
   };
 
   const shouldRefreshBriefing =
     !memory.lastBriefing
     || memory.lastAnalysisAt <= 0
-    || Date.now() - memory.lastAnalysisAt >= MENTOR_MEMORY_COOLDOWN_MS
+    || nowMs - memory.lastAnalysisAt >= MENTOR_MEMORY_COOLDOWN_MS
     || hasMeaningfulChange;
 
   return {
@@ -287,21 +435,88 @@ export const applyMentorBriefingToMemory = (
   memory: MentorMemory,
   briefing: MentorOutput,
   source: 'llm' | 'fallback',
-): MentorMemory => ({
-  ...memory,
-  lastAnalysisAt: Date.now(),
-  lastUpdatedAt: Date.now(),
-  lastBriefing: briefing,
-  lastBriefingSource: source,
-  lastRecommendations: briefing.acao_semana,
-});
+): MentorMemory => {
+  const safeCurrentMemory = sanitizeMentorMemory(memory) || memory;
+  const safeBriefing = sanitizeMentorBriefing(briefing, safeCurrentMemory.lastFocus) || {
+    ...briefing,
+    prioridade: safeCurrentMemory.lastFocus,
+    justificativa: `Baixa recorrencia recente em ${safeCurrentMemory.lastFocus}.`,
+    acao_semana: [],
+    mensagem_motivacional: 'Consistencia curta ainda vence intensidade isolada.',
+  };
 
-export const markMentorActionFollowed = (memory: MentorMemory, action: string): MentorMemory => ({
-  ...memory,
-  lastActionFollowed: action,
-  lastActionFollowedAt: Date.now(),
-  lastUpdatedAt: Date.now(),
-});
+  return {
+    ...safeCurrentMemory,
+    lastAnalysisAt: Date.now(),
+    lastUpdatedAt: Date.now(),
+    lastBriefing: safeBriefing,
+    lastBriefingSource: source,
+    lastRecommendations: safeBriefing.acao_semana,
+  };
+};
+
+export const markMentorActionFollowed = (memory: MentorMemory, action: string): MentorMemory => {
+  const safeCurrentMemory = sanitizeMentorMemory(memory) || memory;
+  return {
+    ...safeCurrentMemory,
+    lastActionFollowed: sanitizeMemoryText(action),
+    lastActionFollowedAt: Date.now(),
+    lastUpdatedAt: Date.now(),
+  };
+};
+
+const mergeFacts = (
+  currentFacts: MentorMemoryFactEntry[] | null | undefined,
+  nextFacts: MentorMemoryFactEntry[] | null | undefined,
+): MentorMemoryFactEntry[] => {
+  const merged = [...sanitizeMentorFacts(currentFacts), ...sanitizeMentorFacts(nextFacts)];
+
+  return merged
+    .reduce<MentorMemoryFactEntry[]>((acc, fact) => {
+      const existingIndex = acc.findIndex((entry) => entry.key === fact.key);
+      if (existingIndex >= 0) {
+        acc[existingIndex] = fact;
+        return acc;
+      }
+
+      acc.push(fact);
+      return acc;
+    }, [])
+    .slice(-12);
+};
+
+export const applyMentorWriteBackToMemory = (
+  memory: MentorMemory,
+  writeBack: MentorMemoryWriteBack,
+): MentorMemory => {
+  const safeCurrentMemory = sanitizeMentorMemory(memory) || memory;
+  const lastRecommendation = sanitizeMemoryText(writeBack.lastRecommendation);
+  const lastDifficultyReport = sanitizeMemoryText(writeBack.lastDifficultyReport);
+  const currentRisk = sanitizeMentorRisk(writeBack.currentRisk || null);
+  const facts = mergeFacts(
+    safeCurrentMemory.facts,
+    writeBack.factsToUpsert.map((fact) => ({
+      key: sanitizeMemoryText(fact.key),
+      value: sanitizeMemoryText(fact.value),
+      source: fact.source,
+      recordedAt: fact.recordedAt,
+      expiresAt: fact.expiresAt,
+    })),
+  );
+
+  return {
+    ...safeCurrentMemory,
+    lastFocus: sanitizeMemoryText(writeBack.focusOfWeek, safeCurrentMemory.lastFocus),
+    focusShiftReason: lastDifficultyReport || safeCurrentMemory.focusShiftReason,
+    lastRecommendations: lastRecommendation
+      ? [lastRecommendation, ...safeCurrentMemory.lastRecommendations.filter((item) => item !== lastRecommendation)].slice(0, 6)
+      : safeCurrentMemory.lastRecommendations,
+    lastDecisionSummary: lastDifficultyReport || safeCurrentMemory.lastDecisionSummary || null,
+    currentRisk: currentRisk || safeCurrentMemory.currentRisk || null,
+    facts,
+    lastUpdatedAt: Date.now(),
+  };
+};
 
 export const isMentorMemoryEqual = (
   left: MentorMemory | null | undefined,

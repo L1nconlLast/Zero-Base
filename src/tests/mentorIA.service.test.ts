@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// ── Mock do Supabase ─────────────────────────────────────────
 const mockSupabase = {
   from: vi.fn(),
 };
@@ -16,9 +15,13 @@ vi.mock('../services/supabase.client', () => ({
   },
 }));
 
-import { mentorIAService, type MentorMessage } from '../services/mentorIA.service';
+import {
+  mentorIAService,
+  sanitizeMentorList,
+  sanitizeMentorText,
+  type MentorMessage,
+} from '../services/mentorIA.service';
 
-// Helpers ─────────────────────────────────────────────────────
 const makeMessage = (
   role: 'assistant' | 'user',
   content: string,
@@ -34,18 +37,17 @@ const makeMessage = (
 const USER_KEY = 'test-user@example.com';
 const CLOUD_USER_ID = '00000000-0000-0000-0000-000000000001';
 
-// ── Local Storage ────────────────────────────────────────────
-describe('MentorIAService — localStorage', () => {
+describe('MentorIAService localStorage', () => {
   beforeEach(() => {
     window.localStorage.clear();
   });
 
-  it('retorna array vazio quando não há dados', () => {
+  it('returns empty array when there is no data', () => {
     expect(mentorIAService.getLocalMessages(USER_KEY)).toEqual([]);
   });
 
-  it('salva e recupera mensagens', () => {
-    const msgs = [makeMessage('user', 'oi'), makeMessage('assistant', 'olá')];
+  it('saves and reloads messages', () => {
+    const msgs = [makeMessage('user', 'oi'), makeMessage('assistant', 'ola')];
     mentorIAService.saveLocalMessages(USER_KEY, msgs);
 
     const loaded = mentorIAService.getLocalMessages(USER_KEY);
@@ -54,88 +56,120 @@ describe('MentorIAService — localStorage', () => {
     expect(loaded[1].role).toBe('assistant');
   });
 
-  it('trunca em MAX_LOCAL_MESSAGES (120)', () => {
-    const msgs = Array.from({ length: 150 }, (_, i) =>
-      makeMessage('user', `msg-${i}`),
-    );
+  it('keeps only MAX_LOCAL_MESSAGES entries', () => {
+    const msgs = Array.from({ length: 150 }, (_, index) => makeMessage('user', `msg-${index}`));
     mentorIAService.saveLocalMessages(USER_KEY, msgs);
 
     const loaded = mentorIAService.getLocalMessages(USER_KEY);
     expect(loaded).toHaveLength(120);
-    expect(loaded[0].content).toBe('msg-30'); // descartou as 30 primeiras
+    expect(loaded[0].content).toBe('msg-30');
   });
 
-  it('retorna vazio para JSON inválido no storage', () => {
+  it('returns empty array for invalid JSON in storage', () => {
     window.localStorage.setItem(`mdz_mentor_messages_${USER_KEY}`, '{not-json');
     expect(mentorIAService.getLocalMessages(USER_KEY)).toEqual([]);
   });
 
-  it('retorna vazio se o valor armazenado não for array', () => {
+  it('returns empty array when stored value is not an array', () => {
     window.localStorage.setItem(
       `mdz_mentor_messages_${USER_KEY}`,
       JSON.stringify({ foo: 'bar' }),
     );
     expect(mentorIAService.getLocalMessages(USER_KEY)).toEqual([]);
   });
+
+  it('sanitizes structured content loaded from storage', () => {
+    window.localStorage.setItem(
+      `mdz_mentor_messages_${USER_KEY}`,
+      JSON.stringify([
+        makeMessage('assistant', '{"content":"Resposta valida","metadata":{"id":"internal"}}', 'json-msg'),
+      ]),
+    );
+
+    const loaded = mentorIAService.getLocalMessages(USER_KEY);
+    expect(loaded[0].content).toBe('Resposta valida');
+  });
 });
 
-// ── createMessage ────────────────────────────────────────────
-describe('MentorIAService — createMessage', () => {
-  it('retorna mensagem com role, content e timestamps', () => {
-    const msg = mentorIAService.createMessage('user', 'olá');
+describe('MentorIAService createMessage', () => {
+  it('returns a message with role, content and timestamps', () => {
+    const msg = mentorIAService.createMessage('user', 'ola');
     expect(msg.role).toBe('user');
-    expect(msg.content).toBe('olá');
+    expect(msg.content).toBe('ola');
     expect(msg.id).toBeTruthy();
     expect(msg.createdAt).toBeTruthy();
   });
 
-  it('gera ids únicos', () => {
+  it('generates unique ids', () => {
     const a = mentorIAService.createMessage('user', '1');
     const b = mentorIAService.createMessage('user', '2');
     expect(a.id).not.toBe(b.id);
   });
 });
 
-// ── mergeMessages ────────────────────────────────────────────
-describe('MentorIAService — mergeMessages', () => {
-  it('deduplicar por id mantendo ordenação temporal', () => {
+describe('MentorIAService sanitization helpers', () => {
+  it('extracts readable text from stringified JSON payloads', () => {
+    const safeText = sanitizeMentorText('{"content":"Plano da semana","metadata":{"id":"abc"}}');
+    expect(safeText).toBe('Plano da semana');
+  });
+
+  it('falls back when assistant content looks like an opaque token', () => {
+    const safeText = sanitizeMentorText('a'.repeat(96), {
+      fallback: 'fallback',
+      fallbackWhenEmpty: true,
+    });
+    expect(safeText).toBe('fallback');
+  });
+
+  it('normalizes action lists from structured payloads', () => {
+    const actions = sanitizeMentorList('{"acao_semana":["Revisar historia","Resolver 10 questoes"]}');
+    expect(actions).toEqual(['Revisar historia', 'Resolver 10 questoes']);
+  });
+
+  it('removes internal zb-session metadata from freeform mentor text', () => {
+    const safeText = sanitizeMentorText('Prioridade: Matematica|zb-session|eyJhbGciOiJIUzI1NiJ9');
+    expect(safeText).toBe('Prioridade: Matematica');
+  });
+});
+
+describe('MentorIAService mergeMessages', () => {
+  it('deduplicates by id while keeping temporal order', () => {
     const shared = makeMessage('user', 'dup', 'same-id', '2026-01-01T00:00:00Z');
     const local = [shared, makeMessage('assistant', 'a', 'id-a', '2026-01-01T00:01:00Z')];
     const cloud = [shared, makeMessage('assistant', 'b', 'id-b', '2026-01-01T00:02:00Z')];
 
     const merged = mentorIAService.mergeMessages(local, cloud);
     expect(merged).toHaveLength(3);
-    expect(merged.map((m) => m.id)).toEqual(['same-id', 'id-a', 'id-b']);
+    expect(merged.map((message) => message.id)).toEqual(['same-id', 'id-a', 'id-b']);
   });
 
-  it('respeita limite de 120 mensagens', () => {
-    const local = Array.from({ length: 70 }, (_, i) =>
-      makeMessage('user', `l-${i}`, `l-${i}`, new Date(2026, 0, 1, 0, i).toISOString()),
-    );
-    const cloud = Array.from({ length: 70 }, (_, i) =>
-      makeMessage('assistant', `c-${i}`, `c-${i}`, new Date(2026, 0, 1, 1, i).toISOString()),
-    );
+  it('respects the 120 message limit', () => {
+    const local = Array.from({ length: 70 }, (_, index) => (
+      makeMessage('user', `l-${index}`, `l-${index}`, new Date(2026, 0, 1, 0, index).toISOString())
+    ));
+    const cloud = Array.from({ length: 70 }, (_, index) => (
+      makeMessage('assistant', `c-${index}`, `c-${index}`, new Date(2026, 0, 1, 1, index).toISOString())
+    ));
 
     const merged = mentorIAService.mergeMessages(local, cloud);
     expect(merged).toHaveLength(120);
   });
 
-  it('retorna vazio quando ambos são vazios', () => {
+  it('returns empty array when both inputs are empty', () => {
     expect(mentorIAService.mergeMessages([], [])).toEqual([]);
   });
 });
 
-// ── Cloud: listCloudMessages ─────────────────────────────────
-describe('MentorIAService — listCloudMessages', () => {
+describe('MentorIAService listCloudMessages', () => {
   beforeEach(() => {
     isConfigured = true;
     vi.clearAllMocks();
   });
 
-  it('retorna mensagens da cloud mapeadas corretamente', async () => {
+  it('maps cloud rows correctly', async () => {
     const rows = [
       { id: 'r1', user_id: CLOUD_USER_ID, role: 'user', content: 'oi', created_at: '2026-01-01T00:00:00Z' },
-      { id: 'r2', user_id: CLOUD_USER_ID, role: 'assistant', content: 'olá', created_at: '2026-01-01T00:01:00Z' },
+      { id: 'r2', user_id: CLOUD_USER_ID, role: 'assistant', content: 'ola', created_at: '2026-01-01T00:01:00Z' },
     ];
 
     mockSupabase.from.mockReturnValue({
@@ -153,7 +187,7 @@ describe('MentorIAService — listCloudMessages', () => {
     expect(msgs[0]).toEqual({ id: 'r1', role: 'user', content: 'oi', createdAt: '2026-01-01T00:00:00Z' });
   });
 
-  it('lança erro quando Supabase retorna error', async () => {
+  it('throws when Supabase returns an error', async () => {
     mockSupabase.from.mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
@@ -167,7 +201,7 @@ describe('MentorIAService — listCloudMessages', () => {
     await expect(mentorIAService.listCloudMessages(CLOUD_USER_ID)).rejects.toThrow('boom');
   });
 
-  it('retorna vazio quando Supabase não está configurado', async () => {
+  it('returns empty array when Supabase is not configured', async () => {
     isConfigured = false;
     const msgs = await mentorIAService.listCloudMessages(CLOUD_USER_ID);
     expect(msgs).toEqual([]);
@@ -175,14 +209,13 @@ describe('MentorIAService — listCloudMessages', () => {
   });
 });
 
-// ── Cloud: pushCloudMessage ──────────────────────────────────
-describe('MentorIAService — pushCloudMessage', () => {
+describe('MentorIAService pushCloudMessage', () => {
   beforeEach(() => {
     isConfigured = true;
     vi.clearAllMocks();
   });
 
-  it('faz upsert de uma única mensagem', async () => {
+  it('upserts a single message', async () => {
     const upsertMock = vi.fn().mockResolvedValue({ error: null });
     mockSupabase.from.mockReturnValue({ upsert: upsertMock });
 
@@ -196,7 +229,7 @@ describe('MentorIAService — pushCloudMessage', () => {
     );
   });
 
-  it('lança erro quando Supabase retorna error', async () => {
+  it('throws when Supabase returns an error', async () => {
     mockSupabase.from.mockReturnValue({
       upsert: vi.fn().mockResolvedValue({ error: { message: 'fail' } }),
     });
@@ -206,7 +239,7 @@ describe('MentorIAService — pushCloudMessage', () => {
     ).rejects.toThrow('fail');
   });
 
-  it('não faz nada quando Supabase não está configurado', async () => {
+  it('does nothing when Supabase is not configured', async () => {
     isConfigured = false;
     await mentorIAService.pushCloudMessage(CLOUD_USER_ID, makeMessage('user', 'x'));
     expect(mockSupabase.from).not.toHaveBeenCalled();
@@ -214,14 +247,13 @@ describe('MentorIAService — pushCloudMessage', () => {
   });
 });
 
-// ── Cloud: deleteCloudMessages ───────────────────────────────
-describe('MentorIAService — deleteCloudMessages', () => {
+describe('MentorIAService deleteCloudMessages', () => {
   beforeEach(() => {
     isConfigured = true;
     vi.clearAllMocks();
   });
 
-  it('deleta todas as mensagens do usuário', async () => {
+  it('deletes all messages for a user', async () => {
     const eqMock = vi.fn().mockResolvedValue({ error: null });
     mockSupabase.from.mockReturnValue({
       delete: vi.fn().mockReturnValue({ eq: eqMock }),
@@ -233,7 +265,7 @@ describe('MentorIAService — deleteCloudMessages', () => {
     expect(eqMock).toHaveBeenCalledWith('user_id', CLOUD_USER_ID);
   });
 
-  it('lança erro quando Supabase retorna error', async () => {
+  it('throws when Supabase delete returns an error', async () => {
     mockSupabase.from.mockReturnValue({
       delete: vi.fn().mockReturnValue({
         eq: vi.fn().mockResolvedValue({ error: { message: 'nope' } }),
@@ -245,7 +277,7 @@ describe('MentorIAService — deleteCloudMessages', () => {
     ).rejects.toThrow('nope');
   });
 
-  it('não faz nada quando Supabase não está configurado', async () => {
+  it('does nothing when Supabase is not configured', async () => {
     isConfigured = false;
     await mentorIAService.deleteCloudMessages(CLOUD_USER_ID);
     expect(mockSupabase.from).not.toHaveBeenCalled();
@@ -253,14 +285,13 @@ describe('MentorIAService — deleteCloudMessages', () => {
   });
 });
 
-// ── Cloud: saveCloudMessages (batch) ─────────────────────────
-describe('MentorIAService — saveCloudMessages', () => {
+describe('MentorIAService saveCloudMessages', () => {
   beforeEach(() => {
     isConfigured = true;
     vi.clearAllMocks();
   });
 
-  it('faz upsert em batch de múltiplas mensagens', async () => {
+  it('upserts multiple messages in batch', async () => {
     const upsertMock = vi.fn().mockResolvedValue({ error: null });
     mockSupabase.from.mockReturnValue({ upsert: upsertMock });
 
@@ -276,7 +307,7 @@ describe('MentorIAService — saveCloudMessages', () => {
     );
   });
 
-  it('ignora array vazio', async () => {
+  it('ignores empty arrays', async () => {
     await mentorIAService.saveCloudMessages(CLOUD_USER_ID, []);
     expect(mockSupabase.from).not.toHaveBeenCalled();
   });

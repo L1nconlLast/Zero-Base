@@ -8,6 +8,22 @@ export interface MentorOutput {
   mensagem_motivacional: string;
 }
 
+export type MentorRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export interface MentorRiskState {
+  level: MentorRiskLevel;
+  label: string;
+  summary: string;
+}
+
+export interface MentorMemoryFactEntry {
+  key: string;
+  value: string;
+  source: 'system' | 'user' | 'mentor';
+  recordedAt: string;
+  expiresAt?: string;
+}
+
 export interface EngineDecision {
   prioridadeAtual: string;
   justificativa: string;
@@ -65,6 +81,9 @@ export interface MentorMemory {
   lastActionFollowed: string | null;
   lastActionFollowedAt: number | null;
   subjectMinutes: Record<string, number>;
+  lastDecisionSummary?: string | null;
+  currentRisk?: MentorRiskState | null;
+  facts?: MentorMemoryFactEntry[];
 }
 
 export interface MentorMemoryRuntime {

@@ -113,6 +113,11 @@ export class NotificationsController {
     const result = await pushNotificationService.runInactivityReminderJob(48);
     res.status(200).json({ ok: true, ...result });
   }
+
+  async runDay1ResumeJob(_req: Request, res: Response): Promise<void> {
+    const result = await pushNotificationService.runDay1ResumeReminderJob();
+    res.status(200).json({ ok: true, ...result });
+  }
 }
 
 export const notificationsController = new NotificationsController();

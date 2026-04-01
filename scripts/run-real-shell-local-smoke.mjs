@@ -691,7 +691,8 @@ const main = async () => {
     await navigate(browser.session, `${BASE_URL}/`);
     await waitForText(browser.session, 'Sair', { timeoutMs: 30000 });
     await waitForText(browser.session, 'Progresso', { timeoutMs: 30000 });
-    await waitForText(browser.session, 'Sincronizar agora', { timeoutMs: 30000 });
+    await waitForAnyText(browser.session, ['Sincronizar', 'destaque do dia', 'Comecar agora', 'Estudar agora'], { timeoutMs: 30000 });
+    await waitForAnyText(browser.session, ['destaque do dia', 'Para estudar agora'], { timeoutMs: 30000 });
     await closeOptionalOverlays(browser.session);
 
     const layoutMetrics = await getLayoutMetrics(browser.session);
@@ -705,7 +706,20 @@ const main = async () => {
       layoutMetrics,
     });
 
-    await clickByText(browser.session, 'Progresso', { exact: true });
+    try {
+      await clickByText(browser.session, 'Comecar agora', { exact: true });
+    } catch {
+      await clickByText(browser.session, 'Estudar agora', { exact: true });
+    }
+
+    await waitForAnyText(browser.session, ['Sessao de foco', 'Sessao oficial', 'Zona de Foco'], { timeoutMs: 30000 });
+    recordStep('hero_cta', 'passed');
+
+    await navigate(browser.session, `${BASE_URL}/`);
+    await waitForText(browser.session, 'Sair', { timeoutMs: 30000 });
+    await waitForAnyText(browser.session, ['destaque do dia', 'Comecar agora', 'Estudar agora'], { timeoutMs: 30000 });
+
+    await clickByText(browser.session, 'Progresso');
     await waitForAnyText(browser.session, ['Painel de progresso', 'Seu progresso comeca aqui'], { timeoutMs: 30000 });
     await screenshot(browser.session, 'real-shell-local-progress-desktop.png');
     recordStep('progress_navigation', 'passed', {
@@ -761,7 +775,7 @@ const main = async () => {
     await navigate(browser.session, `${BASE_URL}/`);
     await waitForText(browser.session, 'Sair', { timeoutMs: 30000 });
     await closeOptionalOverlays(browser.session);
-    await clickByText(browser.session, 'Progresso', { exact: true });
+    await clickByText(browser.session, 'Progresso');
     await waitForText(browser.session, 'Seu progresso comeca aqui.', { timeoutMs: 30000 });
     await screenshot(browser.session, 'real-shell-local-empty-progress.png');
     recordStep('empty_progress_state', 'passed', {

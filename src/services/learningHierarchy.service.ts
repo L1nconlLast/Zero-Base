@@ -1,5 +1,6 @@
 import { isSupabaseConfigured, supabase } from './supabase.client';
 import type { StudySession } from '../types';
+import { normalizeSubjectLabel } from '../utils/uiLabels';
 
 export interface StudyHierarchyTopicNode {
   id: string;
@@ -463,16 +464,22 @@ class LearningHierarchyService {
     }
 
     const minutesBySubject = sessions.reduce<Record<string, number>>((acc, session) => {
-      acc[session.subject] = (acc[session.subject] || 0) + session.minutes;
+      const subject = normalizeSubjectLabel(String(session.subject || ''), 'Outra');
+      const minutes = Number(session.minutes || session.duration || 0);
+      if (minutes <= 0) {
+        return acc;
+      }
+
+      acc[subject] = (acc[subject] || 0) + minutes;
       return acc;
     }, {});
 
     const subjectNames = Array.from(
-      new Set([
-        ...Object.keys(minutesBySubject).filter((name) => name !== 'Outra'),
-        ...weakAreas,
-      ]),
-    );
+        new Set([
+          ...Object.keys(minutesBySubject).filter((name) => name !== 'Outra'),
+          ...weakAreas.map((area) => normalizeSubjectLabel(area, 'Outra')),
+        ]),
+      );
 
     const maxMinutes = Math.max(1, ...Object.values(minutesBySubject));
 

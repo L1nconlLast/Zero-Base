@@ -1,7 +1,7 @@
 import React from 'react';
 import { Hand, Brain, CalendarDays, Target, GraduationCap, Landmark, BookOpen, Globe2, Clock3, CalendarCheck2, Award, Goal } from 'lucide-react';
 import { createDefaultSmartProfile, type DifficultyLevel, type SmartScheduleProfile } from '../../utils/smartScheduleEngine';
-import { OFFICIAL_EXAM_MODELS } from '../../data/officialExamModels';
+import { OFFICIAL_EXAM_MODELS, type OfficialExamModel } from '../../data/officialExamModels';
 import { trackEvent } from '../../utils/analytics';
 import { mvpApiService } from '../../services/mvpApi.service';
 
@@ -9,6 +9,7 @@ interface OnboardingFlowProps {
   userName?: string;
   initialDailyGoal: number;
   initialMethodId: string;
+  initialFocusType?: FocusType;
   onComplete: (payload: {
     dailyGoal: number;
     methodId: string;
@@ -20,7 +21,23 @@ interface OnboardingFlowProps {
         goalId: string | null;
         targetCollege: string | null;
         targetCourse: string | null;
+        triedBefore?: 'sim' | 'nao' | null;
+        profileLevel?: 'iniciante' | 'intermediario' | 'avancado' | null;
       } | null;
+      hibrido: HybridMeta | null;
+      faculdade?: {
+        institution: string | null;
+        course: string | null;
+        semester: string | null;
+        focus: CollegeFocus | null;
+      } | null;
+      outros?: {
+        goalTitle: string | null;
+        focus: OtherFocus | null;
+        deadline: string | null;
+      } | null;
+      contextSummary?: string | null;
+      contextDescription?: string | null;
     };
   }) => void;
   onStepProgressSave?: (payload: {
@@ -39,6 +56,25 @@ type EnemGoalProfile = {
   pesos: Partial<Record<EnemSubject, number>>;
 };
 type DifficultyScale = 1 | 2 | 3 | 4 | 5;
+type ConcursoAreaId =
+  | 'policial'
+  | 'tribunais'
+  | 'administrativo'
+  | 'fiscal'
+  | 'bancario'
+  | 'controle'
+  | 'tecnologia'
+  | 'militar'
+  | 'outros';
+type ConcursoExperienceMode = 'starting_now' | 'studied_before' | 'already_taking_exams';
+type ConcursoExperienceLevel = 'iniciante' | 'intermediario' | 'avancado';
+type HybridPrimaryFocus = 'enem' | 'concurso' | 'equilibrado';
+type HybridAvailableStudyTime = 'baixo' | 'medio' | 'alto';
+type HybridMeta = {
+  primaryFocus: HybridPrimaryFocus;
+  availableStudyTime: HybridAvailableStudyTime;
+  concursoExamDate: string | null;
+};
 
 const ENEM_GOALS: EnemGoalProfile[] = [
   {
@@ -73,7 +109,9 @@ type ConcursoCatalogItem = {
   label: string;
   banca: string;
   area: string;
+  areaId: ConcursoAreaId;
   subjects: string[];
+  weights: Record<string, number>;
 };
 
 type ConcursoMeta = {
@@ -81,11 +119,17 @@ type ConcursoMeta = {
   nome: string;
   banca: string;
   area: string;
+  areaId: ConcursoAreaId;
+  examDate?: string | null;
+  experienceMode: ConcursoExperienceMode | null;
+  experienceLevel: ConcursoExperienceLevel | null;
+  planningWithoutDate: boolean;
 };
 
-const CONCURSO_CATALOGO: ConcursoCatalogItem[] = [
+const LEGACY_CONCURSO_CATALOGO: ConcursoCatalogItem[] = [
   {
     id: 'bb-escriturario-cesgranrio-2025',
+    areaId: 'bancario',
     label: 'Banco do Brasil · Escriturário · Cesgranrio',
     banca: 'Cesgranrio',
     area: 'Bancária',
@@ -98,9 +142,15 @@ const CONCURSO_CATALOGO: ConcursoCatalogItem[] = [
       'Atualidades do Mercado Financeiro',
       'Informática',
     ],
+    weights: {
+      'Conhecimentos BancÃ¡rios': 15,
+      'InformÃ¡tica': 15,
+      'Atualidades do Mercado Financeiro': 10,
+    },
   },
   {
     id: 'caixa-ti-cesgranrio-2025',
+    areaId: 'tecnologia',
     label: 'Caixa Econômica · TI · Cesgranrio',
     banca: 'Cesgranrio',
     area: 'TI',
@@ -113,9 +163,16 @@ const CONCURSO_CATALOGO: ConcursoCatalogItem[] = [
       'Segurança da Informação',
       'Engenharia de Software',
     ],
+    weights: {
+      'GovernanÃ§a de TI': 20,
+      'Banco de Dados': 20,
+      Redes: 15,
+      'SeguranÃ§a da InformaÃ§Ã£o': 15,
+    },
   },
   {
     id: 'pf-adm-cebraspe-2025',
+    areaId: 'administrativo',
     label: 'PF Administrativo · Cebraspe',
     banca: 'Cebraspe',
     area: 'Administrativa',
@@ -128,9 +185,15 @@ const CONCURSO_CATALOGO: ConcursoCatalogItem[] = [
       'Arquivologia',
       'Informática',
     ],
+    weights: {
+      'PortuguÃªs': 25,
+      'Direito Administrativo': 20,
+      'Direito Constitucional': 20,
+    },
   },
   {
     id: 'oab-1fase-fgv-2025',
+    areaId: 'tribunais',
     label: 'OAB 1ª Fase · FGV',
     banca: 'FGV',
     area: 'Jurídica',
@@ -147,10 +210,118 @@ const CONCURSO_CATALOGO: ConcursoCatalogItem[] = [
       'Tributário',
       'Empresarial',
     ],
+    weights: {
+      'Ã‰tica Profissional': 8,
+      Constitucional: 6,
+      Administrativo: 6,
+      Civil: 7,
+    },
   },
 ];
 const CONCURSO_MODELS = OFFICIAL_EXAM_MODELS.filter((model) => model.track === 'concurso');
-const DEFAULT_CONCURSO_MODEL_ID = CONCURSO_CATALOGO[0]?.id || CONCURSO_MODELS[0]?.id || '';
+const CONCURSO_AREA_LABELS: Record<ConcursoAreaId, string> = {
+  policial: 'Policial',
+  tribunais: 'Tribunais',
+  administrativo: 'Administrativo',
+  fiscal: 'Fiscal',
+  bancario: 'Bancario',
+  controle: 'Controle',
+  tecnologia: 'Tecnologia',
+  militar: 'Militar',
+  outros: 'Outros',
+};
+const CONCURSO_AREA_OPTIONS: Array<{ id: ConcursoAreaId; label: string; description: string }> = [
+  { id: 'policial', label: 'Policial', description: 'PF, PRF, PM e carreiras de seguranca.' },
+  { id: 'tribunais', label: 'Tribunais', description: 'TJ, OAB e carreiras juridicas.' },
+  { id: 'administrativo', label: 'Administrativo', description: 'Apoio administrativo e area meio.' },
+  { id: 'fiscal', label: 'Fiscal', description: 'Receita, tributacao e arrecadacao.' },
+  { id: 'bancario', label: 'Bancario', description: 'BB, Caixa e mercado financeiro.' },
+  { id: 'controle', label: 'Controle', description: 'Controladorias, auditoria e conformidade.' },
+  { id: 'tecnologia', label: 'Tecnologia', description: 'TI publica, dados e sistemas.' },
+  { id: 'militar', label: 'Militar', description: 'ESA, EsPCEx e carreiras militares.' },
+  { id: 'outros', label: 'Outros', description: 'Quando seu edital nao cabe nas trilhas acima.' },
+];
+const CONCURSO_EXPERIENCE_OPTIONS: Array<{
+  id: ConcursoExperienceMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: 'starting_now',
+    label: 'Comecando agora',
+    description: 'Vamos priorizar base, constancia e organizacao do edital.',
+  },
+  {
+    id: 'studied_before',
+    label: 'Ja estudei antes',
+    description: 'O plano entra com mais revisao, questoes e retorno ao edital.',
+  },
+  {
+    id: 'already_taking_exams',
+    label: 'Ja faco provas',
+    description: 'O foco sobe para intensidade, questoes e pontos fracos.',
+  },
+];
+const CONCURSO_AREA_SUBJECTS: Record<ConcursoAreaId, string[]> = {
+  policial: ['Portugues', 'Raciocinio Logico', 'Direito Constitucional', 'Direito Administrativo', 'Informatica', 'Atualidades'],
+  tribunais: ['Portugues', 'Raciocinio Logico', 'Direito Constitucional', 'Direito Administrativo', 'Informatica', 'Atualidades'],
+  administrativo: ['Portugues', 'Raciocinio Logico', 'Direito Administrativo', 'Administracao Publica', 'Arquivologia', 'Informatica'],
+  fiscal: ['Portugues', 'Raciocinio Logico', 'Direito Tributario', 'Contabilidade', 'Direito Constitucional', 'Direito Administrativo'],
+  bancario: ['Portugues', 'Matematica', 'Conhecimentos Bancarios', 'Atualidades do Mercado Financeiro', 'Informatica', 'Vendas e Negociacao'],
+  controle: ['Portugues', 'Raciocinio Logico', 'Contabilidade', 'Administracao Financeira', 'Auditoria', 'Direito Administrativo'],
+  tecnologia: ['Portugues', 'Raciocinio Logico', 'Tecnologia da Informacao', 'Banco de Dados', 'Redes', 'Seguranca da Informacao'],
+  militar: ['Portugues', 'Matematica', 'Historia', 'Geografia', 'Ingles', 'Legislacao'],
+  outros: ['Portugues', 'Raciocinio Logico', 'Atualidades', 'Informatica'],
+};
+const CONCURSO_BOARD_GUIDES: Record<string, string> = {
+  cebraspe: 'Plano com mais leitura cuidadosa, revisao curta e treino no estilo certo/errado.',
+  fgv: 'Plano com enunciados mais densos, interpretacao forte e leitura estrategica.',
+  cesgranrio: 'Plano com distribuicao classica por disciplina e treino objetivo de prova.',
+  vunesp: 'Plano com constancia por disciplina e questoes em ritmo tradicional.',
+  nucepe: 'Plano com reforco de base e ritmo equilibrado para consolidar fundamentos.',
+  exercito: 'Plano com revisao forte de base e blocos de treino por disciplina.',
+};
+
+const mapConcursoModelToAreaId = (model: OfficialExamModel): ConcursoAreaId => {
+  const descriptor = `${model.nome} ${model.edital}`.toLowerCase();
+
+  if (model.category === 'Policial') return 'policial';
+  if (model.category === 'Militar') return 'militar';
+
+  if (model.category === 'Bancos') {
+    if (descriptor.includes('ti') || descriptor.includes('serpro') || descriptor.includes('dataprev')) {
+      return 'tecnologia';
+    }
+
+    return 'bancario';
+  }
+
+  if (model.category === 'Jurídica') {
+    if (descriptor.includes('receita') || descriptor.includes('trib')) {
+      return 'fiscal';
+    }
+
+    return 'tribunais';
+  }
+
+  return 'outros';
+};
+
+const CONCURSO_CATALOGO: ConcursoCatalogItem[] = CONCURSO_MODELS.map((model) => {
+  const areaId = mapConcursoModelToAreaId(model);
+
+  return {
+    id: model.id,
+    label: model.nome,
+    banca: model.banca,
+    area: CONCURSO_AREA_LABELS[areaId],
+    areaId,
+    subjects: [...model.disciplinas],
+    weights: { ...(model.pesosPorDisciplina || {}) },
+  };
+});
+const DEFAULT_CONCURSO_MODEL_ID = '';
+const LEGACY_DEFAULT_CONCURSO_MODEL_ID = LEGACY_CONCURSO_CATALOGO[0]?.id || CONCURSO_MODELS[0]?.id || '';
 const WEEK_DAYS = [
   { id: 1, label: 'Seg' },
   { id: 2, label: 'Ter' },
@@ -201,6 +372,7 @@ const FOCUS_SUBJECT_MAP: Record<FocusType, string[]> = {
   concurso: ['Português', 'Raciocínio Lógico', 'Direito Constitucional', 'Direito Administrativo', 'Informática'],
   faculdade: [],
   outros: [],
+  hibrido: [],
 };
 
 const LEGACY_BLOCKED_SUBJECTS = new Set<string>([
@@ -270,6 +442,18 @@ const FOCUS_COPY_MAP: Record<FocusType, Step3Copy> = {
     successTitle: 'Plano personalizado calibrado',
     successMessage: 'Perfeito. Sua trilha foi organizada para manter progresso real.',
   },
+  hibrido: {
+    title: 'ðŸ§  3) NÃ­vel por frente do plano hÃ­brido',
+    subtitle: 'A IA distribui ENEM e concurso com base no foco principal e na sua carga real.',
+    cta: 'ðŸš€ Gerar plano hÃ­brido',
+    highPriorityTitle: 'ðŸ”¥ Prioridade alta (hÃ­brido)',
+    highPriorityEmpty: 'Nenhuma frente marcada para reforÃ§o intenso.',
+    maintenanceTitle: 'âš–ï¸ ManutenÃ§Ã£o (hÃ­brido)',
+    maintenanceEmpty: 'Defina frentes para manter equilÃ­brio entre ENEM e concurso.',
+    breakdownTitle: 'Seu plano hÃ­brido estÃ¡ focado em:',
+    successTitle: 'Plano hÃ­brido calibrado',
+    successMessage: 'Perfeito. Balanceamos ENEM e concurso sem perder clareza de prioridade.',
+  },
 };
 
 const difficultyWeight: Record<DifficultyLevel, number> = {
@@ -286,17 +470,20 @@ const LEVELS = [
 
 type LevelId = (typeof LEVELS)[number]['id'];
 
-type FocusType = 'enem' | 'concurso' | 'faculdade' | 'outros';
+type FocusType = 'enem' | 'concurso' | 'faculdade' | 'outros' | 'hibrido';
 type StepId = 'contexto' | 'ritmo' | 'nivel' | 'final';
 type EnemSituation = 'base' | 'terceiro' | 'repetente' | 'concluiu';
+type EnemProfileLevel = 'iniciante' | 'intermediario' | 'avancado';
 type CollegeFocus = 'provas' | 'trabalhos' | 'rotina';
-type OtherFocus = 'idiomas' | 'leitura' | 'novo_aprendizado';
+type OtherFocus = 'aprender' | 'praticar' | 'rotina' | 'evoluir_tema';
 type LevelsByFocus = Record<FocusType, Record<string, LevelId>>;
 type FormDataShape = {
   focus?: FocusType;
   course?: string;
   concursoId?: string;
+  concursoAreaId?: ConcursoAreaId | null;
   concursoMeta?: ConcursoMeta | null;
+  hybridPrimaryFocus?: HybridPrimaryFocus | null;
   enemGoalId?: string;
   enemTargetCollege?: string;
   enemTargetCourse?: string;
@@ -343,14 +530,15 @@ const FLOW_BY_FOCUS: Record<FocusType, StepId[]> = {
   concurso: ['contexto', 'ritmo', 'nivel', 'final'],
   faculdade: ['contexto', 'ritmo', 'nivel', 'final'],
   outros: ['contexto', 'ritmo', 'nivel', 'final'],
+  hibrido: ['contexto', 'ritmo', 'nivel', 'final'],
 };
 
 const FOCUS_PROFILES: Record<FocusType, FocusProfile> = {
   enem: {
     tone: 'alta_performance',
     header: {
-      title: 'ENEM · Reta final para alta nota',
-      subtitle: 'Vamos otimizar sua preparação com foco em aprovação.',
+      title: 'ENEM · Plano no seu momento',
+      subtitle: 'Vamos ajustar seu começo ou sua retomada com base no seu estágio real.',
     },
     step2: {
       subtitle: 'Organize sua semana para maximizar revisão e simulados sem sobrecarga.',
@@ -562,6 +750,60 @@ const FOCUS_PROFILES: Record<FocusType, FocusProfile> = {
       finish: 'Gerar plano personalizado',
     },
   },
+  hibrido: {
+    tone: 'balanceamento_duplo',
+    header: {
+      title: 'Hibrido · ENEM + Concurso',
+      subtitle: 'Vamos balancear os dois objetivos com uma prioridade interna clara.',
+    },
+    step2: {
+      subtitle: 'Monte uma semana realista para sustentar dois focos sem sobrecarga.',
+      impactLabels: {
+        low: 'Ritmo controlado para manter equilibrio 👍',
+        mid: 'Otimo balanceamento entre os dois objetivos 🚀',
+        high: 'Ritmo alto — cuide da recuperacao 🔥',
+      },
+    },
+    greenBoxMessages: {
+      step1: 'Perfeito. Vamos transformar duas metas em um plano unico com hierarquia clara.',
+      step2: 'Excelente. Sua carga ficou mais pronta para sustentar ENEM e concurso.',
+      step3: 'Fechado. Vamos distribuir prioridade principal e frente secundaria com clareza.',
+    },
+    finalCards: [
+      {
+        id: 'hib_prioridade',
+        icon: '⚖️',
+        title: 'Prioridade definida',
+        description: 'ENEM e concurso organizados com foco principal explicito.',
+        badge: 'Equilibrio',
+      },
+      {
+        id: 'hib_dupla',
+        icon: '🎯',
+        title: 'Duas frentes organizadas',
+        description: 'Plano unico para manter constancia sem competir por atencao o dia todo.',
+        badge: 'Clareza',
+      },
+      {
+        id: 'hib_rotina',
+        icon: '⏱️',
+        title: 'Carga semanal calibrada',
+        description: 'Distribuicao pensada para evitar excesso e manter continuidade.',
+        badge: 'Sustentavel',
+      },
+      {
+        id: 'hib_contexto',
+        icon: '📚',
+        title: 'Contexto dos dois objetivos',
+        description: 'Meta ENEM e edital de concurso salvos no mesmo plano.',
+        badge: 'Composto',
+      },
+    ],
+    cta: {
+      continue: 'Continuar plano hibrido',
+      finish: 'Gerar plano hibrido',
+    },
+  },
 };
 
 type OnboardingDraft = {
@@ -569,10 +811,14 @@ type OnboardingDraft = {
   focusType: FocusType;
   enemSituation: EnemSituation;
   enemTriedBefore: 'sim' | 'nao' | null;
+  enemProfileLevel: EnemProfileLevel | null;
   enemPastAverage: number | '';
   enemGoalId: string;
   enemTargetCollege: string;
   enemTargetCourse: string;
+  hybridPrimaryFocus: HybridPrimaryFocus | null;
+  hybridAvailableStudyTime: HybridAvailableStudyTime | null;
+  hybridConcursoExamDate: string;
   collegeName: string;
   courseName: string;
   semester: '1' | '2' | '3' | '4' | '5' | null;
@@ -583,6 +829,10 @@ type OnboardingDraft = {
   selectedSubjects: string[];
   manualSubjects: string[];
   concursoMeta: ConcursoMeta | null;
+  concursoAreaId: ConcursoAreaId | null;
+  concursoExperienceMode: ConcursoExperienceMode | null;
+  concursoBoard: string;
+  concursoPlanningWithoutDate: boolean;
   customSubjects?: string[];
   profile: SmartScheduleProfile;
   selectedConcursoModelId: string;
@@ -596,6 +846,47 @@ const normalizeSubject = (value: string): string => {
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase();
+};
+
+const normalizeSearchText = (value: string): string => normalizeSubject(value).replace(/\s+/g, ' ');
+
+const resolveConcursoExperienceLevel = (
+  experienceMode: ConcursoExperienceMode | null,
+): ConcursoExperienceLevel | null => {
+  if (experienceMode === 'starting_now') return 'iniciante';
+  if (experienceMode === 'studied_before') return 'intermediario';
+  if (experienceMode === 'already_taking_exams') return 'avancado';
+  return null;
+};
+
+const buildConcursoMeta = (input: {
+  selectedModel: ConcursoCatalogItem | null;
+  areaId: ConcursoAreaId | null;
+  banca: string;
+  examDate?: string | null;
+  experienceMode: ConcursoExperienceMode | null;
+  planningWithoutDate: boolean;
+}): ConcursoMeta | null => {
+  const trimmedBoard = input.banca.trim();
+  const areaId = input.selectedModel?.areaId || input.areaId;
+  const area = areaId ? CONCURSO_AREA_LABELS[areaId] : '';
+  const experienceLevel = resolveConcursoExperienceLevel(input.experienceMode);
+
+  if (!areaId && !input.selectedModel) {
+    return null;
+  }
+
+  return {
+    id: input.selectedModel?.id || `concurso-${areaId || 'base'}`,
+    nome: input.selectedModel?.label || `Concurso ${area || 'em definicao'}`,
+    banca: trimmedBoard || input.selectedModel?.banca || '',
+    area,
+    areaId: areaId || 'outros',
+    examDate: input.planningWithoutDate ? null : input.examDate || null,
+    experienceMode: input.experienceMode,
+    experienceLevel,
+    planningWithoutDate: input.planningWithoutDate,
+  };
 };
 
 const isValidSubjectName = (value: string): boolean => {
@@ -619,7 +910,7 @@ const sanitizeLegacySubjects = (subjects: string[]): string[] => {
 };
 
 const normalizeFocus = (input?: string): FocusType => {
-  if (input === 'enem' || input === 'concurso' || input === 'faculdade' || input === 'outros') {
+  if (input === 'enem' || input === 'concurso' || input === 'faculdade' || input === 'outros' || input === 'hibrido') {
     return input;
   }
 
@@ -635,7 +926,8 @@ const resolveSubjectsByFocus = (selectedFocusRaw: string | undefined, formData: 
   if (selectedFocus === 'concurso') {
     const concurso = CONCURSO_CATALOGO.find((item) => item.id === formData.concursoId);
     const legacyModel = CONCURSO_MODELS.find((item) => item.id === formData.concursoId);
-    const byConcurso = (concurso?.subjects || legacyModel?.disciplinas || []).map((subject) => subject.trim()).filter(Boolean);
+    const byArea = formData.concursoAreaId ? CONCURSO_AREA_SUBJECTS[formData.concursoAreaId] || [] : [];
+    const byConcurso = (concurso?.subjects || legacyModel?.disciplinas || byArea || []).map((subject) => subject.trim()).filter(Boolean);
 
     // Se o usuário já ajustou manualmente, respeita a seleção dele como fonte principal.
     if (fromSelected.length > 0) {
@@ -643,6 +935,24 @@ const resolveSubjectsByFocus = (selectedFocusRaw: string | undefined, formData: 
     }
 
     return Array.from(new Set([...byConcurso, ...fromManual]));
+  }
+
+  if (selectedFocus === 'hibrido') {
+    const concurso = CONCURSO_CATALOGO.find((item) => item.id === formData.concursoId);
+    const legacyModel = CONCURSO_MODELS.find((item) => item.id === formData.concursoId);
+    const byArea = formData.concursoAreaId ? CONCURSO_AREA_SUBJECTS[formData.concursoAreaId] || [] : [];
+    const byConcurso = (concurso?.subjects || legacyModel?.disciplinas || byArea || []).map((subject) => subject.trim()).filter(Boolean);
+    const orderedBase = formData.hybridPrimaryFocus === 'concurso'
+      ? [...byConcurso, ...ENEM_SUBJECTS]
+      : formData.hybridPrimaryFocus === 'equilibrado'
+        ? [...ENEM_SUBJECTS, ...byConcurso]
+        : [...ENEM_SUBJECTS, ...byConcurso];
+
+    if (fromSelected.length > 0) {
+      return Array.from(new Set([...fromSelected, ...fromManual]));
+    }
+
+    return Array.from(new Set([...orderedBase, ...fromManual]));
   }
 
   if (selectedFocus === 'faculdade' || selectedFocus === 'outros') {
@@ -691,6 +1001,18 @@ const suggestedLevelFromPeso = (peso: number): LevelId => {
   return 'good';
 };
 
+const levelFromEnemProfile = (profileLevel: EnemProfileLevel, peso: number): LevelId => {
+  if (profileLevel === 'iniciante') {
+    return 'improve';
+  }
+
+  if (profileLevel === 'avancado') {
+    return peso >= 4 ? 'ok' : 'good';
+  }
+
+  return suggestedLevelFromPeso(peso);
+};
+
 const getStepId = (focus: FocusType, stepIndex: number): StepId => {
   return FLOW_BY_FOCUS[focus][stepIndex] ?? 'contexto';
 };
@@ -701,6 +1023,7 @@ const buildDefaultLevelsByFocus = (): LevelsByFocus => {
     concurso: Object.fromEntries(FOCUS_SUBJECT_MAP.concurso.map((subject) => [subject, 'ok'])) as Record<string, LevelId>,
     faculdade: Object.fromEntries(FOCUS_SUBJECT_MAP.faculdade.map((subject) => [subject, 'ok'])) as Record<string, LevelId>,
     outros: Object.fromEntries(FOCUS_SUBJECT_MAP.outros.map((subject) => [subject, 'ok'])) as Record<string, LevelId>,
+    hibrido: Object.fromEntries(FOCUS_SUBJECT_MAP.hibrido.map((subject) => [subject, 'ok'])) as Record<string, LevelId>,
   };
 };
 
@@ -759,6 +1082,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   userName,
   initialDailyGoal,
   initialMethodId,
+  initialFocusType = 'enem',
   onComplete,
   onStepProgressSave,
 }) => {
@@ -772,14 +1096,23 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const [streakDays, setStreakDays] = React.useState<number>(0);
   const [goalDays] = React.useState<number>(7);
   const [selectedConcursoModelId, setSelectedConcursoModelId] = React.useState(DEFAULT_CONCURSO_MODEL_ID);
+  const [concursoAreaId, setConcursoAreaId] = React.useState<ConcursoAreaId | null>(null);
+  const [concursoSearch, setConcursoSearch] = React.useState('');
+  const [concursoBoard, setConcursoBoard] = React.useState('');
+  const [concursoExperienceMode, setConcursoExperienceMode] = React.useState<ConcursoExperienceMode | null>(null);
+  const [concursoPlanningWithoutDate, setConcursoPlanningWithoutDate] = React.useState(false);
   const [concursoMeta, setConcursoMeta] = React.useState<ConcursoMeta | null>(null);
-  const [focusType, setFocusType] = React.useState<FocusType>('enem');
+  const [focusType, setFocusType] = React.useState<FocusType>(initialFocusType);
   const [enemSituation, setEnemSituation] = React.useState<EnemSituation>('terceiro');
   const [enemTriedBefore, setEnemTriedBefore] = React.useState<'sim' | 'nao' | null>(null);
+  const [enemProfileLevel, setEnemProfileLevel] = React.useState<EnemProfileLevel | null>(null);
   const [enemPastAverage, setEnemPastAverage] = React.useState<number | ''>('');
   const [enemGoalId, setEnemGoalId] = React.useState('');
   const [enemTargetCollege, setEnemTargetCollege] = React.useState('');
   const [enemTargetCourse, setEnemTargetCourse] = React.useState('');
+  const [hybridPrimaryFocus, setHybridPrimaryFocus] = React.useState<HybridPrimaryFocus | null>(null);
+  const [hybridAvailableStudyTime, setHybridAvailableStudyTime] = React.useState<HybridAvailableStudyTime | null>(null);
+  const [hybridConcursoExamDate, setHybridConcursoExamDate] = React.useState('');
   const [collegeName, setCollegeName] = React.useState('');
   const [courseName, setCourseName] = React.useState('');
   const [collegeInput, setCollegeInput] = React.useState('');
@@ -809,10 +1142,26 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     };
   });
 
-  const selectedConcursoModel = React.useMemo(
-    () => CONCURSO_MODELS.find((model) => model.id === selectedConcursoModelId),
+  const selectedConcursoModel = React.useMemo<any>(
+    () => CONCURSO_MODELS.find((model) => model.id === selectedConcursoModelId) || null,
     [selectedConcursoModelId],
   );
+  const selectedConcursoCatalog = React.useMemo(
+    () => CONCURSO_CATALOGO.find((model) => model.id === selectedConcursoModelId) || null,
+    [selectedConcursoModelId],
+  );
+  const filteredConcursoCatalog = React.useMemo(() => {
+    const normalizedSearch = normalizeSearchText(concursoSearch);
+
+    return CONCURSO_CATALOGO.filter((item) => {
+      const matchesArea = !concursoAreaId || item.areaId === concursoAreaId;
+      if (!matchesArea) return false;
+      if (!normalizedSearch) return true;
+
+      const haystack = normalizeSearchText(`${item.label} ${item.area} ${item.banca}`);
+      return haystack.includes(normalizedSearch);
+    }).slice(0, 8);
+  }, [concursoAreaId, concursoSearch]);
 
   React.useEffect(() => {
     if (focusType === 'concurso') {
@@ -820,13 +1169,39 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       return;
     }
 
+    if (focusType === 'hibrido') {
+      setProfile((prev) => ({ ...prev, examName: 'HIBRIDO' }));
+      return;
+    }
+
     setProfile((prev) => ({ ...prev, examName: 'ENEM' }));
   }, [focusType]);
+
+  React.useEffect(() => {
+    if (focusType !== 'enem' && focusType !== 'hibrido') {
+      return;
+    }
+
+    if (enemTriedBefore === 'nao') {
+      setEnemProfileLevel('iniciante');
+      return;
+    }
+
+    if (enemTriedBefore === 'sim' && (!enemProfileLevel || enemProfileLevel === 'iniciante')) {
+      setEnemProfileLevel('intermediario');
+      return;
+    }
+
+    if (!enemTriedBefore) {
+      setEnemProfileLevel(null);
+    }
+  }, [focusType, enemTriedBefore, enemProfileLevel]);
 
   const progressPercent = Math.round((step / 4) * 100);
   const focusProfile = FOCUS_PROFILES[focusType];
   const todayDateStr = toDateInputString();
   const examDateInPast = Boolean(profile.examDate) && profile.examDate < todayDateStr;
+  const hybridConcursoDateInPast = Boolean(hybridConcursoExamDate) && hybridConcursoExamDate < todayDateStr;
   const goalDeadlineInPast = Boolean(goalDeadline) && goalDeadline < todayDateStr;
   const weeklyHours = React.useMemo(
     () => profile.availableWeekDays.length * Math.max(0, Number(profile.hoursPerDay) || 0),
@@ -863,8 +1238,16 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   };
 
   const canShowGoalSummary = Boolean(profile.examDate) && Number(profile.desiredScore) > 0;
+  const hasConcursoDate = Boolean(profile.examDate);
+  const hasConcursoScore = Number(profile.desiredScore) > 0;
+  const hasConcursoContext = Boolean(concursoAreaId) && (Boolean(selectedConcursoModelId) || concursoPlanningWithoutDate);
+  const hasConcursoExperience = Boolean(concursoExperienceMode);
+  const hasHybridConcursoTimeline = concursoPlanningWithoutDate
+    ? true
+    : Boolean(hybridConcursoExamDate) && !hybridConcursoDateInPast;
+  const hasHybridSetup = Boolean(hybridPrimaryFocus) && Boolean(hybridAvailableStudyTime);
 
-  const requiredPastAverage = focusType === 'enem' && enemTriedBefore === 'sim';
+  const requiredPastAverage = (focusType === 'enem' || focusType === 'hibrido') && enemTriedBefore === 'sim';
   const hasPastAverage = requiredPastAverage ? Number(enemPastAverage) >= 0 : true;
   const canContinueFromContext = React.useMemo(() => {
     if (focusType === 'faculdade' || focusType === 'outros') {
@@ -883,13 +1266,27 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       if (focusType === 'enem') {
         const hasDate = Boolean(profile.examDate);
         const hasScore = Number(profile.desiredScore) > 0;
-        return hasDate && !examDateInPast && hasScore && Boolean(enemTriedBefore) && hasPastAverage;
+        const hasLevel = enemTriedBefore === 'nao' ? enemProfileLevel === 'iniciante' : Boolean(enemProfileLevel);
+        return hasDate && !examDateInPast && hasScore && Boolean(enemTriedBefore) && hasLevel && hasPastAverage;
       }
 
       if (focusType === 'concurso') {
-        const hasDate = Boolean(profile.examDate);
-        const hasScore = Number(profile.desiredScore) > 0;
-        return hasDate && !examDateInPast && hasScore && Boolean(selectedConcursoModelId);
+        const hasTimeline = concursoPlanningWithoutDate ? true : hasConcursoDate && !examDateInPast;
+        return hasConcursoContext && hasTimeline && hasConcursoScore && hasConcursoExperience;
+      }
+
+      if (focusType === 'hibrido') {
+        const hasEnemDate = Boolean(profile.examDate) && !examDateInPast;
+        const hasLevel = enemTriedBefore === 'nao' ? enemProfileLevel === 'iniciante' : Boolean(enemProfileLevel);
+        return hasEnemDate
+          && hasConcursoScore
+          && Boolean(enemTriedBefore)
+          && hasLevel
+          && hasPastAverage
+          && hasConcursoContext
+          && hasConcursoExperience
+          && hasHybridConcursoTimeline
+          && hasHybridSetup;
       }
 
       if (focusType === 'faculdade') {
@@ -921,6 +1318,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     focusType,
     enemTriedBefore,
     hasPastAverage,
+    hasHybridConcursoTimeline,
+    hasHybridSetup,
+    concursoAreaId,
+    concursoExperienceMode,
+    concursoPlanningWithoutDate,
+    hybridPrimaryFocus,
+    hybridAvailableStudyTime,
+    hybridConcursoExamDate,
     selectedConcursoModelId,
     collegeName,
     courseName,
@@ -929,8 +1334,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     otherFocus,
     otherGoalTitle,
     examDateInPast,
+    hybridConcursoDateInPast,
     goalDeadlineInPast,
     canContinueFromContext,
+    hasConcursoContext,
+    hasConcursoDate,
+    hasConcursoExperience,
+    hasConcursoScore,
   ]);
 
   React.useEffect(() => {
@@ -948,10 +1358,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       if (draft.focusType) setFocusType(draft.focusType);
       if (draft.enemSituation) setEnemSituation(draft.enemSituation);
       setEnemTriedBefore(draft.enemTriedBefore ?? null);
+      setEnemProfileLevel(draft.enemProfileLevel ?? null);
       setEnemPastAverage(draft.enemPastAverage ?? '');
       setEnemGoalId(draft.enemGoalId ?? '');
       setEnemTargetCollege(draft.enemTargetCollege ?? '');
       setEnemTargetCourse(draft.enemTargetCourse ?? '');
+      setHybridPrimaryFocus(draft.hybridPrimaryFocus ?? null);
+      setHybridAvailableStudyTime(draft.hybridAvailableStudyTime ?? null);
+      setHybridConcursoExamDate(draft.hybridConcursoExamDate ?? '');
       setCollegeName(draft.collegeName ?? '');
       setCourseName(draft.courseName ?? '');
       setSemester(draft.semester ?? null);
@@ -963,6 +1377,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       setManualSubjects(draft.manualSubjects ?? legacyCustom);
       setSelectedSubjects(draft.selectedSubjects ?? legacyCustom);
       setConcursoMeta(draft.concursoMeta ?? null);
+      setConcursoAreaId(draft.concursoAreaId ?? draft.concursoMeta?.areaId ?? null);
+      setConcursoExperienceMode(draft.concursoExperienceMode ?? draft.concursoMeta?.experienceMode ?? null);
+      setConcursoBoard(draft.concursoBoard ?? draft.concursoMeta?.banca ?? '');
+      setConcursoPlanningWithoutDate(Boolean(draft.concursoPlanningWithoutDate ?? draft.concursoMeta?.planningWithoutDate));
       const savedConcursoId = draft.selectedConcursoModelId || DEFAULT_CONCURSO_MODEL_ID;
       const hasCatalogMatch = CONCURSO_CATALOGO.some((item) => item.id === savedConcursoId);
       const hasLegacyMatch = CONCURSO_MODELS.some((item) => item.id === savedConcursoId);
@@ -1026,10 +1444,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       focusType,
       enemSituation,
       enemTriedBefore,
+      enemProfileLevel,
       enemPastAverage,
       enemGoalId,
       enemTargetCollege,
       enemTargetCourse,
+      hybridPrimaryFocus,
+      hybridAvailableStudyTime,
+      hybridConcursoExamDate,
       collegeName,
       courseName,
       semester,
@@ -1040,6 +1462,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       selectedSubjects,
       manualSubjects,
       concursoMeta,
+      concursoAreaId,
+      concursoExperienceMode,
+      concursoBoard,
+      concursoPlanningWithoutDate,
       profile,
       selectedConcursoModelId,
     };
@@ -1072,10 +1498,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     focusType,
     enemSituation,
     enemTriedBefore,
+    enemProfileLevel,
     enemPastAverage,
     enemGoalId,
     enemTargetCollege,
     enemTargetCourse,
+    hybridPrimaryFocus,
+    hybridAvailableStudyTime,
+    hybridConcursoExamDate,
     collegeName,
     courseName,
     semester,
@@ -1086,6 +1516,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     selectedSubjects,
     manualSubjects,
     concursoMeta,
+    concursoAreaId,
+    concursoExperienceMode,
+    concursoBoard,
+    concursoPlanningWithoutDate,
     profile,
     selectedConcursoModelId,
     storageKey,
@@ -1159,7 +1593,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       focus: focusType,
       course: courseName,
       concursoId: selectedConcursoModelId,
+      concursoAreaId,
       concursoMeta,
+      hybridPrimaryFocus,
       enemGoalId,
       enemTargetCollege,
       enemTargetCourse,
@@ -1170,7 +1606,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     focusType,
     courseName,
     selectedConcursoModelId,
+    concursoAreaId,
     concursoMeta,
+    hybridPrimaryFocus,
     enemGoalId,
     enemTargetCollege,
     enemTargetCourse,
@@ -1180,38 +1618,153 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
   const focus = normalizeFocus(formData.focus);
   const courseKey = (formData.course || '').trim().toLowerCase();
-  const concursoSelecionado = React.useMemo(
-    () => CONCURSO_CATALOGO.find((item) => item.id === selectedConcursoModelId),
-    [selectedConcursoModelId],
-  );
+  const concursoSelecionado: any = selectedConcursoCatalog;
+  const concursoExperienceLevel = resolveConcursoExperienceLevel(concursoExperienceMode);
+  const concursoBoardGuide = React.useMemo(() => {
+    const boardKey = normalizeSearchText(concursoBoard || concursoSelecionado?.banca || '');
+    return CONCURSO_BOARD_GUIDES[boardKey] || '';
+  }, [concursoBoard, concursoSelecionado]);
+
+  const contextSummary = React.useMemo(() => {
+    if (focusType === 'hibrido') {
+      const concursoLabel = concursoSelecionado?.label || (concursoAreaId ? `concurso ${CONCURSO_AREA_LABELS[concursoAreaId].toLowerCase()}` : 'concurso');
+      const title = hybridPrimaryFocus === 'enem'
+        ? 'Plano hibrido com foco principal no ENEM'
+        : hybridPrimaryFocus === 'concurso'
+          ? 'Plano hibrido com foco principal no Concurso'
+          : 'Plano hibrido equilibrado entre ENEM e Concurso';
+      const description = hybridPrimaryFocus === 'enem'
+        ? `ENEM como eixo principal, mantendo avanço continuo em ${concursoLabel}.`
+        : hybridPrimaryFocus === 'concurso'
+          ? `Prioridade no edital de ${concursoLabel}, sem perder consistencia na preparacao para o ENEM.`
+          : `Divisao controlada entre ENEM e ${concursoLabel}, com rotina semanal equilibrada.`;
+      return { title, description };
+    }
+
+    if (focusType === 'concurso') {
+      const areaLabel = concursoAreaId ? CONCURSO_AREA_LABELS[concursoAreaId] : 'Concurso';
+      const boardLabel = (concursoBoard || concursoSelecionado?.banca || '').trim();
+      const experienceCopy = concursoExperienceMode === 'starting_now'
+        ? 'com foco em base e constancia'
+        : concursoExperienceMode === 'studied_before'
+          ? 'com revisao e retorno forte ao edital'
+          : concursoExperienceMode === 'already_taking_exams'
+            ? 'com mais questoes, revisao e ajuste fino'
+            : 'com foco em edital e prazo';
+      const timelineCopy = concursoPlanningWithoutDate
+        ? 'ate a definicao do edital e da prova'
+        : profile.examDate
+          ? `com prazo puxando para ${profile.examDate}`
+          : 'ajustado ao seu prazo';
+      const title = concursoSelecionado
+        ? `Plano orientado pelo edital de ${concursoSelecionado.label}`
+        : `Plano inicial para ${areaLabel.toLowerCase()}`;
+      const description = concursoSelecionado
+        ? `${boardLabel ? `Banca ${boardLabel}. ` : ''}${experienceCopy} e ${timelineCopy}.`
+        : `${boardLabel ? `Banca ${boardLabel}. ` : ''}Base de ${areaLabel.toLowerCase()} ${timelineCopy}.`;
+      return { title, description };
+
+      if (false) {
+
+      const title = concursoSelecionado
+        ? `Plano baseado em ${concursoSelecionado?.area.toLowerCase()}`
+        : 'Plano orientado por edital';
+      const description = concursoSelecionado
+        ? `${concursoSelecionado.label} · banca ${concursoSelecionado.banca}`
+        : 'Selecione o concurso e a data da prova para montar uma trilha tecnica.';
+      return { title, description };
+    }
+
+      }
+
+    if (focusType === 'faculdade') {
+      const focusLabel = collegeFocus === 'provas'
+        ? 'provas'
+        : collegeFocus === 'trabalhos'
+          ? 'trabalhos'
+          : collegeFocus === 'rotina'
+            ? 'rotina academica'
+            : 'sua rotina academica';
+      const title = `Plano focado em ${focusLabel}`;
+      const description = courseName.trim() && collegeName.trim()
+        ? `${courseName.trim()} · ${collegeName.trim()}`
+        : 'Vamos usar curso, periodo e foco atual para organizar o semestre.';
+      return { title, description };
+    }
+
+    if (focusType === 'outros') {
+      const title = otherGoalTitle.trim()
+        ? `Plano flexivel para ${otherGoalTitle.trim()}`
+        : 'Plano flexivel e personalizado';
+      const description = otherFocus === 'aprender'
+        ? 'Vamos priorizar entendimento e base.'
+        : otherFocus === 'praticar'
+          ? 'Vamos puxar mais repeticao e aplicacao.'
+          : otherFocus === 'rotina'
+            ? 'Vamos construir consistencia antes de aumentar carga.'
+            : otherFocus === 'evoluir_tema'
+              ? 'Vamos aprofundar um tema com continuidade.'
+              : 'Escolha um objetivo e o app ajusta o seu modo de estudo.';
+      return { title, description };
+    }
+
+    const title = enemTriedBefore === 'nao'
+      ? 'Plano inicial de preparacao ENEM'
+      : 'Plano ENEM ajustado para sua meta';
+    const description = enemTargetCollege || enemTargetCourse
+      ? `${enemTargetCollege || 'Faculdade alvo'} · ${enemTargetCourse || 'Curso alvo'}`
+      : 'Essa escolha muda a carga, a ordem de estudo e a primeira missao.';
+    return { title, description };
+  }, [
+    collegeFocus,
+    collegeName,
+    concursoAreaId,
+    concursoBoard,
+    concursoExperienceMode,
+    concursoPlanningWithoutDate,
+    concursoSelecionado,
+    courseName,
+    enemTargetCollege,
+    enemTargetCourse,
+    enemTriedBefore,
+    focusType,
+    hybridPrimaryFocus,
+    otherFocus,
+    otherGoalTitle,
+    profile.examDate,
+  ]);
 
   React.useEffect(() => {
     if (!concursoSelecionado) return;
 
-    setConcursoMeta((prev) => {
-      if (
-        prev
-        && prev.id === concursoSelecionado.id
-        && prev.banca === concursoSelecionado.banca
-        && prev.area === concursoSelecionado.area
-        && prev.nome === concursoSelecionado.label
-      ) {
-        return prev;
-      }
-
-      return {
-        id: concursoSelecionado.id,
-        nome: concursoSelecionado.label,
-        banca: concursoSelecionado.banca,
-        area: concursoSelecionado.area,
-      };
-    });
+    setConcursoAreaId((prev) => prev || concursoSelecionado.areaId);
+    setConcursoBoard((prev) => prev || concursoSelecionado.banca);
   }, [concursoSelecionado]);
+
+  React.useEffect(() => {
+    setConcursoMeta(buildConcursoMeta({
+      selectedModel: concursoSelecionado,
+      areaId: concursoAreaId,
+      banca: concursoBoard,
+      examDate: focusType === 'hibrido' ? hybridConcursoExamDate : profile.examDate,
+      experienceMode: concursoExperienceMode,
+      planningWithoutDate: concursoPlanningWithoutDate,
+    }));
+  }, [
+    concursoAreaId,
+    concursoBoard,
+    concursoExperienceMode,
+    concursoPlanningWithoutDate,
+    concursoSelecionado,
+    focusType,
+    hybridConcursoExamDate,
+    profile.examDate,
+  ]);
 
   const step3SourceKey = `${focus}::${courseKey}`;
   const resolvedSubjects = React.useMemo(() => {
     return resolveSubjectsByFocus(formData.focus, formData);
-  }, [formData.focus, formData.course, formData.selectedSubjects, formData.manualSubjects]);
+  }, [formData.focus, formData.course, formData.concursoAreaId, formData.concursoId, formData.hybridPrimaryFocus, formData.selectedSubjects, formData.manualSubjects]);
 
   const enemGoalProfile = React.useMemo(() => getEnemGoal(formData), [formData]);
 
@@ -1221,16 +1774,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   );
 
   React.useEffect(() => {
-    if (focusType !== 'enem') return;
-    if (!enemGoalId) return;
+    if (focusType !== 'enem' || !enemProfileLevel) return;
 
     setLevelsByFocus((prev) => {
       const nextEnem = { ...(prev.enem || {}) };
 
-      enemWeightedSubjects.forEach(({ subject, peso }) => {
-        if (nextEnem[subject] === undefined || nextEnem[subject] === 'ok') {
-          nextEnem[subject] = suggestedLevelFromPeso(peso);
-        }
+      ENEM_SUBJECTS.forEach((subject) => {
+        nextEnem[subject] = levelFromEnemProfile(enemProfileLevel, enemPeso(formData, subject));
       });
 
       return {
@@ -1238,7 +1788,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         enem: nextEnem,
       };
     });
-  }, [focusType, enemGoalId, enemWeightedSubjects]);
+  }, [focusType, enemProfileLevel, formData]);
 
   React.useEffect(() => {
     if (focusType !== 'faculdade') {
@@ -1304,6 +1854,24 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       return [...prev, subject];
     });
   };
+
+  const selectConcursoModel = React.useCallback((concursoId: string) => {
+    const concurso = CONCURSO_CATALOGO.find((item) => item.id === concursoId) || null;
+    const officialModel = CONCURSO_MODELS.find((item) => item.id === concursoId) || null;
+
+    setSelectedConcursoModelId(concursoId);
+    setConcursoAreaId(concurso?.areaId || null);
+    setConcursoBoard(concurso?.banca || officialModel?.banca || '');
+    setSelectedSubjects(concurso ? [...concurso.subjects] : [...(officialModel?.disciplinas || [])]);
+
+    trackEvent('onboarding_concurso_selected', {
+      flow: 'onboarding_plano_inteligente',
+      concursoId,
+      concursoLabel: concurso?.label || officialModel?.nome || null,
+      banca: concurso?.banca || officialModel?.banca || null,
+      area: concurso?.area || null,
+    });
+  }, []);
 
   const addSubject = (rawSubject: string): boolean => {
     const value = rawSubject.trim();
@@ -1461,6 +2029,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
   const finish = () => {
     const methodId = profile.studyStyle === 'pomodoro_25_5' ? 'pomodoro' : 'livre';
+    const concursoWeights = (concursoSelecionado?.weights || {}) as Record<string, number>;
+    const maxConcursoWeight = Math.max(0, ...Object.values(concursoWeights).map((value) => Number(value) || 0));
+    const hybridDistribution = hybridPrimaryFocus === 'enem'
+      ? { enem: 0.7, concurso: 0.3 }
+      : hybridPrimaryFocus === 'concurso'
+        ? { enem: 0.3, concurso: 0.7 }
+        : { enem: 0.5, concurso: 0.5 };
 
     // Keep only the active track subjects in the saved profile to avoid stale ENEM/Concurso mixing.
     const normalizedSubjectDifficulty: Record<string, DifficultyLevel> = {};
@@ -1472,8 +2047,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       const enemBoost = focusType === 'enem' && ENEM_SUBJECTS.includes(subject as EnemSubject)
         ? (enemPeso(formData, subject as EnemSubject) - 3) * 5
         : 0;
+      const concursoBoost = focusType === 'concurso' && maxConcursoWeight > 0
+        ? Math.round(((concursoWeights[subject] || 0) / maxConcursoWeight) * 20)
+        : 0;
+      const hybridEnemBoost = focusType === 'hibrido' && ENEM_SUBJECTS.includes(subject as EnemSubject)
+        ? Math.round(Math.max(0, enemPeso(formData, subject as EnemSubject) - 2) * 6 * hybridDistribution.enem)
+        : 0;
+      const hybridConcursoBoost = focusType === 'hibrido' && maxConcursoWeight > 0
+        ? Math.round(((concursoWeights[subject] || 0) / maxConcursoWeight) * 20 * hybridDistribution.concurso)
+        : 0;
       normalizedSubjectDifficulty[subject] = level;
-      normalizedSubjectWeight[subject] = Math.max(5, difficultyWeight[level] + enemBoost);
+      normalizedSubjectWeight[subject] = Math.max(
+        5,
+        difficultyWeight[level] + enemBoost + concursoBoost + hybridEnemBoost + hybridConcursoBoost,
+      );
     });
 
     let simulationIntervalWeeks = profile.simulationIntervalWeeks;
@@ -1499,6 +2086,91 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           adjustedHoursPerDay = Math.min(8, adjustedHoursPerDay + 1);
         }
       }
+
+      if (enemProfileLevel === 'iniciante') {
+        adjustedHoursPerDay = Math.min(adjustedHoursPerDay, 2);
+        simulationIntervalWeeks = Math.max(simulationIntervalWeeks, 3);
+      }
+
+      if (enemProfileLevel === 'avancado') {
+        adjustedHoursPerDay = Math.max(2, adjustedHoursPerDay);
+        simulationIntervalWeeks = 1;
+      }
+    }
+
+    if (focusType === 'concurso') {
+      if (concursoExperienceMode === 'starting_now') {
+        adjustedHoursPerDay = Math.min(adjustedHoursPerDay, 2);
+        simulationIntervalWeeks = Math.max(simulationIntervalWeeks, 3);
+      }
+
+      if (concursoExperienceMode === 'studied_before') {
+        adjustedHoursPerDay = Math.max(2, adjustedHoursPerDay);
+        simulationIntervalWeeks = Math.min(simulationIntervalWeeks, 2);
+      }
+
+      if (concursoExperienceMode === 'already_taking_exams') {
+        adjustedHoursPerDay = Math.max(2, adjustedHoursPerDay);
+        simulationIntervalWeeks = 1;
+      }
+
+      if (concursoPlanningWithoutDate) {
+        simulationIntervalWeeks = Math.max(simulationIntervalWeeks, 3);
+      } else if (profile.examDate) {
+        const today = new Date(`${todayDateStr}T00:00:00`);
+        const exam = new Date(`${profile.examDate}T00:00:00`);
+        const daysUntilExam = Math.max(0, Math.ceil((exam.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+
+        if (daysUntilExam <= 90) {
+          adjustedHoursPerDay = Math.max(2, adjustedHoursPerDay);
+          simulationIntervalWeeks = Math.min(simulationIntervalWeeks, 2);
+        }
+
+        if (daysUntilExam <= 45) {
+          simulationIntervalWeeks = 1;
+        }
+      }
+    }
+
+    if (focusType === 'hibrido') {
+      if (hybridAvailableStudyTime === 'baixo') {
+        adjustedHoursPerDay = Math.min(adjustedHoursPerDay, 2);
+      }
+
+      if (hybridAvailableStudyTime === 'medio') {
+        adjustedHoursPerDay = Math.max(2, adjustedHoursPerDay);
+      }
+
+      if (hybridAvailableStudyTime === 'alto') {
+        adjustedHoursPerDay = Math.max(3, adjustedHoursPerDay);
+      }
+
+      if (hybridPrimaryFocus === 'enem') {
+        simulationIntervalWeeks = 2;
+      }
+
+      if (hybridPrimaryFocus === 'concurso') {
+        simulationIntervalWeeks = 1;
+      }
+
+      if (hybridPrimaryFocus === 'equilibrado') {
+        simulationIntervalWeeks = 2;
+        adjustedHoursPerDay = Math.max(2, adjustedHoursPerDay);
+      }
+
+      if (!concursoPlanningWithoutDate && hybridConcursoExamDate) {
+        const today = new Date(`${todayDateStr}T00:00:00`);
+        const exam = new Date(`${hybridConcursoExamDate}T00:00:00`);
+        const daysUntilExam = Math.max(0, Math.ceil((exam.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+
+        if (daysUntilExam <= 90) {
+          adjustedHoursPerDay = Math.max(2, adjustedHoursPerDay);
+        }
+
+        if (daysUntilExam <= 45) {
+          simulationIntervalWeeks = 1;
+        }
+      }
     }
 
     if (focusType === 'faculdade') {
@@ -1508,12 +2180,21 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     }
 
     if (focusType === 'outros') {
-      if (otherFocus === 'leitura') {
+      if (otherFocus === 'aprender') {
+        adjustedHoursPerDay = Math.min(adjustedHoursPerDay, 2);
+        simulationIntervalWeeks = 3;
+      }
+
+      if (otherFocus === 'praticar') {
+        simulationIntervalWeeks = 2;
+      }
+
+      if (otherFocus === 'rotina') {
         adjustedHoursPerDay = Math.min(adjustedHoursPerDay, 2);
         simulationIntervalWeeks = 4;
       }
 
-      if (otherFocus === 'novo_aprendizado') {
+      if (otherFocus === 'evoluir_tema') {
         simulationIntervalWeeks = 2;
       }
     }
@@ -1552,23 +2233,57 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       // storage indisponível
     }
 
+    const hybridAnchorDate = focusType === 'hibrido'
+      ? (hybridPrimaryFocus === 'concurso'
+        ? (hybridConcursoExamDate || profile.examDate)
+        : hybridPrimaryFocus === 'enem'
+          ? (profile.examDate || hybridConcursoExamDate)
+          : [profile.examDate, hybridConcursoExamDate].filter(Boolean).sort()[0] || '')
+      : '';
+
     onComplete({
       dailyGoal,
       methodId,
       onboardingMeta: {
         focus: focusType,
-        concurso: focusType === 'concurso' ? concursoMeta : null,
-        enem: focusType === 'enem'
+        concurso: (focusType === 'concurso' || focusType === 'hibrido') ? concursoMeta : null,
+        enem: (focusType === 'enem' || focusType === 'hibrido')
           ? {
             goalId: enemGoalId || null,
             targetCollege: enemTargetCollege || null,
             targetCourse: enemTargetCourse || null,
+            triedBefore: enemTriedBefore,
+            profileLevel: enemProfileLevel,
           }
           : null,
+        hibrido: focusType === 'hibrido'
+          ? {
+            primaryFocus: hybridPrimaryFocus || 'equilibrado',
+            availableStudyTime: hybridAvailableStudyTime || 'medio',
+            concursoExamDate: concursoPlanningWithoutDate ? null : hybridConcursoExamDate || null,
+          }
+          : null,
+        faculdade: focusType === 'faculdade'
+          ? {
+            institution: collegeName.trim() || null,
+            course: courseName.trim() || null,
+            semester: semester || null,
+            focus: collegeFocus || null,
+          }
+          : null,
+        outros: focusType === 'outros'
+          ? {
+            goalTitle: otherGoalTitle.trim() || null,
+            focus: otherFocus || null,
+            deadline: goalDeadline || null,
+          }
+          : null,
+        contextSummary: contextSummary.title,
+        contextDescription: contextSummary.description,
       },
       smartProfile: {
         ...profile,
-        examDate: goalDeadline || profile.examDate,
+        examDate: goalDeadline || hybridAnchorDate || profile.examDate,
         simulationIntervalWeeks,
         hoursPerDay: adjustedHoursPerDay,
         subjectDifficulty: normalizedSubjectDifficulty,
@@ -1642,15 +2357,16 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
           {stepId === 'contexto' && (
             <div className="space-y-3">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><Target className="w-4 h-4" /> 1) Vamos montar seu contexto</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-300">Preencha apenas os dados do foco que você escolheu.</p>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><Target className="w-4 h-4" /> 1) Qual e o seu foco agora?</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-300">Essa escolha muda o plano, a home e a primeira missao que o app monta para voce.</p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {[
-                  { id: 'enem', label: 'ENEM', icon: GraduationCap, desc: 'Plano com foco em aprovação e alta nota' },
-                  { id: 'concurso', label: 'Concurso', icon: Landmark, desc: 'Plano baseado no edital e disciplinas' },
-                  { id: 'faculdade', label: 'Faculdade', icon: BookOpen, desc: 'Organize provas, trabalhos e rotina' },
-                  { id: 'outros', label: 'Outros', icon: Globe2, desc: 'Idiomas, leitura ou aprendizado pessoal' },
+                  { id: 'enem', label: 'ENEM', icon: GraduationCap, desc: 'Preparação para prova, nota e aprovação.' },
+                  { id: 'concurso', label: 'Concurso', icon: Landmark, desc: 'Plano guiado por edital, banca e prazo.' },
+                  { id: 'hibrido', label: 'Hibrido', icon: Brain, desc: 'ENEM + Concurso com balanceamento de prioridade.' },
+                  { id: 'faculdade', label: 'Faculdade', icon: BookOpen, desc: 'Rotina acadêmica com provas e trabalhos.' },
+                  { id: 'outros', label: 'Outros', icon: Globe2, desc: 'Idioma, programação, leitura ou estudo livre.' },
                 ].map((item) => {
                   const Icon = item.icon;
                   const selected = focusType === item.id;
@@ -1662,7 +2378,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                       onClick={() => setFocusType(item.id as FocusType)}
                       className={`text-left rounded-xl border px-3 py-3 transition-all ${
                         selected
-                          ? 'text-white border-transparent shadow-lg'
+                          ? 'text-white border-transparent shadow-lg ring-2 ring-slate-950/10'
                           : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100'
                       }`}
                       style={selected ? { backgroundImage: 'linear-gradient(to right, var(--color-primary), var(--color-secondary))' } : undefined}
@@ -1674,30 +2390,18 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 })}
               </div>
 
-              {(focusType === 'enem' || focusType === 'concurso') && (
-                <>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">Defina seu objetivo para montarmos um plano estratégico com base no tempo até a prova e na sua meta.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Tipo de prova</label>
-                      <select
-                        value={profile.examName}
-                        onChange={(event) => {
-                          const nextExamName = event.target.value as SmartScheduleProfile['examName'];
-                          setFocusType(nextExamName === 'CONCURSO' ? 'concurso' : 'enem');
-                          if (nextExamName === 'CONCURSO' && !selectedConcursoModelId && DEFAULT_CONCURSO_MODEL_ID) {
-                            setSelectedConcursoModelId(DEFAULT_CONCURSO_MODEL_ID);
-                          }
-                        }}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
-                      >
-                        <option value="ENEM">ENEM</option>
-                        <option value="CONCURSO">Concurso</option>
-                      </select>
-                    </div>
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Plano em montagem</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{contextSummary.title}</p>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{contextSummary.description}</p>
+              </div>
 
-                    {profile.examName === 'CONCURSO' && (
-                      <div className="space-y-1 md:col-span-2">
+              {(focusType === 'enem' || focusType === 'concurso' || focusType === 'hibrido') && (
+                <>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">Preencha apenas o contexto do foco escolhido para o plano nascer com prioridade certa desde o primeiro dia.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {false && (profile.examName === 'CONCURSO' || profile.examName === 'HIBRIDO') && (
+                      <div className="space-y-1 md:col-span-3">
                         <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Carreira / edital de referência</label>
                         <select
                           value={selectedConcursoModelId}
@@ -1707,9 +2411,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                             const legacyModel = CONCURSO_MODELS.find((item) => item.id === concursoId);
 
                             setSelectedConcursoModelId(concursoId);
-                            setConcursoMeta(concurso
-                              ? { id: concurso.id, nome: concurso.label, banca: concurso.banca, area: concurso.area }
-                              : null);
+                            setConcursoMeta(buildConcursoMeta({
+                              selectedModel: concurso || null,
+                              areaId: concurso?.areaId || null,
+                              banca: concurso?.banca || legacyModel?.banca || '',
+                              examDate: focusType === 'hibrido' ? hybridConcursoExamDate : profile.examDate,
+                              experienceMode: concursoExperienceMode,
+                              planningWithoutDate: concursoPlanningWithoutDate,
+                            }));
                             setSelectedSubjects(concurso ? [...concurso.subjects] : [...(legacyModel?.disciplinas || [])]);
 
                             trackEvent('onboarding_concurso_selected', {
@@ -1774,21 +2483,336 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                       </div>
                     )}
 
+                    {(profile.examName === 'CONCURSO' || profile.examName === 'HIBRIDO') && (
+                      <div className="space-y-3 md:col-span-3">
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Area principal</label>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            {CONCURSO_AREA_OPTIONS.map((area) => {
+                              const selected = concursoAreaId === area.id;
+
+                              return (
+                                <button
+                                  key={area.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setConcursoAreaId(area.id);
+
+                                    if (concursoSelecionado && concursoSelecionado.areaId !== area.id) {
+                                      setSelectedConcursoModelId('');
+                                      setSelectedSubjects([]);
+                                    }
+                                  }}
+                                  className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                    selected
+                                      ? 'text-white border-transparent'
+                                      : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                  }`}
+                                  style={selected ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                                >
+                                  <p className="text-sm font-semibold">{area.label}</p>
+                                  <p className={`mt-1 text-[11px] ${selected ? 'text-white/90' : 'text-gray-500 dark:text-gray-300'}`}>{area.description}</p>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Pesquisar concurso / edital</label>
+                            <input
+                              type="text"
+                              value={concursoSearch}
+                              onChange={(event) => setConcursoSearch(event.target.value)}
+                              placeholder="Ex: PF Administrativo, TJ, BB TI..."
+                              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                            />
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                              Filtrando {filteredConcursoCatalog.length} opcao(oes){concursoAreaId ? ` em ${CONCURSO_AREA_LABELS[concursoAreaId]}` : ''}.
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Banca</label>
+                            <input
+                              type="text"
+                              value={concursoBoard}
+                              onChange={(event) => setConcursoBoard(event.target.value)}
+                              placeholder="Ex: Cebraspe"
+                              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                            />
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                              {concursoBoardGuide || 'Quando o edital estiver definido, a banca ajuda a ajustar o estilo de treino.'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Concursos sugeridos</p>
+                            {selectedConcursoModelId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedConcursoModelId('');
+                                  setSelectedSubjects([]);
+                                }}
+                                className="text-[11px] font-semibold text-gray-500 dark:text-gray-300"
+                              >
+                                Limpar selecao
+                              </button>
+                            )}
+                          </div>
+                          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {filteredConcursoCatalog.length > 0 ? filteredConcursoCatalog.map((item) => {
+                              const selected = selectedConcursoModelId === item.id;
+
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => selectConcursoModel(item.id)}
+                                  className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                    selected
+                                      ? 'border-transparent text-white'
+                                      : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                  }`}
+                                  style={selected ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                                >
+                                  <p className="text-sm font-semibold">{item.label}</p>
+                                  <p className={`mt-1 text-[11px] ${selected ? 'text-white/90' : 'text-gray-500 dark:text-gray-300'}`}>
+                                    {item.area} · {item.banca} · {item.subjects.length} disciplinas
+                                  </p>
+                                </button>
+                              );
+                            }) : (
+                              <div className="md:col-span-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 px-3 py-4 text-xs text-gray-500 dark:text-gray-300">
+                                Nenhum edital encontrado com esse filtro. Ajuste a busca ou siga sem edital definido por enquanto.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {(concursoSelecionado || concursoAreaId) && (
+                          <div className="rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/40 p-3">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Contexto selecionado</p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                              {concursoSelecionado?.label || `Trilha inicial de ${concursoAreaId ? CONCURSO_AREA_LABELS[concursoAreaId] : 'Concurso'}`}
+                            </p>
+                            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                              {concursoSelecionado
+                                ? `${concursoSelecionado.area} · ${concursoBoard || concursoSelecionado.banca} · ${concursoSelecionado.subjects.length} disciplinas mapeadas`
+                                : `${concursoAreaId ? CONCURSO_AREA_LABELS[concursoAreaId] : 'Concurso'} sem edital fechado ainda.`}
+                            </p>
+                          </div>
+                        )}
+
+                        {(concursoSelecionado || concursoAreaId) && (
+                          <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/40 p-2">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Disciplinas-base do plano</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {resolveSubjectsByFocus('concurso', {
+                                focus: 'concurso',
+                                concursoId: selectedConcursoModelId,
+                                concursoAreaId,
+                                selectedSubjects,
+                                manualSubjects,
+                              }).map((subject) => {
+                                const active = selectedSubjects.includes(subject);
+
+                                return (
+                                  <button
+                                    key={subject}
+                                    type="button"
+                                    onClick={() => toggleSelectedSubject(subject)}
+                                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                                      active
+                                        ? 'text-white border-transparent'
+                                        : 'border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                                    }`}
+                                    style={active ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                                  >
+                                    {subject}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {(profile.examName === 'CONCURSO' || profile.examName === 'HIBRIDO') && (
+                      <div className="md:col-span-3 space-y-3">
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Qual o seu momento com concursos?</label>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            {CONCURSO_EXPERIENCE_OPTIONS.map((option) => {
+                              const selected = concursoExperienceMode === option.id;
+
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={() => setConcursoExperienceMode(option.id)}
+                                  className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                    selected
+                                      ? 'text-white border-transparent'
+                                      : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                  }`}
+                                  style={selected ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                                >
+                                  <p className="text-sm font-semibold">{option.label}</p>
+                                  <p className={`mt-1 text-[11px] ${selected ? 'text-white/90' : 'text-gray-500 dark:text-gray-300'}`}>{option.description}</p>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {concursoExperienceLevel && (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                              Nivel aplicado ao plano: {concursoExperienceLevel}.
+                            </p>
+                          )}
+                        </div>
+
+                        <label className="flex items-start gap-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={concursoPlanningWithoutDate}
+                            onChange={(event) => {
+                              const checked = event.target.checked;
+                              setConcursoPlanningWithoutDate(checked);
+                              if (checked) {
+                                if (focusType === 'hibrido') {
+                                  setHybridConcursoExamDate('');
+                                } else {
+                                  setProfile((prev) => ({ ...prev, examDate: '' }));
+                                }
+                              }
+                            }}
+                            className="mt-0.5"
+                          />
+                          <span>
+                            <span className="block text-sm font-semibold text-gray-800 dark:text-gray-100">Quero so organizar ate sair o edital</span>
+                            <span className="block text-[11px] text-gray-500 dark:text-gray-300">Use esse modo quando voce ainda nao tem data definida, mas quer construir base e rotina.</span>
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
+                    {focusType === 'hibrido' && (
+                      <div className="md:col-span-3 space-y-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-3">
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Qual frente deve puxar mais sua rotina?</label>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            {[
+                              { id: 'enem', label: 'Foco maior em ENEM', desc: 'ENEM como eixo principal e concurso como bloco secundario.' },
+                              { id: 'concurso', label: 'Foco maior em Concurso', desc: 'Edital como prioridade e ENEM em manutencao ativa.' },
+                              { id: 'equilibrado', label: 'Equilibrado', desc: 'Divisao controlada entre ENEM e concurso durante a semana.' },
+                            ].map((item) => {
+                              const selected = hybridPrimaryFocus === item.id;
+
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => setHybridPrimaryFocus(item.id as HybridPrimaryFocus)}
+                                  className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                    selected
+                                      ? 'text-white border-transparent'
+                                      : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                  }`}
+                                  style={selected ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                                >
+                                  <p className="text-sm font-semibold">{item.label}</p>
+                                  <p className={`mt-1 text-[11px] ${selected ? 'text-white/90' : 'text-gray-500 dark:text-gray-300'}`}>{item.desc}</p>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Quanto tempo real voce consegue sustentar?</label>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            {[
+                              { id: 'baixo', label: 'Baixo', desc: 'Carga controlada para evitar sobrecarga.' },
+                              { id: 'medio', label: 'Medio', desc: 'Ritmo equilibrado para sustentar dois objetivos.' },
+                              { id: 'alto', label: 'Alto', desc: 'Mais espaco para bloco principal e bloco secundario.' },
+                            ].map((item) => {
+                              const selected = hybridAvailableStudyTime === item.id;
+
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => setHybridAvailableStudyTime(item.id as HybridAvailableStudyTime)}
+                                  className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                    selected
+                                      ? 'text-white border-transparent'
+                                      : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                  }`}
+                                  style={selected ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                                >
+                                  <p className="text-sm font-semibold">{item.label}</p>
+                                  <p className={`mt-1 text-[11px] ${selected ? 'text-white/90' : 'text-gray-500 dark:text-gray-300'}`}>{item.desc}</p>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1 max-w-sm">
+                          <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Data da prova do concurso</label>
+                          <input
+                            type="date"
+                            value={hybridConcursoExamDate}
+                            onChange={(event) => setHybridConcursoExamDate(event.target.value)}
+                            disabled={concursoPlanningWithoutDate}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                          />
+                          {concursoPlanningWithoutDate && (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">Sem data do concurso por enquanto. O foco do edital continua salvo no plano.</p>
+                          )}
+                          {hybridConcursoDateInPast && !concursoPlanningWithoutDate && (
+                            <p className="text-[11px] text-red-600 dark:text-red-400">Use uma data de hoje em diante para o concurso.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Data da prova</label>
+                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        {focusType === 'concurso'
+                          ? 'Data da prova ou previsao'
+                          : focusType === 'hibrido'
+                            ? 'Data do ENEM'
+                            : 'Data da prova'}
+                      </label>
                       <input
                         type="date"
                         value={profile.examDate}
                         onChange={(event) => setProfile((prev) => ({ ...prev, examDate: event.target.value }))}
+                        disabled={focusType === 'concurso' && concursoPlanningWithoutDate}
                         className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
                       />
-                      {examDateInPast && (
+                      {focusType === 'concurso' && concursoPlanningWithoutDate && (
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">Sem data definida por enquanto. O plano nasce orientado por base, edital e constancia.</p>
+                      )}
+                      {examDateInPast && !(focusType === 'concurso' && concursoPlanningWithoutDate) && (
                         <p className="text-[11px] text-red-600 dark:text-red-400">Use uma data de hoje em diante.</p>
                       )}
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Nota desejada (0 a 1000)</label>
+                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        {focusType === 'concurso'
+                          ? 'Meta / nota desejada'
+                          : focusType === 'hibrido'
+                            ? 'Meta ENEM (0 a 1000)'
+                            : 'Nota desejada (0 a 1000)'}
+                      </label>
                       <input
                         type="number"
                         min={0}
@@ -1803,8 +2827,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 </>
               )}
 
-              {focusType === 'enem' && (
+              {(focusType === 'enem' || focusType === 'hibrido') && (
                 <div className="space-y-2">
+                  {focusType === 'hibrido' && (
+                    <div className="rounded-xl border border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 p-3">
+                      <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Bloco ENEM do modo hibrido</p>
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Aqui a gente define sua meta academica e o peso do ENEM dentro da rotina mista.</p>
+                    </div>
+                  )}
                   <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Objetivo ENEM (sugestão de perfil)</label>
                   <select
                     value={enemGoalId}
@@ -1894,11 +2924,48 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                           className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${selected ? 'text-white border-transparent shadow-md' : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200'}`}
                           style={selected ? { backgroundColor: 'var(--color-primary)' } : undefined}
                         >
-                          {item === 'sim' ? 'Sim' : 'Não'}
+                          {item === 'sim' ? 'Sim, já fiz' : 'Não, primeira vez'}
                         </button>
                       );
                     })}
                   </div>
+
+                  {enemTriedBefore === 'nao' && (
+                    <div className="rounded-lg border border-emerald-100 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 p-3">
+                      <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-200">Nível inicial aplicado automaticamente</p>
+                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Como é sua primeira vez, o plano começa em modo iniciante para evitar excesso de carga logo no começo.</p>
+                    </div>
+                  )}
+
+                  {enemTriedBefore === 'sim' && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Em qual momento você se coloca hoje?</label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {[
+                          { id: 'intermediario', label: 'Intermediário', desc: 'Já conhece a prova, mas ainda precisa consolidar base e ritmo.' },
+                          { id: 'avancado', label: 'Avançado', desc: 'Já passou da base e quer um plano mais agressivo e competitivo.' },
+                        ].map((item) => {
+                          const selected = enemProfileLevel === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => setEnemProfileLevel(item.id as EnemProfileLevel)}
+                              className={`rounded-xl border px-3 py-3 text-left transition-all ${
+                                selected
+                                  ? 'text-white border-transparent shadow-md'
+                                  : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                              }`}
+                              style={selected ? { backgroundColor: 'var(--color-primary)' } : undefined}
+                            >
+                              <p className="text-sm font-semibold">{item.label}</p>
+                              <p className={`mt-1 text-xs ${selected ? 'text-white/90' : 'text-gray-500 dark:text-gray-300'}`}>{item.desc}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {enemTriedBefore === 'sim' && (
                     <div className="space-y-1 max-w-xs">
@@ -1981,7 +3048,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   </div>
 
                   <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Foco principal agora</label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {[
                       { id: 'provas', label: '📚 Provas' },
                       { id: 'trabalhos', label: '📝 Trabalhos' },
@@ -2007,13 +3074,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               {focusType === 'outros' && (
                 <div className="space-y-2">
                   <p className="text-sm text-gray-700 dark:text-gray-200 font-semibold">Outros · Defina seu objetivo pessoal</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Vamos montar um plano no seu ritmo, com foco no que você quer evoluir.</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Vamos montar um plano flexivel no seu ritmo, sem te prender a um calendario rigido.</p>
                   <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Objetivo principal</label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     {[
-                      { id: 'idiomas', label: '🌍 Idiomas' },
-                      { id: 'leitura', label: '📖 Leitura' },
-                      { id: 'novo_aprendizado', label: '🧠 Aprender algo novo' },
+                      { id: 'aprender', label: 'Aprender' },
+                      { id: 'praticar', label: 'Praticar' },
+                      { id: 'rotina', label: 'Criar rotina' },
+                      { id: 'evoluir_tema', label: 'Evoluir em um tema' },
                     ].map((item) => {
                       const selected = otherFocus === item.id;
                       return (
@@ -2032,13 +3100,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">Qual objetivo específico?</label>
+                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">O que você quer estudar?</label>
                       <input
                         type="text"
                         value={otherGoalTitle}
                         onChange={(event) => setOtherGoalTitle(event.target.value)}
                         className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
-                        placeholder="Ex: falar inglês com confiança"
+                        placeholder="Ex: ingles para conversacao, programacao web, leitura de filosofia"
                       />
                     </div>
                     <div className="space-y-1">

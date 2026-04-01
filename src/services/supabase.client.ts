@@ -21,9 +21,13 @@ const isValidSupabaseKey = (value?: string): value is string => {
   return value.startsWith('sb_publishable_') || value.startsWith('eyJ');
 };
 
-const envSupabaseUrl = normalizeEnvValue(import.meta.env.VITE_SUPABASE_URL);
+const runtimeEnv = ((import.meta as ImportMeta & {
+  env?: Record<string, string | undefined>;
+}).env) || {};
+
+const envSupabaseUrl = normalizeEnvValue(runtimeEnv.VITE_SUPABASE_URL);
 const envSupabaseKey = normalizeEnvValue(
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY,
+  runtimeEnv.VITE_SUPABASE_PUBLISHABLE_KEY || runtimeEnv.VITE_SUPABASE_ANON_KEY,
 );
 
 const hasValidEnv = isValidSupabaseUrl(envSupabaseUrl)

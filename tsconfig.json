@@ -22,7 +22,6 @@
   },
   "include": ["src"],
   "exclude": [
-    "pwa_integracao.ts",
     "src/**/*-OLD.tsx",
     "src/**/*.test.ts",
     "src/**/*.test.tsx"

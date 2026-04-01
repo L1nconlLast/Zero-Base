@@ -3,12 +3,14 @@ import type { UserData } from '../types';
 import { useLocalStorage } from './useLocalStorage';
 import type { MentorMemory, MentorOutput, MentorTrigger } from '../types/mentor';
 import {
+  applyMentorWriteBackToMemory,
   applyMentorBriefingToMemory,
   buildMentorMemoryRuntime,
   getMentorMemoryStorageKey,
   isMentorMemoryEqual,
   markMentorActionFollowed,
 } from '../services/mentorMemory.service';
+import type { MentorMemoryWriteBack } from '../features/mentor/contracts';
 
 interface UseMentorMemoryInput {
   userKey: string;
@@ -68,10 +70,20 @@ export const useMentorMemory = ({
     [runtime.memory, setMemory],
   );
 
+  const saveWriteBack = useCallback(
+    (writeBack: MentorMemoryWriteBack) => {
+      setMemory((previousMemory) =>
+        applyMentorWriteBackToMemory(previousMemory || runtime.memory, writeBack),
+      );
+    },
+    [runtime.memory, setMemory],
+  );
+
   return {
-    memory: memory || runtime.memory,
+    memory: runtime.memory,
     runtime,
     saveBriefing,
     rememberFollowedAction,
+    saveWriteBack,
   };
 };

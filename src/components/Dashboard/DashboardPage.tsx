@@ -10,6 +10,10 @@ import type { StudyMode } from '../../hooks/useStudyMode';
 import { useEffectivePhase, type ProductPhase, type ProductPhaseOverride } from '../../hooks/useEffectivePhase';
 import { useTrackImpressionInViewOnce } from '../../hooks/useTrackImpressionInViewOnce';
 import type { HeroVariant } from '../../lib/ab';
+import {
+  normalizePresentationLabel,
+  normalizeSubjectLabel,
+} from '../../utils/uiLabels';
 import { BeginnerMissionCard } from '../Beginner/BeginnerMissionCard';
 import { advancedProgressService } from '../../services/advancedProgress.service';
 import { AdvancedDashboardHome } from './AdvancedDashboardHome';
@@ -269,13 +273,15 @@ const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
   }
 
   const reasonCopy = mapReasonSummaryToCopy(card.reason);
+  const safeDiscipline = normalizeSubjectLabel(card.discipline, 'Outra');
+  const safeTopic = normalizePresentationLabel(card.topic, 'Topico livre');
 
   return (
     <section
       data-testid="study-now-card"
       data-card-status="ready"
-      data-study-discipline={card.discipline}
-      data-study-topic={card.topic}
+      data-study-discipline={safeDiscipline}
+      data-study-topic={safeTopic}
       className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-5 shadow-sm"
     >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -286,7 +292,7 @@ const StudyNowCard: React.FC<{ card: StudyNowCardState }> = ({ card }) => {
           </p>
           <h2 className="mt-3 text-2xl font-bold text-slate-900">{card.title}</h2>
           <p className="mt-2 text-sm text-slate-600">
-            {card.discipline} • {card.topic}
+            {safeDiscipline} • {safeTopic}
           </p>
           <p data-testid="study-now-card-reason" className="mt-3 text-sm font-medium text-slate-800">{reasonCopy}</p>
           {card.supportingText ? (
@@ -510,7 +516,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
   const weakAreas = React.useMemo(() => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 7);
-    const recentSubjects = new Set(sessions.filter((session) => new Date(session.date) >= cutoff).map((session) => session.subject));
+    const recentSubjects = new Set(
+      sessions
+        .filter((session) => new Date(session.date) >= cutoff)
+        .map((session) => normalizeSubjectLabel(String(session.subject || ''), 'Outra')),
+    );
     return SUBJECT_SEQUENCE_BY_TRACK[preferredTrack].filter((subject) => !recentSubjects.has(subject)).slice(0, 3);
   }, [preferredTrack, sessions]);
 
@@ -551,7 +561,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
   const currentDiscipline = React.useMemo(() => {
     if (sessions.length === 0) return undefined;
     const sorted = [...sessions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const raw = sorted[0]?.subject as MateriaTipo | undefined;
+      const raw = normalizeSubjectLabel(String(sorted[0]?.subject || ''), '') as MateriaTipo | '';
     if (!raw) return undefined;
     return cycleLabels[raw]?.label ?? raw;
   }, [cycleLabels, sessions]);

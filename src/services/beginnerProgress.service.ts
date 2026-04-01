@@ -105,7 +105,7 @@ const getConsistencyLabel = (streak: number, sessionsCompleted: number): string 
     return 'Voce ja saiu da inercia e criou os primeiros sinais de rotina.';
   }
 
-  return 'Voce comecou. Agora o foco e manter o proximo passo simples.';
+  return 'Voce comecou. O proximo passo ja esta pronto e precisa continuar simples.';
 };
 
 const evaluateStage = (stats: BeginnerStats): BeginnerProgressStage => {

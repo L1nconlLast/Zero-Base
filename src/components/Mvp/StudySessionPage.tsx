@@ -6,6 +6,11 @@ interface StudySessionPageProps {
   session: StudySession;
   answering: boolean;
   finishing: boolean;
+  latestFeedback?: {
+    tone: 'success' | 'warning';
+    message: string;
+    detail?: string;
+  } | null;
   onAnswer: (questionId: string, alternativeId: string) => Promise<void>;
   onFinish: () => Promise<void>;
 }
@@ -14,6 +19,7 @@ export const StudySessionPage: React.FC<StudySessionPageProps> = ({
   session,
   answering,
   finishing,
+  latestFeedback = null,
   onAnswer,
   onFinish,
 }) => {
@@ -50,6 +56,22 @@ export const StudySessionPage: React.FC<StudySessionPageProps> = ({
 
         {!allAnswered && currentQuestion ? (
           <div data-testid="session-question-root" className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            {latestFeedback ? (
+              <div
+                data-testid="session-answer-feedback"
+                className={`mb-5 rounded-2xl border px-4 py-3 ${
+                  latestFeedback.tone === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                    : 'border-amber-200 bg-amber-50 text-amber-900'
+                }`}
+              >
+                <p className="text-sm font-semibold">{latestFeedback.message}</p>
+                {latestFeedback.detail ? (
+                  <p className="mt-1 text-sm opacity-80">{latestFeedback.detail}</p>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
               <PlayCircle className="h-4 w-4" />
               Questao {session.answeredQuestions + 1} de {session.totalQuestions}

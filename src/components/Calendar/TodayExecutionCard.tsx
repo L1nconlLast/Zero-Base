@@ -12,6 +12,11 @@ import {
   mapReasonSummaryToCopy,
   type UserFacingWeeklyProgress,
 } from '../../services/prioritizationReason';
+import {
+  normalizePresentationLabel,
+  normalizeSubjectLabel,
+  truncatePresentationLabel,
+} from '../../utils/uiLabels';
 
 type TodayExecutionAction = {
   label: string;
@@ -218,6 +223,8 @@ const TodayExecutionCard: React.FC<TodayExecutionCardProps> = ({
   const statusCopy = STATUS_COPY[resolvedStatus.status];
   const scheduleHint = buildScheduleHint(resolvedStatus);
   const reasonCopy = mapReasonSummaryToCopy(card.reason);
+  const safeDiscipline = normalizeSubjectLabel(card.discipline, 'Outra');
+  const safeTopic = normalizePresentationLabel(card.topic, 'Topico livre');
 
   return (
     <section
@@ -241,8 +248,8 @@ const TodayExecutionCard: React.FC<TodayExecutionCardProps> = ({
           </div>
 
           <h3 className="mt-3 text-2xl font-bold text-slate-900 dark:text-slate-100">{card.title}</h3>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            {card.discipline} {'•'} {card.topic}
+          <p className="mt-2 min-w-0 truncate text-sm text-slate-600 dark:text-slate-400" title={`${safeDiscipline} • ${safeTopic}`}>
+            {truncatePresentationLabel(safeDiscipline, 18, safeDiscipline)} • {truncatePresentationLabel(safeTopic, 24, safeTopic)}
           </p>
           <p data-testid="today-execution-reason" className="mt-3 text-sm font-medium text-slate-800 dark:text-slate-200">{reasonCopy}</p>
           {card.supportingText ? (

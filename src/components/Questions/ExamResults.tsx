@@ -149,6 +149,11 @@ const ExamResults: React.FC<ExamResultsProps> = ({
   const theme = TRACK_THEME[track];
   const pct = toPercent(snapshot.correctCount, snapshot.totalQuestions);
   const performance = getPerformanceBadge(pct);
+  const heroMetricCardClass = 'rounded-2xl border border-white/15 bg-slate-950/30 p-4 backdrop-blur';
+  const heroPanelClass = 'rounded-[24px] border border-white/15 bg-slate-950/40 p-5 backdrop-blur';
+  const heroStatusChipClass = 'inline-flex items-center gap-2 rounded-full border border-white/20 bg-slate-950/25 px-3 py-1.5 text-xs font-semibold text-white/90 backdrop-blur';
+  const heroSecondaryButtonClass =
+    'inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-slate-950/25 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-950/40';
   const unansweredCount = Math.max(0, snapshot.totalQuestions - snapshot.answeredCount);
   const canContinue = Boolean(onContinueExam && unansweredCount > 0 && snapshot.remainingTimeSec > 0 && !snapshot.finishedByTimeout);
 
@@ -316,12 +321,13 @@ const ExamResults: React.FC<ExamResultsProps> = ({
   return (
     <div className="mx-auto max-w-6xl space-y-6" data-testid="mock-exam-results-ready">
       <section className={`relative overflow-hidden rounded-[28px] border ${theme.soft} p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-7`}>
-        <div className={`absolute inset-x-0 top-0 h-44 bg-gradient-to-br ${theme.hero} opacity-95`} />
+        <div className={`absolute inset-0 bg-gradient-to-br ${theme.hero} opacity-95`} />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.24),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(15,23,42,0.14),transparent_38%)]" />
+        <div className="absolute inset-x-0 bottom-0 h-[62%] bg-[linear-gradient(180deg,rgba(2,6,23,0)_0%,rgba(2,6,23,0.55)_28%,rgba(2,6,23,0.82)_100%)]" />
         <div className="relative space-y-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Resultado do simulado</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/75">Resultado do simulado</p>
               <h2 className="mt-2 text-3xl font-semibold text-white sm:text-[2rem]">
                 {snapshot.correctCount}/{snapshot.totalQuestions} acertos
               </h2>
@@ -334,17 +340,17 @@ const ExamResults: React.FC<ExamResultsProps> = ({
                   {performance.label}
                 </span>
                 {snapshot.finishedByTimeout ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">
+                  <span className={heroStatusChipClass}>
                     <AlertTriangle className="h-3.5 w-3.5" />
                     Tempo encerrado
                   </span>
                 ) : unansweredCount > 0 ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">
+                  <span className={heroStatusChipClass}>
                     <Clock3 className="h-3.5 w-3.5" />
                     Entregue com {unansweredCount} em branco
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">
+                  <span className={heroStatusChipClass}>
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     Prova encerrada com diagnostico completo
                   </span>
@@ -353,32 +359,32 @@ const ExamResults: React.FC<ExamResultsProps> = ({
             </div>
 
             <div className="grid min-w-[280px] gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">% geral</p>
+              <div className={heroMetricCardClass}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">% geral</p>
                 <p className="mt-2 text-3xl font-semibold text-white">{pct}%</p>
               </div>
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Tempo gasto</p>
+              <div className={heroMetricCardClass}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">Tempo gasto</p>
                 <p className="mt-2 text-3xl font-semibold text-white">{formatDuration(snapshot.elapsedSec)}</p>
               </div>
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">XP ganho</p>
+              <div className={heroMetricCardClass}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">XP ganho</p>
                 <p className="mt-2 text-3xl font-semibold text-white">+{snapshot.xpEarned}</p>
               </div>
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/65">Ritmo medio</p>
+              <div className={heroMetricCardClass}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">Ritmo medio</p>
                 <p className="mt-2 text-lg font-semibold text-white">{formatPace(snapshot.avgTimePerQuestionSec)}</p>
               </div>
             </div>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-[24px] border border-white/15 bg-white/10 p-5 backdrop-blur">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/65">Leitura rapida</p>
+            <div className={heroPanelClass}>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Leitura rapida</p>
               <p className="mt-2 text-sm text-white/85">{performance.summary}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {insights.map((insight) => (
-                  <span key={insight} className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90">
+                  <span key={insight} className="rounded-full border border-white/15 bg-slate-950/25 px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur">
                     {insight}
                   </span>
                 ))}
@@ -400,7 +406,7 @@ const ExamResults: React.FC<ExamResultsProps> = ({
                 <button
                   type="button"
                   onClick={onRetryExam}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
+                  className={heroSecondaryButtonClass}
                 >
                   <RotateCcw className="h-4 w-4" />
                   Refazer simulado
@@ -408,7 +414,7 @@ const ExamResults: React.FC<ExamResultsProps> = ({
                 <button
                   type="button"
                   onClick={onNewExam}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
+                  className={heroSecondaryButtonClass}
                 >
                   <Play className="h-4 w-4" />
                   Novo simulado

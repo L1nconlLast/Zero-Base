@@ -933,6 +933,8 @@ export default function SettingsPage({
   useEffect(() => {
     const resolvedTheme = prefTheme === 'system' ? resolveSystemTheme() : prefTheme;
 
+    syncResolvedTheme(resolvedTheme);
+
     if (resolvedTheme === 'light' && darkMode) {
       onToggleDarkMode();
     }
@@ -944,8 +946,6 @@ export default function SettingsPage({
     localStorage.setItem(LANG_STORAGE_KEY, locale);
     localStorage.setItem(DENSITY_STORAGE_KEY, prefDensity);
     localStorage.setItem(TIME_STORAGE_KEY, prefTime);
-    localStorage.setItem('darkMode', JSON.stringify(resolvedTheme === 'dark'));
-    document.documentElement.setAttribute('data-theme', resolvedTheme);
     document.documentElement.setAttribute('lang', locale);
   }, [prefTheme, locale, prefDensity, prefTime, darkMode, onToggleDarkMode]);
 
@@ -1079,14 +1079,19 @@ export default function SettingsPage({
 
   const mark = () => setDirty(true);
 
+  const syncResolvedTheme = (resolvedTheme: 'light' | 'dark') => {
+    document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
+    document.documentElement.setAttribute('data-theme', resolvedTheme);
+    localStorage.setItem('darkMode', JSON.stringify(resolvedTheme === 'dark'));
+  };
+
   const applyDocumentPreferences = () => {
     localStorage.setItem(THEME_STORAGE_KEY, prefTheme);
 
     const resolvedTheme = prefTheme === 'system' ? resolveSystemTheme() : prefTheme;
 
-    document.documentElement.setAttribute('data-theme', resolvedTheme);
+    syncResolvedTheme(resolvedTheme);
     document.documentElement.setAttribute('lang', locale);
-    localStorage.setItem('darkMode', JSON.stringify(resolvedTheme === 'dark'));
   };
 
   const parsePreferredTrack = (track: string): 'enem' | 'concursos' | 'hibrido' => {

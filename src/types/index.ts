@@ -514,6 +514,11 @@ export interface ScheduleEntry {
   updatedAt?: string;
   lastManualEditAt?: string;
   lastManualTargetDate?: string;
+  lastReviewedAt?: string;
+  lastReviewFeedback?: 'facil' | 'medio' | 'dificil' | 'errei';
+  nextReviewAt?: string;
+  reviewIntervalDays?: number;
+  reviewCount?: number;
 }
 
 export type Weekday =

@@ -6,16 +6,57 @@ export interface MentorChatPayload {
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   studentContext: {
     userName: string;
+    objective: 'enem' | 'concurso' | 'hibrido';
+    examName: string;
+    examDate?: string;
     daysToExam: number;
     strongArea: string;
     weakArea: string;
+    currentWeeklyFocus?: string;
     weeklyPct: number;
+    todayMinutes: number;
+    pendingReviews: number;
+    overdueReviews: number;
     streak: number;
     previousFocus?: string;
     lastRecommendation?: string;
     sessionsLast7Days?: number;
     completedMockExams?: number;
+    nextRecommendedSession?: {
+      subject: string;
+      durationMin: number;
+      format: 'focus' | 'review' | 'questions' | 'mixed';
+      reason: string;
+    };
     trigger: MentorTrigger;
+  };
+  decisionContext: {
+    moment: string;
+    responseKind: string;
+    primarySubject?: string;
+    summary: string;
+    response: {
+      type: string;
+      nextStep: string;
+      whyNow: string;
+      caution: string;
+      tone: 'direct' | 'supportive';
+      title: string;
+      chips: string[];
+    };
+    risk: {
+      level: 'low' | 'medium' | 'high' | 'critical';
+      label: string;
+      summary: string;
+    };
+    actions: Array<{
+      label: string;
+      description: string;
+      subject?: string;
+      durationMin?: number;
+      urgency: 'now' | 'today' | 'this_week';
+    }>;
+    safetyNotes: string[];
   };
 }
 

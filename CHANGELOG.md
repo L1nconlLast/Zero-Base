@@ -1,4 +1,17 @@
-﻿# CHANGELOG
+# CHANGELOG
+
+## [2.1.1-beta-ready] - Marco 2026
+
+### Release State
+
+- Loop central validado ponta a ponta no preview publicado: `Inicio -> Plano -> Estudos -> Finalizar -> Home/Plano -> Revisao 24h -> Reload`
+- Build de producao validado localmente
+- Smoke central remoto validado `7/7`, incluindo persistencia apos reload e console limpo
+- Inspecao visual de staging concluida com capturas de `Home`, `Plano`, `Dashboard`, `Mentor IA`, dark mode e mobile
+- Bugs centrais desta fase corrigidos: `Mentor IA`, `WeeklyReport`, `StudyHeatmap` e sincronizacao de tema
+- Passe de densidade visual concluido em `Home`, `Plano`, `Dashboard` e `Mentor IA`
+- `WeeklyReport` teve o bug de distribuicao por materia corrigido na origem do dado e validado visualmente com `qa-artifacts/progress-dashboard-weekly-report.png` e `qa-artifacts/progress-dashboard-weekly-report-mobile.png`
+- A instabilidade restante em `run-progress-dashboard-smoke.mjs` fica classificada como divida separada de automacao/runner, nao como regressao funcional do grafico
 
 ## [2.1.0] — Fevereiro 2026
 
@@ -55,4 +68,3 @@
 - Pomodoro, cronômetro, dashboard com gráficos
 - PWA base, backup/restore, exportação CSV/JSON
 - Autenticação local com bcrypt
-
